@@ -25,10 +25,6 @@ jobs:
         sanitizer: [address, undefined, thread]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
       - run: brew install ninja
 
       - name: Read vcpkg baseline
