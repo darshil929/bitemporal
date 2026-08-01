@@ -1,0 +1,69 @@
+SHELL := /bin/bash
+
+REQUIRE_MODERN_MAKE := $(if $(filter setup,$(MAKECMDGOALS)),,yes)
+ifdef REQUIRE_MODERN_MAKE
+ifeq ($(firstword $(subst ., ,$(MAKE_VERSION))),3)
+$(error GNU Make 4.0 or newer is required, found $(MAKE_VERSION). Run make setup, then use gmake)
+endif
+endif
+
+UNAME_S := $(shell uname -s)
+
+VCPKG_ROOT ?= $(HOME)/vcpkg
+export VCPKG_ROOT
+export SANITIZER
+
+PRESET := $(if $(SANITIZER),sanitizer,default)
+PYTHON_SRC := api/src pipelines/src
+CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
+	\( -name '*.cpp' -o -name '*.hpp' \) -print)
+
+.DEFAULT_GOAL := ci
+.PHONY: setup lint test-engine test-python test-dbt test-web ci up down
+
+setup:
+ifeq ($(UNAME_S),Darwin)
+	brew install cmake ninja ccache make clang-format
+else
+	sudo apt-get update
+	sudo apt-get install -y build-essential cmake ninja-build ccache clang-format
+endif
+	@test -d $(VCPKG_ROOT) || git clone https://github.com/microsoft/vcpkg.git $(VCPKG_ROOT)
+	$(VCPKG_ROOT)/bootstrap-vcpkg.sh -disableMetrics
+	uv sync
+	npm --prefix web ci
+
+lint:
+	uv run ruff format --check .
+	uv run ruff check .
+	uv run mypy $(PYTHON_SRC)
+	clang-format --dry-run --Werror $(CPP_SOURCES)
+	npm --prefix web run lint
+	@if find pipelines/dbt/models -name '*.sql' -print -quit 2>/dev/null | grep -q .; then \
+		uv run sqlfluff lint pipelines/dbt/models; \
+	else \
+		echo "no sql models to lint"; \
+	fi
+
+test-engine:
+	cd engine && cmake --preset $(PRESET)
+	cd engine && cmake --build --preset $(PRESET)
+	cd engine && ctest --preset $(PRESET)
+
+test-python:
+	uv run pytest
+
+test-dbt:
+	cd pipelines/dbt && uv run dbt parse --profiles-dir .
+
+test-web:
+	npm --prefix web run typecheck
+	npm --prefix web run test
+
+ci: lint test-engine test-python test-dbt test-web
+
+up:
+	docker compose up -d --wait
+
+down:
+	docker compose down
