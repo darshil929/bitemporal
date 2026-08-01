@@ -1,0 +1,28 @@
+[project]
+name = "bitemporal"
+version = "0.0.0"
+description = "Personal equity analysis platform for Indian, US and UK markets"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "bitemporal-api",
+    "bitemporal-pipelines",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["api", "pipelines"]
+
+[tool.uv.sources]
+bitemporal-api = { workspace = true }
+bitemporal-pipelines = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.0",
+    "pytest>=8.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["api/tests", "pipelines/tests"]

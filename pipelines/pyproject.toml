@@ -1,0 +1,17 @@
+[project]
+name = "bitemporal-pipelines"
+version = "0.0.0"
+description = "Dagster assets, source adapters and the dbt project"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "dagster>=1.9",
+    "dbt-core>=1.9,<2",
+    "dbt-postgres>=1.9,<2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipelines"]
