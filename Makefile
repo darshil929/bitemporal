@@ -3,7 +3,7 @@ SHELL := /bin/bash
 REQUIRE_MODERN_MAKE := $(if $(filter setup,$(MAKECMDGOALS)),,yes)
 ifdef REQUIRE_MODERN_MAKE
 ifeq ($(firstword $(subst ., ,$(MAKE_VERSION))),3)
-$(error GNU Make 4.0 or newer is required, found $(MAKE_VERSION). Run make setup, then use gmake)
+$(error GNU Make 4.0 or newer is required, found $(MAKE_VERSION). Run make setup for the fix)
 endif
 endif
 
@@ -14,7 +14,7 @@ export VCPKG_ROOT
 export SANITIZER
 
 PRESET := $(if $(SANITIZER),sanitizer,default)
-PYTHON_SRC := api/src pipelines/src
+PYTHON_SRC := api/src pipelines/src scripts
 CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 	\( -name '*.cpp' -o -name '*.hpp' \) -print)
 
@@ -32,6 +32,16 @@ endif
 	$(VCPKG_ROOT)/bootstrap-vcpkg.sh -disableMetrics
 	uv sync
 	npm --prefix web ci
+	uv run pre-commit install --install-hooks
+ifeq ($(UNAME_S),Darwin)
+	@echo
+	@echo "macOS ships GNU Make 3.81 as /usr/bin/make. To make the make command resolve to the"
+	@echo "version this repository requires, add the following to your shell profile:"
+	@echo
+	@echo '  export PATH="$(shell brew --prefix make)/libexec/gnubin:$$PATH"'
+	@echo
+	@echo "Until then, invoke the targets as gmake."
+endif
 
 lint:
 	uv run ruff format --check .

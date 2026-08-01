@@ -1,0 +1,62 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: mixed-line-ending
+
+  # Every linter below runs through the same command make lint uses, so the two
+  # cannot drift to different tool versions.
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run ruff format
+        types_or: [python, pyi]
+
+      - id: ruff-check
+        name: ruff check
+        language: system
+        entry: uv run ruff check --fix
+        types_or: [python, pyi]
+
+      - id: mypy
+        name: mypy
+        language: system
+        entry: uv run mypy api/src pipelines/src scripts
+        pass_filenames: false
+        types: [python]
+
+      - id: clang-format
+        name: clang-format
+        language: system
+        entry: clang-format -i
+        types_or: [c++, c]
+
+      - id: prettier
+        name: prettier
+        language: system
+        entry: npm --prefix web exec -- prettier --write --ignore-unknown
+        files: ^web/
+        exclude: ^web/(node_modules|\.next)/
+
+      - id: sqlfluff
+        name: sqlfluff
+        language: system
+        entry: uv run sqlfluff fix --force
+        types: [sql]
+
+      - id: commit-message
+        name: commit message
+        language: system
+        entry: uv run python scripts/check_commit_message.py
+        stages: [commit-msg]

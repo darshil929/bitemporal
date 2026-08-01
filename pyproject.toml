@@ -22,17 +22,20 @@ bitemporal-pipelines = { workspace = true }
 dev = [
     "httpx2>=2.0",
     "mypy>=2.3.0",
+    "pre-commit>=4.6.1",
     "pytest>=8.3",
     "ruff>=0.16.1",
     "sqlfluff>=4.2.2",
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["api/tests", "pipelines/tests"]
+testpaths = ["api/tests", "pipelines/tests", "scripts/tests"]
+pythonpath = ["scripts"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+src = ["api/src", "pipelines/src", "scripts"]
 
 [tool.ruff.lint]
 extend-select = ["I"]
@@ -43,5 +46,5 @@ known-first-party = ["api", "btcore", "pipelines"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = ["api/src", "pipelines/src"]
+mypy_path = ["api/src", "pipelines/src", "scripts"]
 explicit_package_bases = true
