@@ -17,6 +17,7 @@ PRESET := $(if $(SANITIZER),sanitizer,default)
 PYTHON_SRC := api/src pipelines/src scripts
 CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 	\( -name '*.cpp' -o -name '*.hpp' \) -print)
+SQL_SOURCES = $(shell find infra pipelines -name '*.sql' 2>/dev/null)
 
 .DEFAULT_GOAL := ci
 .PHONY: setup lint test-engine test-python test-dbt test-web ci up down
@@ -49,10 +50,10 @@ lint:
 	uv run mypy $(PYTHON_SRC)
 	uv run clang-format --dry-run --Werror $(CPP_SOURCES)
 	npm --prefix web run lint
-	@if find pipelines/dbt/models -name '*.sql' -print -quit 2>/dev/null | grep -q .; then \
-		uv run sqlfluff lint pipelines/dbt/models; \
+	@if [ -n "$(SQL_SOURCES)" ]; then \
+		uv run sqlfluff lint $(SQL_SOURCES); \
 	else \
-		echo "no sql models to lint"; \
+		echo "no sql to lint"; \
 	fi
 
 test-engine:
@@ -73,7 +74,7 @@ test-web:
 ci: lint test-engine test-python test-dbt test-web
 
 up:
-	docker compose up -d --wait
+	docker compose up -d --build --wait
 
 down:
 	docker compose down

@@ -5,6 +5,7 @@ description = "Dagster assets, source adapters and the dbt project"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "dagster>=1.9",
+    "dagster-webserver>=1.13.16",
     "dbt-core>=1.9,<2",
     "dbt-postgres>=1.9,<2",
 ]
