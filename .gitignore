@@ -37,6 +37,7 @@ data/
 *.duckdb
 *.parquet
 !pipelines/tests/fixtures/**
+pipelines/tests/fixtures/**/__pycache__/
 target/
 dbt_packages/
 logs/
