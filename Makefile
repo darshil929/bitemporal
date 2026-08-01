@@ -14,7 +14,7 @@ export VCPKG_ROOT
 export SANITIZER
 
 PRESET := $(if $(SANITIZER),sanitizer,default)
-PYTHON_SRC := api/src pipelines/src
+PYTHON_SRC := api/src pipelines/src scripts
 CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 	\( -name '*.cpp' -o -name '*.hpp' \) -print)
 
@@ -32,6 +32,7 @@ endif
 	$(VCPKG_ROOT)/bootstrap-vcpkg.sh -disableMetrics
 	uv sync
 	npm --prefix web ci
+	uv run pre-commit install --install-hooks
 ifeq ($(UNAME_S),Darwin)
 	@echo
 	@echo "macOS ships GNU Make 3.81 as /usr/bin/make. To make the make command resolve to the"
