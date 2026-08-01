@@ -1,0 +1,30 @@
+bitemporal:
+  target: fixture
+  outputs:
+    fixture:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER', 'bitemporal') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'replace-me') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'bitemporal') }}"
+      schema: fixture
+      threads: 4
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER', 'bitemporal') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'replace-me') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'bitemporal') }}"
+      schema: dev
+      threads: 4
+    full:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER', 'bitemporal') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'replace-me') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'bitemporal') }}"
+      schema: full
+      threads: 8

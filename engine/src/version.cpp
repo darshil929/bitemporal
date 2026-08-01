@@ -2,8 +2,6 @@
 
 namespace btcore {
 
-std::string_view version() noexcept {
-  return BTCORE_VERSION;
-}
+std::string_view version() noexcept { return BTCORE_VERSION; }
 
 }  // namespace btcore
