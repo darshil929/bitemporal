@@ -1,0 +1,18 @@
+[build-system]
+requires = ["nanobind>=2.2", "scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "btcore"
+version = "0.0.0"
+description = "Indicators, cross-sectional statistics, factors and backtesting"
+requires-python = ">=3.12,<3.13"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["python/btcore"]
+
+[tool.scikit-build.cmake.define]
+BTCORE_BUILD_PYTHON = "ON"
+BTCORE_BUILD_TESTS = "OFF"
