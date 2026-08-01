@@ -1,0 +1,49 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+
+jobs:
+  sanitizers:
+    runs-on: macos-15
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined, thread]
+    steps:
+      - uses: actions/checkout@v7
+
+      # macOS images ship GNU Make 3.81, which the Makefile rejects.
+      - name: Install build tools
+        run: |
+          brew install ninja make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Read vcpkg baseline
+        id: vcpkg
+        run: echo "baseline=$(jq -r '."builtin-baseline"' engine/vcpkg.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Bootstrap vcpkg
+        run: |
+          git init "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$VCPKG_ROOT" fetch --depth 1 origin "${{ steps.vcpkg.outputs.baseline }}"
+          git -C "$VCPKG_ROOT" checkout FETCH_HEAD
+          "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+
+      - run: make test-engine
+        env:
+          SANITIZER: ${{ matrix.sanitizer }}

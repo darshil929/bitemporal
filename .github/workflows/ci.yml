@@ -1,0 +1,176 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    outputs:
+      engine: ${{ steps.filter.outputs.engine }}
+      python: ${{ steps.filter.outputs.python }}
+      dbt: ${{ steps.filter.outputs.dbt }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - '.github/workflows/**'
+              - 'Makefile'
+            engine:
+              - *shared
+              - 'engine/**'
+            python:
+              - *shared
+              - 'api/**'
+              - 'pipelines/**'
+              - 'scripts/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            dbt:
+              - *shared
+              - 'pipelines/dbt/**'
+            web:
+              - *shared
+              - 'web/**'
+
+  lint:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv sync
+      - run: npm --prefix web ci
+      - run: make lint
+
+  engine-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.engine == 'true'
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      # macOS images ship GNU Make 3.81, which the Makefile rejects.
+      - name: Install build tools
+        run: |
+          brew install ninja make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Read vcpkg baseline
+        id: vcpkg
+        run: echo "baseline=$(jq -r '."builtin-baseline"' engine/vcpkg.json)" >> "$GITHUB_OUTPUT"
+
+      # A shallow clone cannot resolve a builtin-baseline that is not its HEAD, so fetch
+      # exactly the pinned commit rather than the tip of the default branch.
+      - name: Cache vcpkg
+        id: vcpkg-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.VCPKG_ROOT }}
+            build/engine/vcpkg_installed
+          key: vcpkg-${{ runner.os }}-${{ steps.vcpkg.outputs.baseline }}-${{ hashFiles('engine/vcpkg.json') }}
+
+      - name: Bootstrap vcpkg
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: |
+          git init "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$VCPKG_ROOT" fetch --depth 1 origin "${{ steps.vcpkg.outputs.baseline }}"
+          git -C "$VCPKG_ROOT" checkout FETCH_HEAD
+          "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: engine-${{ runner.os }}
+
+      - run: make test-engine
+
+  python-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync
+      - run: make test-python
+
+  dbt-check:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dbt == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync
+      - run: make test-dbt
+
+  web-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci
+      - run: make test-web
+
+  ci-ok:
+    if: always()
+    needs: [detect-changes, lint, engine-test, python-test, dbt-check, web-test]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      # A skipped job is a job whose paths were untouched, which is a pass. Only failure,
+      # cancellation and a job that never ran because of an upstream failure are fatal.
+      - name: Check dependency results
+        run: |
+          echo "results: ${{ join(needs.*.result, ', ') }}"
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "a required job failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "a required job was cancelled"
+            exit 1
+          fi
