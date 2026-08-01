@@ -23,10 +23,10 @@ CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 
 setup:
 ifeq ($(UNAME_S),Darwin)
-	brew install cmake ninja ccache make clang-format
+	brew install cmake ninja ccache make
 else
 	sudo apt-get update
-	sudo apt-get install -y build-essential cmake ninja-build ccache clang-format
+	sudo apt-get install -y build-essential cmake ninja-build ccache
 endif
 	@test -d $(VCPKG_ROOT) || git clone https://github.com/microsoft/vcpkg.git $(VCPKG_ROOT)
 	$(VCPKG_ROOT)/bootstrap-vcpkg.sh -disableMetrics
@@ -47,7 +47,7 @@ lint:
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run mypy $(PYTHON_SRC)
-	clang-format --dry-run --Werror $(CPP_SOURCES)
+	uv run clang-format --dry-run --Werror $(CPP_SOURCES)
 	npm --prefix web run lint
 	@if find pipelines/dbt/models -name '*.sql' -print -quit 2>/dev/null | grep -q .; then \
 		uv run sqlfluff lint pipelines/dbt/models; \

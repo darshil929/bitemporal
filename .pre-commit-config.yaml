@@ -39,7 +39,7 @@ repos:
       - id: clang-format
         name: clang-format
         language: system
-        entry: clang-format -i
+        entry: uv run clang-format -i
         types_or: [c++, c]
 
       - id: prettier
