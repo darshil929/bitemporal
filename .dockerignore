@@ -1,5 +1,6 @@
 **/.git
 **/.venv
+**/tests
 **/node_modules
 **/.next
 **/build

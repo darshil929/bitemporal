@@ -2,6 +2,9 @@
 dialect = postgres
 templater = jinja
 max_line_length = 100
+# RF04 guards against identifiers that are keywords in some dialect. Postgres accepts both
+# name and open unquoted, and open, high, low and close are the standard names for OHLCV.
+exclude_rules = RF04
 
 [sqlfluff:indentation]
 indented_joins = false
