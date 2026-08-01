@@ -75,7 +75,12 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - run: brew install ninja
+
+      # macOS images ship GNU Make 3.81, which the Makefile rejects.
+      - name: Install build tools
+        run: |
+          brew install ninja make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: Read vcpkg baseline
         id: vcpkg
