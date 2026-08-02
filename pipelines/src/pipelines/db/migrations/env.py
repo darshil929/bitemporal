@@ -39,9 +39,11 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     settings = DatabaseSettings()
     schema = settings.schema_name
+    # Unqualified objects are created in the leading schema. public trails it so that functions
+    # and operators belonging to extensions resolve without qualification.
     engine = create_engine(
         _sync_url(settings.database_url),
-        connect_args={"options": f"-csearch_path={schema}"},
+        connect_args={"options": f"-csearch_path={schema},public"},
     )
 
     try:
