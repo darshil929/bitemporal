@@ -1,17 +1,23 @@
-"""Table definitions for instrument identity."""
+"""Table definitions for instrument identity and the market facts keyed on it."""
 
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Date,
+    DateTime,
     ForeignKey,
     Identity,
+    Index,
+    Integer,
     MetaData,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -30,6 +36,11 @@ VENUE_PATTERN = "^[A-Z][A-Z0-9]{1,11}$"
 
 INSTRUMENT_TYPES = ("equity", "preference_share", "debt", "etf", "warrant", "right")
 CLOSURE_REASONS = ("delisted", "renamed", "merged")
+ACTION_TYPES = ("split", "bonus", "consolidation", "rights", "dividend")
+INGESTION_OUTCOMES = ("succeeded", "not_published", "failed")
+
+PRICE = Numeric(18, 4)
+RATIO = Numeric(18, 6)
 
 
 class Base(DeclarativeBase):
@@ -137,5 +148,134 @@ class InstrumentPrimaryVenue(Base):
         CheckConstraint(
             "effective_to is null or effective_to > effective_from",
             name="ends_after_it_starts",
+        ),
+    )
+
+
+class PriceDaily(Base):
+    """One bar per instrument, venue, trading day and the date that bar became knowable.
+
+    A venue republishing a corrected file inserts a further row rather than replacing the first,
+    so a query can reconstruct what the close was believed to be on any past date. Reads go
+    through the staging model that resolves the latest version at or before the query date.
+
+    Raw columns hold the figures exactly as published. The adjusted columns are rebuilt from the
+    whole corporate action history and stay null until that history is loaded.
+    """
+
+    __tablename__ = "price_daily"
+
+    isin: Mapped[str] = mapped_column(
+        String(12), ForeignKey("instrument_master.isin"), primary_key=True
+    )
+    venue: Mapped[str] = mapped_column(String(12), primary_key=True)
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+
+    open: Mapped[Decimal] = mapped_column(PRICE)
+    high: Mapped[Decimal] = mapped_column(PRICE)
+    low: Mapped[Decimal] = mapped_column(PRICE)
+    close: Mapped[Decimal] = mapped_column(PRICE)
+    previous_close: Mapped[Decimal | None] = mapped_column(PRICE)
+    volume: Mapped[int] = mapped_column(BigInteger)
+    turnover: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    trade_count: Mapped[int | None] = mapped_column(BigInteger)
+
+    # Published in a separate file per venue, so a bar can be inserted before it is known.
+    delivery_quantity: Mapped[int | None] = mapped_column(BigInteger)
+
+    adjusted_open: Mapped[Decimal | None] = mapped_column(PRICE)
+    adjusted_high: Mapped[Decimal | None] = mapped_column(PRICE)
+    adjusted_low: Mapped[Decimal | None] = mapped_column(PRICE)
+    adjusted_close: Mapped[Decimal | None] = mapped_column(PRICE)
+
+    __table_args__ = (
+        CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
+        CheckConstraint(
+            "high >= low and high >= open and high >= close and low <= open and low <= close",
+            name="bar_is_internally_consistent",
+        ),
+        CheckConstraint(
+            "open >= 0 and high >= 0 and low >= 0 and close >= 0 and volume >= 0",
+            name="quantities_are_not_negative",
+        ),
+        CheckConstraint(
+            "(adjusted_open is null) = (adjusted_close is null)"
+            " and (adjusted_high is null) = (adjusted_close is null)"
+            " and (adjusted_low is null) = (adjusted_close is null)",
+            name="adjusted_prices_arrive_together",
+        ),
+        CheckConstraint(
+            "delivery_quantity is null or delivery_quantity <= volume",
+            name="delivery_is_part_of_volume",
+        ),
+        # The hypertable is created without default indexes so this one is declared here and
+        # stays visible to autogenerate.
+        Index("ix_price_daily_trade_date", "trade_date"),
+    )
+
+
+class CorporateAction(Base):
+    """Actions that change the share count or pay out value, as reported on a given date.
+
+    `ratio_from` and `ratio_to` are the share count before and after: a one-for-five split is
+    1 to 5, a one-for-two bonus is 2 to 3. Both collapse to the same adjustment factor, so the
+    adjustment code never branches on action type.
+
+    `source_id` is part of the key because two venues reporting the same action differently is
+    the disagreement the cross-check exists to find, and collapsing them would hide it.
+    """
+
+    __tablename__ = "corporate_action"
+
+    isin: Mapped[str] = mapped_column(
+        String(12), ForeignKey("instrument_master.isin"), primary_key=True
+    )
+    action_type: Mapped[str] = mapped_column(Text, primary_key=True)
+    ex_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+
+    ratio_from: Mapped[Decimal | None] = mapped_column(RATIO)
+    ratio_to: Mapped[Decimal | None] = mapped_column(RATIO)
+    dividend_amount: Mapped[Decimal | None] = mapped_column(PRICE)
+
+    __table_args__ = (
+        CheckConstraint(_in_list("action_type", ACTION_TYPES), name="action_type"),
+        CheckConstraint(
+            "(action_type = 'dividend') = (dividend_amount is not null)",
+            name="a_dividend_pays_an_amount",
+        ),
+        CheckConstraint(
+            "(action_type <> 'dividend') = (ratio_from is not null)",
+            name="everything_else_changes_a_ratio",
+        ),
+        CheckConstraint("(ratio_from is null) = (ratio_to is null)", name="ratio_has_both_sides"),
+        CheckConstraint(
+            "(ratio_from is null or ratio_from > 0) and (ratio_to is null or ratio_to > 0)",
+            name="ratio_sides_are_positive",
+        ),
+    )
+
+
+class IngestionLog(Base):
+    """One row per attempt to fetch a slice of a source."""
+
+    __tablename__ = "ingestion_log"
+
+    ingestion_id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text)
+    partition_key: Mapped[str] = mapped_column(Text)
+    schema_version: Mapped[str] = mapped_column(Text)
+    outcome: Mapped[str] = mapped_column(Text)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    row_count: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(_in_list("outcome", INGESTION_OUTCOMES), name="outcome"),
+        CheckConstraint(
+            "(outcome = 'succeeded') = (row_count is not null)",
+            name="a_success_counts_its_rows",
         ),
     )
