@@ -10,8 +10,12 @@ POSTGRES_IMAGE = "timescale/timescaledb-ha:pg17"
 
 
 @pytest.fixture(scope="session")
-def seeded_postgres() -> Iterator[str]:
+def postgres_dsn() -> Iterator[str]:
     with PostgresContainer(POSTGRES_IMAGE, driver=None) as container:
-        dsn = container.get_connection_url()
-        load_seed(dsn)
-        yield dsn
+        yield container.get_connection_url()
+
+
+@pytest.fixture(scope="session")
+def seeded_postgres(postgres_dsn: str) -> str:
+    load_seed(postgres_dsn)
+    return postgres_dsn
