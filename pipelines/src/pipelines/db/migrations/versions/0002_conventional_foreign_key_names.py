@@ -13,7 +13,7 @@ down_revision: str | None = "0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# (table, name the baseline gave it, name the naming convention produces)
+# (table, current name, name the metadata naming convention produces)
 RENAMES = (
     ("listing", "fk_listing_isin_instrument_master", "fk_listing_isin"),
     (

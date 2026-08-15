@@ -14,5 +14,6 @@
 **/.dagster_home
 docs
 data
+.data
 .env
 .env.*

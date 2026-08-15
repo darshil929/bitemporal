@@ -33,6 +33,7 @@ out/
 *.tsbuildinfo
 
 data/
+.data/
 *.db
 *.duckdb
 *.parquet
