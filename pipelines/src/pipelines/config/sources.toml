@@ -1,0 +1,40 @@
+# Registered external sources. Loaded into source_registry and read by the adapters.
+
+[[source]]
+source_id = "bse_bhavcopy_equity"
+tier = 1
+sebi_curation_ref = "Equity Cash Market, row 1"
+base_url = "https://www.bseindia.com/download/BhavCopy/Equity/"
+requests_per_second = 0.5
+cache_policy = "permanent"
+owner_notes = "Serves a bare CSV to a plain client. No cookie or browser header required."
+
+[[source.schema_version]]
+version = "bse_legacy"
+effective_from = 2007-01-01
+effective_to = 2024-07-05
+
+[[source.schema_version]]
+version = "udiff"
+effective_from = 2024-07-08
+
+[[source]]
+source_id = "nse_bhavcopy_equity"
+tier = 1
+sebi_curation_ref = "Equity Cash Market, row 1"
+base_url = "https://nsearchives.nseindia.com/content/"
+requests_per_second = 0.5
+cache_policy = "permanent"
+owner_notes = """
+The archive host rejects a plain client. A browser User-Agent plus a cookie obtained from
+nseindia.com is required, and the published ceiling is 3 requests per second.
+"""
+
+[[source.schema_version]]
+version = "nse_legacy"
+effective_from = 1994-01-01
+effective_to = 2024-07-05
+
+[[source.schema_version]]
+version = "udiff"
+effective_from = 2024-07-08

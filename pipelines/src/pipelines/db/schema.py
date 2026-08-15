@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     MetaData,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -252,6 +253,53 @@ class CorporateAction(Base):
         CheckConstraint(
             "(ratio_from is null or ratio_from > 0) and (ratio_to is null or ratio_to > 0)",
             name="ratio_sides_are_positive",
+        ),
+    )
+
+
+class SourceRegistry(Base):
+    """Every external source the ingestion layer reads, with the trust tier it carries.
+
+    Tiers 1 and 2 are exchange-published files and official endpoints. Tier 3 wraps them without
+    permission and tier 4 is a third party; neither may be the sole provider of a field in a mart.
+    """
+
+    __tablename__ = "source_registry"
+
+    source_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    tier: Mapped[int] = mapped_column(SmallInteger)
+    base_url: Mapped[str] = mapped_column(Text)
+    requests_per_second: Mapped[Decimal] = mapped_column(Numeric(6, 3))
+    cache_policy: Mapped[str] = mapped_column(Text)
+    sebi_curation_ref: Mapped[str | None] = mapped_column(Text)
+    owner_notes: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("tier between 1 and 4", name="tier_range"),
+        CheckConstraint("requests_per_second > 0", name="rate_is_positive"),
+    )
+
+
+class SourceSchemaVersion(Base):
+    """The parser version covering a span of partition dates for one source.
+
+    An open `effective_to` marks the version in force. A partition falling in no span is an error
+    rather than a default, so a format change that nobody registered stops ingestion.
+    """
+
+    __tablename__ = "source_schema_version"
+
+    source_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("source_registry.source_id"), primary_key=True
+    )
+    effective_from: Mapped[date] = mapped_column(Date, primary_key=True)
+    version: Mapped[str] = mapped_column(Text)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+
+    __table_args__ = (
+        CheckConstraint(
+            "effective_to is null or effective_to >= effective_from",
+            name="ends_after_it_starts",
         ),
     )
 
