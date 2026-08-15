@@ -1,36 +1,20 @@
 """The migrations build the identity and fact tables and enforce their invariants."""
 
-from collections.abc import Iterator
-from pathlib import Path
-
 import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
 
-PIPELINES_ROOT = Path(__file__).resolve().parents[2]
-
-# The seed dataset occupies the fixture schema in the same container.
-MIGRATION_SCHEMA = "dev"
+from conftest import MIGRATION_SCHEMA
 
 IDENTITY_TABLES = frozenset(
     {"instrument_master", "listing", "listing_suspension", "instrument_primary_venue"}
 )
 FACT_TABLES = frozenset({"price_daily", "corporate_action", "ingestion_log"})
-MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES
+REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
+MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES
 
 BAR_COLUMNS = "isin, venue, trade_date, as_of_date, open, high, low, close, volume"
-
-
-@pytest.fixture
-def migrated(postgres_dsn: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[Config]:
-    monkeypatch.setenv("DATABASE_URL", postgres_dsn)
-    monkeypatch.setenv("DATA_ENV", MIGRATION_SCHEMA)
-
-    config = Config(PIPELINES_ROOT / "alembic.ini")
-    command.upgrade(config, "head")
-    yield config
-    command.downgrade(config, "base")
 
 
 def _connect(dsn: str) -> psycopg.Connection:
