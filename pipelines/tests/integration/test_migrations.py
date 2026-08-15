@@ -28,8 +28,6 @@ def migrated(postgres_dsn: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[Con
     monkeypatch.setenv("DATA_ENV", MIGRATION_SCHEMA)
 
     config = Config(PIPELINES_ROOT / "alembic.ini")
-    config.set_main_option("script_location", str(PIPELINES_ROOT / "src/pipelines/db/migrations"))
-
     command.upgrade(config, "head")
     yield config
     command.downgrade(config, "base")

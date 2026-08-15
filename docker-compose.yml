@@ -7,10 +7,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-bitemporal}
       POSTGRES_USER: ${POSTGRES_USER:-bitemporal}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace-me}
+    # A Postgres installed directly on the host occupies 5432.
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - postgres-data:/home/postgres/pgdata/data
+      - ${POSTGRES_DATA_DIR:-./.data/postgres}:/home/postgres/pgdata/data
       - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bitemporal} -d ${POSTGRES_DB:-bitemporal}"]
@@ -24,6 +25,7 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bitemporal}:${POSTGRES_PASSWORD:-replace-me}@postgres:5432/${POSTGRES_DB:-bitemporal}
+      DATA_ENV: ${DATA_ENV:-dev}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
       - "${API_PORT:-8000}:8000"
@@ -42,6 +44,7 @@ services:
       dockerfile: infra/docker/dagster.Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bitemporal}:${POSTGRES_PASSWORD:-replace-me}@postgres:5432/${POSTGRES_DB:-bitemporal}
+      DATA_ENV: ${DATA_ENV:-dev}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
       - "3001:3000"
@@ -61,8 +64,7 @@ services:
       api:
         condition: service_healthy
 
-  # Containers on macOS cannot reach the GPU, so this profile is opt-in and services
-  # default to OLLAMA_BASE_URL on the host instead.
+  # Containers on macOS cannot reach the GPU. Services default to OLLAMA_BASE_URL on the host.
   ollama:
     image: ollama/ollama:latest
     profiles: [ollama]
@@ -72,5 +74,4 @@ services:
       - ollama-models:/root/.ollama
 
 volumes:
-  postgres-data:
   ollama-models:

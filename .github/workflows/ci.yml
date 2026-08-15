@@ -86,8 +86,7 @@ jobs:
         id: vcpkg
         run: echo "baseline=$(jq -r '."builtin-baseline"' engine/vcpkg.json)" >> "$GITHUB_OUTPUT"
 
-      # A shallow clone cannot resolve a builtin-baseline that is not its HEAD, so fetch
-      # exactly the pinned commit rather than the tip of the default branch.
+      # A shallow clone resolves a builtin-baseline only when it is the clone's HEAD.
       - name: Cache vcpkg
         id: vcpkg-cache
         uses: actions/cache@v6

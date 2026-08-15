@@ -39,8 +39,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     settings = DatabaseSettings()
     schema = settings.schema_name
-    # Unqualified objects are created in the leading schema. public trails it so that functions
-    # and operators belonging to extensions resolve without qualification.
+    # Unqualified objects are created in the leading schema. Extension functions live in public.
     engine = create_engine(
         _sync_url(settings.database_url),
         connect_args={"options": f"-csearch_path={schema},public"},
@@ -51,8 +50,8 @@ def run_migrations_online() -> None:
             connection.execute(CreateSchema(schema, if_not_exists=True))
             connection.commit()
 
-            # Placement comes from search_path. Naming the schema explicitly would stop
-            # autogenerate recognising the version table as its own.
+            # search_path determines placement. version_table_schema is left unset, otherwise
+            # autogenerate treats the version table as unmanaged.
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,

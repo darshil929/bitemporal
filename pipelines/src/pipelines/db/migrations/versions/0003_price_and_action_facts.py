@@ -16,8 +16,7 @@ depends_on: str | Sequence[str] | None = None
 
 APPEND_ONLY_TABLES = ("price_daily", "corporate_action")
 
-# The table name is passed in rather than read from tg_table_name, which on a hypertable
-# reports the chunk and tells an operator nothing.
+# The table name arrives as a trigger argument. tg_table_name reports the chunk on a hypertable.
 REJECT_UPDATE_FUNCTION = """
 create function reject_fact_update() returns trigger
 language plpgsql as $$
@@ -147,8 +146,8 @@ def upgrade() -> None:
         ),
     )
 
-    # A year of daily bars per chunk. Default indexes are suppressed so the one index this table
-    # needs is declared alongside the model and stays visible to autogenerate.
+    # One chunk per year. Default indexes are suppressed; the trade_date index is declared on
+    # the model instead, where autogenerate can see it.
     op.execute(
         "select create_hypertable("
         "'price_daily',"

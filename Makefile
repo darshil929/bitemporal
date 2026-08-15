@@ -20,7 +20,7 @@ CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 SQL_SOURCES = $(shell find infra pipelines -name '*.sql' 2>/dev/null)
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine test-python test-dbt test-web ci up down
+.PHONY: setup lint test-engine test-python test-dbt test-web ci up down migrate
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -78,3 +78,6 @@ up:
 
 down:
 	docker compose down
+
+migrate:
+	uv run alembic -c pipelines/alembic.ini upgrade head

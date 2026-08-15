@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-# Named constraints so a downgrade can drop what an upgrade created.
+# Deterministic constraint names, required for a downgrade to drop them by name.
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",
@@ -93,8 +93,7 @@ class Listing(Base):
             "delisting_date is null or delisting_date >= listing_date",
             name="closes_after_it_opens",
         ),
-        # A closed row must say why it closed, because a rename and a delisting are the same
-        # shape otherwise and only one of them means the instrument stopped trading.
+        # A rename and a delisting produce the same shape without a stated reason.
         CheckConstraint(
             "(delisting_date is null) = (closure_reason is null)",
             name="closure_reason_accompanies_delisting_date",
@@ -129,8 +128,8 @@ class ListingSuspension(Base):
 class InstrumentPrimaryVenue(Base):
     """The venue an instrument's series is computed from, over a span of dates.
 
-    Recomputed on a schedule from trailing turnover. Each recomputation inserts rather than
-    replaces, so a past decision stays readable.
+    Recomputed on a schedule from trailing turnover. Each recomputation inserts a row rather than
+    replacing one, leaving every earlier assignment readable.
     """
 
     __tablename__ = "instrument_primary_venue"
@@ -155,9 +154,9 @@ class InstrumentPrimaryVenue(Base):
 class PriceDaily(Base):
     """One bar per instrument, venue, trading day and the date that bar became knowable.
 
-    A venue republishing a corrected file inserts a further row rather than replacing the first,
-    so a query can reconstruct what the close was believed to be on any past date. Reads go
-    through the staging model that resolves the latest version at or before the query date.
+    A venue republishing a corrected file inserts a further row rather than replacing the first.
+    The close believed to hold on any past date is therefore still recoverable. Reads go through
+    the staging model that resolves the latest version at or before the query date.
 
     Raw columns hold the figures exactly as published. The adjusted columns are rebuilt from the
     whole corporate action history and stay null until that history is loaded.
@@ -181,7 +180,7 @@ class PriceDaily(Base):
     turnover: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
     trade_count: Mapped[int | None] = mapped_column(BigInteger)
 
-    # Published in a separate file per venue, so a bar can be inserted before it is known.
+    # Published in a separate file per venue, later than the bar itself.
     delivery_quantity: Mapped[int | None] = mapped_column(BigInteger)
 
     adjusted_open: Mapped[Decimal | None] = mapped_column(PRICE)
@@ -209,8 +208,7 @@ class PriceDaily(Base):
             "delivery_quantity is null or delivery_quantity <= volume",
             name="delivery_is_part_of_volume",
         ),
-        # The hypertable is created without default indexes so this one is declared here and
-        # stays visible to autogenerate.
+        # The hypertable is created without default indexes, so this one is declared here.
         Index("ix_price_daily_trade_date", "trade_date"),
     )
 
@@ -219,11 +217,11 @@ class CorporateAction(Base):
     """Actions that change the share count or pay out value, as reported on a given date.
 
     `ratio_from` and `ratio_to` are the share count before and after: a one-for-five split is
-    1 to 5, a one-for-two bonus is 2 to 3. Both collapse to the same adjustment factor, so the
-    adjustment code never branches on action type.
+    1 to 5, a one-for-two bonus is 2 to 3. Both collapse to the same adjustment factor, so
+    adjustment never branches on action type.
 
-    `source_id` is part of the key because two venues reporting the same action differently is
-    the disagreement the cross-check exists to find, and collapsing them would hide it.
+    `source_id` forms part of the key, so two venues reporting the same action with different
+    terms are stored as separate rows for the cross-check to compare.
     """
 
     __tablename__ = "corporate_action"
