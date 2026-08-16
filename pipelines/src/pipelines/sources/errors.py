@@ -19,3 +19,7 @@ class SourceUnavailable(SourceError):
 
 class UnknownSchemaVersion(SourceError):
     """No registered schema version covers the requested date."""
+
+
+class SchemaDrift(SourceError):
+    """The response no longer carries the columns the parser reads."""
