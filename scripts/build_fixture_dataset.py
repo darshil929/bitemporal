@@ -27,10 +27,12 @@ import httpx
 
 from pipelines.config.settings import SourceSettings
 from pipelines.identity import derive_listings, venue_key
+from pipelines.models.corporate_action import CorporateActionRecord
 from pipelines.models.identity import ListingRecord
 from pipelines.models.market import PriceBar
 from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
+from pipelines.sources.bse.corporate_actions import BseCorporateActions
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import NotPublished, SourceError
@@ -62,6 +64,13 @@ PRICE_COLUMNS = [
 ACTION_RATIO = Decimal("0.7")
 
 UDIFF = "udiff"
+
+ACTIONS_BASE_URL = "https://api.bseindia.com/BseIndiaAPI/api"
+ACTIONS_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Origin": "https://www.bseindia.com",
+    "Referer": "https://www.bseindia.com/",
+}
 
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -356,9 +365,84 @@ def emit(
     written = _write_prices(seed_dir, collected, dominant)
     kept = [bar for key in dominant for bar in collected[key]]
 
+    listings = derive_listings(kept, last_trading_day)
+    actions = collect_actions(listings, cache, end)
+
     _write_instruments(seed_dir, chosen, names)
-    _write_listings(seed_dir, derive_listings(kept, last_trading_day))
-    return {"instruments": len(chosen), "price_rows": written, "lines": len(dominant)}
+    _write_listings(seed_dir, listings)
+    _write_actions(seed_dir, actions)
+    return {
+        "instruments": len(chosen),
+        "price_rows": written,
+        "lines": len(dominant),
+        "actions": len(actions),
+    }
+
+
+def collect_actions(
+    listings: Sequence[ListingRecord], cache: DiskCache, reported_on: date
+) -> tuple[CorporateActionRecord, ...]:
+    """Read the action history of every BSE scrip in the dataset."""
+    settings = SourceSettings()
+    client = httpx.Client(
+        headers={"User-Agent": settings.source_user_agent, **ACTIONS_HEADERS},
+        follow_redirects=True,
+    )
+    adapter = BseCorporateActions(
+        ThrottledClient("bse_corporate_actions", client, Throttle(2.0)), cache, ACTIONS_BASE_URL
+    )
+
+    isin_for_scrip = {
+        listing.scrip_code: listing.isin
+        for listing in listings
+        if listing.exchange == "BSE" and listing.scrip_code
+    }
+
+    actions: list[CorporateActionRecord] = []
+    for scrip_code in sorted(isin_for_scrip):
+        try:
+            payload = adapter.fetch(scrip_code)
+        except SourceError:
+            logger.warning("actions unavailable", extra={"scrip_code": scrip_code})
+            continue
+        actions.extend(adapter.normalize(adapter.parse(payload), isin_for_scrip, reported_on))
+
+    return tuple(actions)
+
+
+def _write_actions(seed_dir: Path, actions: Sequence[CorporateActionRecord]) -> None:
+    ordered = sorted(
+        actions, key=lambda item: (item.isin, item.ex_date, item.action_type, item.qualifier)
+    )
+    with (seed_dir / "corporate_action.csv").open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(
+            [
+                "isin",
+                "action_type",
+                "ex_date",
+                "source_id",
+                "as_of_date",
+                "qualifier",
+                "ratio_from",
+                "ratio_to",
+                "dividend_amount",
+            ]
+        )
+        for item in ordered:
+            writer.writerow(
+                [
+                    item.isin,
+                    item.action_type,
+                    item.ex_date.isoformat(),
+                    item.source_id,
+                    item.as_of_date.isoformat(),
+                    item.qualifier,
+                    "" if item.ratio_from is None else str(item.ratio_from),
+                    "" if item.ratio_to is None else str(item.ratio_to),
+                    "" if item.dividend_amount is None else str(item.dividend_amount),
+                ]
+            )
 
 
 def _dominant_lines(traded: dict[tuple[str, str, str], Decimal]) -> set[tuple[str, str, str]]:

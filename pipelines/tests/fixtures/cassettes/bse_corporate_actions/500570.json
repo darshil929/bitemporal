@@ -1,0 +1,58 @@
+[
+ {
+  "scrip_code": 500570,
+  "short_name": "TMPV",
+  "Ex_date": "11 Jun 2024",
+  "Purpose": "Special Dividend - Rs. - 3.0000",
+  "RD_Date": "11 Jun 2024",
+  "BCRD_FROM": "",
+  "BCRD_TO": "",
+  "ND_START_DATE": "11 Jun 2024",
+  "ND_END_DATE": "11 Jun 2024",
+  "payment_date": "",
+  "exdate": "20240611",
+  "long_name": "Tata Motors Passenger Vehicles Ltd"
+ },
+ {
+  "scrip_code": 500570,
+  "short_name": "TMPV",
+  "Ex_date": "11 Jun 2024",
+  "Purpose": "Final Dividend - Rs. - 3.0000",
+  "RD_Date": "11 Jun 2024",
+  "BCRD_FROM": "",
+  "BCRD_TO": "",
+  "ND_START_DATE": "11 Jun 2024",
+  "ND_END_DATE": "11 Jun 2024",
+  "payment_date": "",
+  "exdate": "20240611",
+  "long_name": "Tata Motors Passenger Vehicles Ltd"
+ },
+ {
+  "scrip_code": 500570,
+  "short_name": "TMPV",
+  "Ex_date": "04 Jun 2025",
+  "Purpose": "Final Dividend - Rs. - 6.0000",
+  "RD_Date": "04 Jun 2025",
+  "BCRD_FROM": "",
+  "BCRD_TO": "",
+  "ND_START_DATE": "04 Jun 2025",
+  "ND_END_DATE": "04 Jun 2025",
+  "payment_date": "",
+  "exdate": "20250604",
+  "long_name": "Tata Motors Passenger Vehicles Ltd"
+ },
+ {
+  "scrip_code": 500570,
+  "short_name": "TMPV",
+  "Ex_date": "14 Oct 2025",
+  "Purpose": "Spin Off ",
+  "RD_Date": "14 Oct 2025",
+  "BCRD_FROM": "",
+  "BCRD_TO": "",
+  "ND_START_DATE": "14 Oct 2025",
+  "ND_END_DATE": "14 Oct 2025",
+  "payment_date": "",
+  "exdate": "20251014",
+  "long_name": "Tata Motors Passenger Vehicles Ltd"
+ }
+]

@@ -159,8 +159,9 @@ class PriceDaily(Base):
     The close believed to hold on any past date is therefore still recoverable. Reads go through
     the staging model that resolves the latest version at or before the query date.
 
-    Raw columns hold the figures exactly as published. The adjusted columns are rebuilt from the
-    whole corporate action history and stay null until that history is loaded.
+    Columns hold the figures exactly as published. An adjusted series is derived rather than
+    stored, because a corporate action years later changes every earlier adjusted price and this
+    table admits no update.
     """
 
     __tablename__ = "price_daily"
@@ -184,11 +185,6 @@ class PriceDaily(Base):
     # Published in a separate file per venue, later than the bar itself.
     delivery_quantity: Mapped[int | None] = mapped_column(BigInteger)
 
-    adjusted_open: Mapped[Decimal | None] = mapped_column(PRICE)
-    adjusted_high: Mapped[Decimal | None] = mapped_column(PRICE)
-    adjusted_low: Mapped[Decimal | None] = mapped_column(PRICE)
-    adjusted_close: Mapped[Decimal | None] = mapped_column(PRICE)
-
     __table_args__ = (
         CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
         # The close is not constrained to the traded range: BSE computes it from the last half
@@ -200,12 +196,6 @@ class PriceDaily(Base):
         CheckConstraint(
             "open >= 0 and high >= 0 and low >= 0 and close >= 0 and volume >= 0",
             name="quantities_are_not_negative",
-        ),
-        CheckConstraint(
-            "(adjusted_open is null) = (adjusted_close is null)"
-            " and (adjusted_high is null) = (adjusted_close is null)"
-            " and (adjusted_low is null) = (adjusted_close is null)",
-            name="adjusted_prices_arrive_together",
         ),
         CheckConstraint(
             "delivery_quantity is null or delivery_quantity <= volume",
@@ -236,6 +226,8 @@ class CorporateAction(Base):
     ex_date: Mapped[date] = mapped_column(Date, primary_key=True)
     source_id: Mapped[str] = mapped_column(Text, primary_key=True)
     as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # An ordinary and a special dividend share an ex-date, so the kind belongs in the key.
+    qualifier: Mapped[str] = mapped_column(Text, primary_key=True, server_default="ordinary")
 
     ratio_from: Mapped[Decimal | None] = mapped_column(RATIO)
     ratio_to: Mapped[Decimal | None] = mapped_column(RATIO)
