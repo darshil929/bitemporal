@@ -16,7 +16,7 @@ import json
 import logging
 import sys
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -26,6 +26,8 @@ from typing import TypedDict
 import httpx
 
 from pipelines.config.settings import SourceSettings
+from pipelines.identity import derive_listings, venue_key
+from pipelines.models.identity import ListingRecord
 from pipelines.models.market import PriceBar
 from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
@@ -313,16 +315,6 @@ def choose(survey_data: dict[str, Entry], range_end: date) -> dict[str, str]:
     return chosen
 
 
-@dataclass
-class Spell:
-    """A stretch during which one instrument traded under one symbol at one venue."""
-
-    symbol: str
-    scrip_code: str | None
-    first_day: date
-    last_day: date
-
-
 def emit(
     chosen: dict[str, str], start: date, end: date, cache: DiskCache, seed_dir: Path
 ) -> dict[str, int]:
@@ -337,7 +329,7 @@ def emit(
 
     names: dict[str, str] = {}
     traded: dict[tuple[str, str, str], Decimal] = defaultdict(Decimal)
-    collected: dict[tuple[str, str, str], list[tuple[PriceBar, bool]]] = defaultdict(list)
+    collected: dict[tuple[str, str, str], list[PriceBar]] = defaultdict(list)
     last_trading_day: dict[str, date] = {}
 
     for venue, (adapter, definition) in adapters.items():
@@ -356,18 +348,16 @@ def emit(
                 bar = row.to_bar(venue)
                 if version == UDIFF or bar.isin not in names:
                     names[bar.isin] = row.security_name
-                key = (bar.isin, venue, _venue_key(bar))
+                key = (bar.isin, venue, venue_key(bar))
                 traded[key] += bar.turnover or Decimal(0)
-                # Before the cutover BSE published no ticker, so a spell built from those rows
-                # would record a change in file format as a rename.
-                collected[key].append((bar, version == UDIFF or venue == "NSE"))
+                collected[key].append(bar)
 
     dominant = _dominant_lines(traded)
     written = _write_prices(seed_dir, collected, dominant)
-    spells = _spells(collected, dominant)
+    kept = [bar for key in dominant for bar in collected[key]]
 
     _write_instruments(seed_dir, chosen, names)
-    _write_listings(seed_dir, spells, last_trading_day)
+    _write_listings(seed_dir, derive_listings(kept, last_trading_day))
     return {"instruments": len(chosen), "price_rows": written, "lines": len(dominant)}
 
 
@@ -382,7 +372,7 @@ def _dominant_lines(traded: dict[tuple[str, str, str], Decimal]) -> set[tuple[st
 
 def _write_prices(
     seed_dir: Path,
-    collected: dict[tuple[str, str, str], list[tuple[PriceBar, bool]]],
+    collected: dict[tuple[str, str, str], list[PriceBar]],
     dominant: set[tuple[str, str, str]],
 ) -> int:
     written = 0
@@ -390,34 +380,10 @@ def _write_prices(
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(PRICE_COLUMNS)
         for key in sorted(dominant):
-            for bar, _ in sorted(collected[key], key=lambda item: item[0].trade_date):
+            for bar in sorted(collected[key], key=lambda item: item.trade_date):
                 writer.writerow(_price_row(bar))
                 written += 1
     return written
-
-
-def _spells(
-    collected: dict[tuple[str, str, str], list[tuple[PriceBar, bool]]],
-    dominant: set[tuple[str, str, str]],
-) -> dict[tuple[str, str, str], list[Spell]]:
-    spells: dict[tuple[str, str, str], list[Spell]] = defaultdict(list)
-    for key in sorted(dominant):
-        for bar, names_a_ticker in sorted(collected[key], key=lambda item: item[0].trade_date):
-            if names_a_ticker:
-                _extend(spells[key], bar)
-    return spells
-
-
-def _venue_key(bar: PriceBar) -> str:
-    """The identifier the venue itself keys on: a scrip code at BSE, a ticker at NSE."""
-    return bar.scrip_code or bar.local_symbol
-
-
-def _extend(history: list[Spell], bar: PriceBar) -> None:
-    if history and history[-1].symbol == bar.local_symbol:
-        history[-1].last_day = bar.trade_date
-        return
-    history.append(Spell(bar.local_symbol, bar.scrip_code, bar.trade_date, bar.trade_date))
 
 
 def _price_row(bar: PriceBar) -> list[str]:
@@ -445,11 +411,7 @@ def _write_instruments(seed_dir: Path, chosen: dict[str, str], names: dict[str, 
             writer.writerow([isin, names.get(isin, isin), "", "IN", "equity"])
 
 
-def _write_listings(
-    seed_dir: Path,
-    spells: dict[tuple[str, str, str], list[Spell]],
-    last_trading_day: dict[str, date],
-) -> None:
+def _write_listings(seed_dir: Path, listings: Sequence[ListingRecord]) -> None:
     with (seed_dir / "listing.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(
@@ -463,22 +425,18 @@ def _write_listings(
                 "closure_reason",
             ]
         )
-        for (isin, venue, _), history in sorted(spells.items()):
-            for index, spell in enumerate(history):
-                renamed = index < len(history) - 1
-                stopped = spell.last_day < last_trading_day[venue] - timedelta(days=90)
-                closed = renamed or stopped
-                writer.writerow(
-                    [
-                        isin,
-                        venue,
-                        spell.symbol,
-                        spell.scrip_code or "",
-                        spell.first_day.isoformat(),
-                        spell.last_day.isoformat() if closed else "",
-                        ("renamed" if renamed else "delisted") if closed else "",
-                    ]
-                )
+        for listing in listings:
+            writer.writerow(
+                [
+                    listing.isin,
+                    listing.exchange,
+                    listing.local_symbol,
+                    listing.scrip_code or "",
+                    listing.listing_date.isoformat(),
+                    listing.delisting_date.isoformat() if listing.delisting_date else "",
+                    listing.closure_reason or "",
+                ]
+            )
 
 
 def _serialise(tracks: dict[str, dict[str, Track]]) -> dict[str, Entry]:
