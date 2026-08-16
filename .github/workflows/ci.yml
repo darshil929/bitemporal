@@ -130,6 +130,27 @@ jobs:
     if: needs.detect-changes.outputs.dbt == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
+    # The models read a hypertable, so the service image is the one the stack runs.
+    services:
+      postgres:
+        image: timescale/timescaledb-ha:pg17
+        env:
+          POSTGRES_DB: bitemporal
+          POSTGRES_USER: bitemporal
+          POSTGRES_PASSWORD: bitemporal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bitemporal -d bitemporal"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://bitemporal:bitemporal@localhost:5432/bitemporal
+      DATA_ENV: fixture
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: bitemporal
+      POSTGRES_PASSWORD: bitemporal
+      POSTGRES_DB: bitemporal
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
@@ -137,6 +158,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync
+      - run: make seed
       - run: make test-dbt
 
   web-test:

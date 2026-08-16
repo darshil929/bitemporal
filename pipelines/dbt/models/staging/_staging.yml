@@ -1,0 +1,224 @@
+version: 2
+
+models:
+  - name: stg_price_daily
+    description: >
+      One bar per instrument, venue and trading day, holding the latest version known on the
+      as-of date. Set the `as_of_date` variable to read the prices as they stood then; it
+      defaults to reading every version.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: venue
+        description: Exchange the bar was published by.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [BSE, NSE]
+      - name: trade_date
+        description: The day the bar describes.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The day the bar became knowable, which is the day the venue published it.
+        data_tests: [not_null]
+      - name: open
+        description: First traded price, as published.
+        data_tests: [not_null]
+      - name: high
+        description: Highest traded price, as published.
+        data_tests: [not_null]
+      - name: low
+        description: Lowest traded price, as published.
+        data_tests: [not_null]
+      - name: close
+        description: >
+          Closing price, computed by the venue from the last half hour rather than traded, so on
+          a thin day it sits outside the day's high and low.
+        data_tests: [not_null]
+      - name: previous_close
+        description: The venue's own prior close, which spans a change of ISIN at a split.
+      - name: volume
+        description: Shares traded.
+        data_tests: [not_null]
+      - name: turnover
+        description: Value traded, used to designate an instrument's primary venue.
+      - name: trade_count
+        description: Number of trades executed.
+      - name: delivery_quantity
+        description: Shares that settled rather than closing out intraday. Published separately.
+
+  - name: stg_instruments
+    description: One row per instrument, keyed on ISIN.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier.
+        data_tests: [not_null, unique]
+      - name: name
+        description: Instrument name as the venue publishes it.
+        data_tests: [not_null]
+      - name: sector
+        description: Sector classification. Absent until a source provides one.
+      - name: country
+        description: ISO 3166-1 alpha-2 country of listing.
+        data_tests: [not_null]
+      - name: instrument_type
+        description: What the instrument is.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [equity, preference_share, debt, etf, warrant, right]
+
+  - name: stg_listings
+    description: >
+      One row per stretch during which an instrument traded under one symbol at one venue. A
+      rename closes a stretch and opens another, so the symbol in force on a past date is
+      recoverable.
+    columns:
+      - name: listing_id
+        description: Surrogate key.
+        data_tests: [not_null, unique]
+      - name: isin
+        description: Canonical instrument identifier.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: exchange
+        description: Venue the stretch belongs to.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [BSE, NSE]
+      - name: local_symbol
+        description: Ticker in force during the stretch. Venue-local, never a join key.
+        data_tests: [not_null]
+      - name: scrip_code
+        description: BSE numeric identifier, which survives a rename and a change of ISIN.
+      - name: listing_date
+        description: First day of the stretch.
+        data_tests: [not_null]
+      - name: delisting_date
+        description: Last day of the stretch, absent while it remains open.
+      - name: closure_reason
+        description: Why the stretch closed.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [delisted, renamed, merged]
+
+  - name: stg_corporate_actions
+    description: >
+      One row per action, holding the latest version reported on the as-of date, with the factor
+      a price before the ex-date is multiplied by.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier. A face value change issues a new one.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: action_type
+        description: What the action did.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [split, bonus, consolidation, rights, dividend]
+      - name: ex_date
+        description: First day the price trades without the entitlement.
+        data_tests: [not_null]
+      - name: qualifier
+        description: >
+          Which kind of dividend, since an ordinary and a special one share an ex-date. Reads
+          `ordinary` where the action has no kind.
+        data_tests: [not_null]
+      - name: source_id
+        description: Which source reported the action.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The day the action was collected, the venue not publishing an announcement date.
+        data_tests: [not_null]
+      - name: ratio_from
+        description: Share count before the action.
+      - name: ratio_to
+        description: Share count after the action.
+      - name: dividend_amount
+        description: Amount paid per share.
+      - name: adjustment_factor
+        description: >
+          `ratio_from` over `ratio_to`. A price before the ex-date is multiplied by it, so a one
+          for five split reads 0.2 and a one for one bonus reads 0.5. Absent for a dividend.
+
+unit_tests:
+  - name: a_corrected_bar_supersedes_the_one_it_corrects
+    description: A venue republishing a day appends a row, and only the later one survives.
+    model: stg_price_daily
+    given:
+      - input: source('market', 'price_daily')
+        rows:
+          - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-02",
+             open: 100, high: 110, low: 95, close: 105, previous_close: 104, volume: 10,
+             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+          - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-03",
+             open: 100, high: 110, low: 95, close: 108, previous_close: 104, volume: 10,
+             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+    expect:
+      rows:
+        - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-03",
+           close: "108.0000"}
+
+  - name: each_venue_keeps_its_own_bar_for_the_same_day
+    description: Blending the venues would produce a series matching no tradeable instrument.
+    model: stg_price_daily
+    given:
+      - input: source('market', 'price_daily')
+        rows:
+          - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-02",
+             open: 100, high: 110, low: 95, close: 105, previous_close: 104, volume: 10,
+             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+          - {isin: INE002A01018, venue: BSE, trade_date: "2025-01-02", as_of_date: "2025-01-02",
+             open: 100, high: 110, low: 95, close: 106, previous_close: 104, volume: 10,
+             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+    expect:
+      rows:
+        - {isin: INE002A01018, venue: BSE, trade_date: "2025-01-02", close: "106.0000"}
+        - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", close: "105.0000"}
+
+  - name: a_split_reads_a_factor_a_price_is_multiplied_by
+    description: A one for five split takes a price before the ex-date to a fifth.
+    model: stg_corporate_actions
+    given:
+      - input: source('market', 'corporate_action')
+        rows:
+          - {isin: INE721A01047, action_type: split, ex_date: "2025-01-10",
+             qualifier: ordinary, source_id: bse_corporate_actions, as_of_date: "2025-01-10",
+             ratio_from: 1, ratio_to: 5, dividend_amount: }
+    expect:
+      rows:
+        - {isin: INE721A01047, action_type: split, adjustment_factor: "0.200000"}
+
+  - name: a_dividend_carries_no_adjustment_factor
+    description: A dividend leaves the share count alone, so a price series is not scaled for one.
+    model: stg_corporate_actions
+    given:
+      - input: source('market', 'corporate_action')
+        rows:
+          - {isin: INE002A01018, action_type: dividend, ex_date: "2025-08-14",
+             qualifier: final, source_id: bse_corporate_actions, as_of_date: "2025-08-14",
+             ratio_from: , ratio_to: , dividend_amount: 5.5}
+    expect:
+      rows:
+        - {isin: INE002A01018, action_type: dividend, adjustment_factor: }

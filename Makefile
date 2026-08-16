@@ -17,10 +17,10 @@ PRESET := $(if $(SANITIZER),sanitizer,default)
 PYTHON_SRC := api/src pipelines/src scripts
 CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 	\( -name '*.cpp' -o -name '*.hpp' \) -print)
-SQL_SOURCES = $(shell find infra pipelines -name '*.sql' 2>/dev/null)
+SQL_SOURCES = $(shell find infra pipelines -name '*.sql' -not -path '*/target/*' 2>/dev/null)
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine test-python test-dbt test-web ci up down migrate
+.PHONY: setup lint test-engine test-python test-dbt test-web ci up down migrate seed
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -66,6 +66,7 @@ test-python:
 
 test-dbt:
 	cd pipelines/dbt && uv run dbt parse --profiles-dir .
+	cd pipelines/dbt && uv run dbt build --profiles-dir . --target fixture
 
 test-web:
 	npm --prefix web run typecheck
@@ -81,3 +82,6 @@ down:
 
 migrate:
 	uv run alembic -c pipelines/alembic.ini upgrade head
+
+seed:
+	uv run python scripts/load_fixture_seed.py

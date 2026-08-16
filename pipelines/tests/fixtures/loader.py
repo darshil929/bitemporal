@@ -43,11 +43,19 @@ def _pointed_at(dsn: str) -> Iterator[None]:
                 os.environ[key] = value
 
 
+def _psycopg_dsn(url: str) -> str:
+    """Strip the SQLAlchemy driver, which psycopg does not accept."""
+    _, _, rest = url.partition("://")
+    return f"postgresql://{rest}"
+
+
 def load_seed(dsn: str, seed_dir: Path = SEED_DIR) -> None:
     with _pointed_at(dsn):
         command.upgrade(Config(PIPELINES_ROOT / "alembic.ini"), "head")
 
-    with psycopg.connect(dsn, options=f"-csearch_path={SEED_SCHEMA},public") as connection:
+    with psycopg.connect(
+        _psycopg_dsn(dsn), options=f"-csearch_path={SEED_SCHEMA},public"
+    ) as connection:
         with connection.cursor() as cursor:
             for table in SEED_TABLES:
                 csv_path = seed_dir / f"{table}.csv"

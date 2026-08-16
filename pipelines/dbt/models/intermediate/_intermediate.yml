@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: int_venue_spread
+    description: >
+      One row per dual-listed instrument and trading day, carrying each venue's close and the
+      gap between them. Indicators run on one venue; this measures how far the other sits.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier.
+        data_tests: [not_null]
+      - name: trade_date
+        description: The day the two closes describe.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The later of the two bars' knowable dates.
+        data_tests: [not_null]
+      - name: bse_close
+        description: Published BSE close, unadjusted.
+        data_tests: [not_null]
+      - name: nse_close
+        description: Published NSE close, unadjusted.
+        data_tests: [not_null]
+      - name: venue_spread_bps
+        description: Absolute gap between the venue closes, in basis points of their midpoint.
+        data_tests: [not_null]
+
+unit_tests:
+  - name: the_spread_is_measured_against_the_midpoint
+    description: A one rupee gap on a hundred rupee midpoint is a hundred basis points.
+    model: int_venue_spread
+    given:
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE002A01018, venue: BSE, trade_date: "2025-01-02",
+             as_of_date: "2025-01-02", close: 100.5}
+          - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02",
+             as_of_date: "2025-01-02", close: 99.5}
+    expect:
+      rows:
+        - {isin: INE002A01018, trade_date: "2025-01-02", bse_close: "100.5000", nse_close: "99.5000",
+           venue_spread_bps: "100.0000"}
+
+  - name: an_instrument_on_one_venue_alone_has_no_spread
+    description: A gap needs two closes; a single venue leaves nothing to compare.
+    model: int_venue_spread
+    given:
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE0QVH01025, venue: BSE, trade_date: "2025-01-02",
+             as_of_date: "2025-01-02", close: 100.5}
+    expect:
+      rows: []
