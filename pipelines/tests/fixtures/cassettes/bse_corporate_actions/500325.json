@@ -1,0 +1,44 @@
+[
+ {
+  "scrip_code": 500325,
+  "short_name": "RELIANCE",
+  "Ex_date": "19 Aug 2024",
+  "Purpose": "Final Dividend - Rs. - 10.0000",
+  "RD_Date": "19 Aug 2024",
+  "BCRD_FROM": "",
+  "BCRD_TO": "",
+  "ND_START_DATE": "19 Aug 2024",
+  "ND_END_DATE": "19 Aug 2024",
+  "payment_date": "",
+  "exdate": "20240819",
+  "long_name": "Reliance Industries Ltd"
+ },
+ {
+  "scrip_code": 500325,
+  "short_name": "RELIANCE",
+  "Ex_date": "28 Oct 2024",
+  "Purpose": "Bonus issue 1:1",
+  "RD_Date": "28 Oct 2024",
+  "BCRD_FROM": "",
+  "BCRD_TO": "",
+  "ND_START_DATE": "28 Oct 2024",
+  "ND_END_DATE": "28 Oct 2024",
+  "payment_date": "",
+  "exdate": "20241028",
+  "long_name": "Reliance Industries Ltd"
+ },
+ {
+  "scrip_code": 500325,
+  "short_name": "RELIANCE",
+  "Ex_date": "14 Aug 2025",
+  "Purpose": "Final Dividend - Rs. - 5.5000",
+  "RD_Date": "14 Aug 2025",
+  "BCRD_FROM": "",
+  "BCRD_TO": "",
+  "ND_START_DATE": "14 Aug 2025",
+  "ND_END_DATE": "14 Aug 2025",
+  "payment_date": "",
+  "exdate": "20250814",
+  "long_name": "Reliance Industries Ltd"
+ }
+]

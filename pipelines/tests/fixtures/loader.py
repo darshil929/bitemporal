@@ -5,6 +5,10 @@ exercises the tables the application actually uses.
 
 `listing_date` in the seed is the first day an instrument appears in the recorded window, not the
 day it listed. A test asserting a real listing date would be asserting the window.
+
+Corporate actions carry the whole history the venue reports, reaching back before the price window,
+because adjustment needs every action ahead of a bar. Their `as_of_date` is the date they were
+collected rather than announced, which the venue does not publish.
 """
 
 import os
@@ -21,7 +25,7 @@ PIPELINES_ROOT = Path(__file__).resolve().parents[2]
 SEED_SCHEMA = "fixture"
 
 # Ordered so foreign keys resolve.
-SEED_TABLES = ("instrument_master", "listing", "price_daily")
+SEED_TABLES = ("instrument_master", "listing", "price_daily", "corporate_action")
 
 
 @contextmanager
