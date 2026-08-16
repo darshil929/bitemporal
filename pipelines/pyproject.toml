@@ -9,9 +9,11 @@ dependencies = [
     "dagster-webserver>=1.13.16",
     "dbt-core>=1.9,<2",
     "dbt-postgres>=1.9,<2",
+    "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.7",
     "sqlalchemy>=2.0",
+    "tenacity>=9.1",
 ]
 
 [build-system]
