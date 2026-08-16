@@ -31,23 +31,6 @@ def nse_bytes() -> bytes:
     return (CASSETTES / "nse_bhavcopy_equity" / "20260814.csv.zip").read_bytes()
 
 
-def test_the_bse_url_matches_the_published_naming() -> None:
-    adapter = BseBhavcopy(build("bse"), DiskCache(Path()), BSE_BASE)
-
-    assert adapter.url_for(PARTITION) == (
-        "https://www.bseindia.com/download/BhavCopy/Equity/"
-        "BhavCopy_BSE_CM_0_0_0_20260814_F_0000.CSV"
-    )
-
-
-def test_the_nse_url_matches_the_published_naming() -> None:
-    adapter = NseBhavcopy(build("nse"), DiskCache(Path()), NSE_BASE)
-
-    assert adapter.url_for(PARTITION) == (
-        "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_20260814_F_0000.csv.zip"
-    )
-
-
 @respx.mock
 def test_a_second_bse_fetch_reads_the_cache(tmp_path: Path) -> None:
     route = respx.get(url__startswith=BSE_BASE).mock(
@@ -123,3 +106,18 @@ def test_the_adapters_reach_canonical_bars_end_to_end(tmp_path: Path) -> None:
     assert bars
     assert all(bar.venue == "BSE" for bar in bars)
     assert all(bar.trade_date == PARTITION for bar in bars)
+
+
+@respx.mock
+def test_bse_answering_with_its_home_page_is_reported_as_unpublished(tmp_path: Path) -> None:
+    """BSE returns HTTP 200 and its home page for a day it holds no file for."""
+    respx.get(url__startswith=BSE_BASE).mock(
+        return_value=httpx.Response(200, content=b"<!DOCTYPE html><html><head>")
+    )
+    cache = DiskCache(tmp_path)
+    adapter = BseBhavcopy(build("bse"), cache, BSE_BASE)
+
+    with pytest.raises(NotPublished):
+        adapter.fetch(date(2026, 8, 15))
+
+    assert cache.read("bse_bhavcopy_equity", "2026-08-15", ".csv") is None

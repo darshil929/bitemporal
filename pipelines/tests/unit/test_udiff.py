@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from pipelines.sources.bhavcopy import EQUITY_SERIES, normalize
 from pipelines.sources.errors import SchemaDrift
-from pipelines.sources.udiff import EQUITY_SERIES, normalize, parse_udiff
+from pipelines.sources.udiff import parse_udiff
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
 TRADE_DATE = date(2026, 8, 14)
