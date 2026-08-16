@@ -50,5 +50,5 @@ known-first-party = ["api", "btcore", "pipelines"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = ["api/src", "pipelines/src", "scripts"]
+mypy_path = ["api/src", "pipelines/src", "pipelines/tests", "scripts"]
 explicit_package_bases = true

@@ -12,3 +12,10 @@ indented_using_on = true
 
 [sqlfluff:rules:capitalisation.keywords]
 capitalisation_policy = lower
+
+# dbt resolves ref, source and var at compile time. The stubs below let the linter render a
+# model without running dbt.
+[sqlfluff:templater:jinja:macros]
+dbt_ref = {% macro ref(model) %}{{ model }}{% endmacro %}
+dbt_source = {% macro source(source_name, table) %}{{ source_name }}_{{ table }}{% endmacro %}
+dbt_var = {% macro var(name, default='') %}{{ default }}{% endmacro %}
