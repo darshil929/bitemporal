@@ -52,11 +52,24 @@ class NseBhavcopy:
         archive = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX)
 
         if archive is None:
-            self._obtain_cookie()
-            archive = self._client.get(self.url_for(partition, schema_version))
+            archive = self._read_archive(self.url_for(partition, schema_version))
             self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, archive)
 
         return _extract(archive)
+
+    def _read_archive(self, url: str) -> bytes:
+        """Fetch through the session cookie, collecting a fresh one if the held one has expired.
+
+        A cookie outlives a single request but not a backfill, and the archive host answers an
+        expired one the same way it answers none at all.
+        """
+        self._obtain_cookie()
+        try:
+            return self._client.get(url)
+        except SourceUnavailable:
+            self._holds_cookie = False
+            self._obtain_cookie()
+            return self._client.get(url)
 
     def parse(self, payload: bytes, schema_version: str) -> Sequence[BhavcopyRow]:
         if schema_version == UDIFF:

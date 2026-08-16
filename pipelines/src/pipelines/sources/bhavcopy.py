@@ -37,6 +37,11 @@ class BhavcopyRow(BaseModel):
     def series(self) -> str:
         raise NotImplementedError
 
+    @property
+    def security_name(self) -> str:
+        """The instrument's name, falling back to its symbol where a format omits one."""
+        raise NotImplementedError
+
 
 def normalize(rows: Sequence[BhavcopyRow], venue: str) -> tuple[PriceBar, ...]:
     """Map the equity rows onto canonical bars, keyed on ISIN."""

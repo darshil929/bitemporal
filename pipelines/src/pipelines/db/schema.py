@@ -191,8 +191,10 @@ class PriceDaily(Base):
 
     __table_args__ = (
         CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
+        # The close is not constrained to the traded range: BSE computes it from the last half
+        # hour of trading, so on a thin day it falls outside the day's high and low.
         CheckConstraint(
-            "high >= low and high >= open and high >= close and low <= open and low <= close",
+            "high >= low and high >= open and low <= open",
             name="bar_is_internally_consistent",
         ),
         CheckConstraint(
