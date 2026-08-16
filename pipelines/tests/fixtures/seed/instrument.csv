@@ -1,9 +1,0 @@
-isin,name,sector,country,instrument_type
-INE100000001,Dual Listed Industries,Industrials,IN,equity
-INE100000002,Bse Only Textiles,Consumer Discretionary,IN,equity
-INE100000003,Split Cement,Materials,IN,equity
-INE100000004,Bonus Metals,Materials,IN,equity
-INE100000005,Suspended Chemicals,Materials,IN,equity
-INE100000006,Delisted Motors,Consumer Discretionary,IN,equity
-INE100000007,Renamed Pharma,Health Care,IN,equity
-INE100000008,Late Listing Foods,Consumer Staples,IN,equity

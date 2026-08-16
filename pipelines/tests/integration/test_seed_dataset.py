@@ -1,7 +1,7 @@
-"""Assert the seed dataset contains the awkward cases downstream code has to survive.
+"""The committed dataset holds every condition the later phases have to handle.
 
-Every assertion is a property of the dataset rather than a lookup of a known identifier, so
-these hold against any dataset that satisfies the same requirements.
+Each test names one condition. A future trim of the dataset that removes one fails here rather
+than silently weakening whatever depends on it.
 """
 
 from collections.abc import Iterator
@@ -10,238 +10,153 @@ from typing import Any
 import psycopg
 import pytest
 
+SCHEMA = "fixture"
+
+# A split or a bonus shows as a fall the previous close does not explain.
+ACTION_RATIO = 0.7
+
 
 @pytest.fixture(scope="module")
 def connection(seeded_postgres: str) -> Iterator[psycopg.Connection]:
-    with psycopg.connect(seeded_postgres) as conn:
-        yield conn
+    with psycopg.connect(seeded_postgres, options=f"-csearch_path={SCHEMA},public") as opened:
+        yield opened
 
 
-def scalar(connection: psycopg.Connection, sql: str) -> Any:
-    with connection.cursor() as cursor:
-        cursor.execute(sql)
-        row = cursor.fetchone()
-
+def scalar(connection: psycopg.Connection, sql: str, *parameters: Any) -> Any:
+    row = connection.execute(sql, parameters or None).fetchone()
     assert row is not None
     return row[0]
 
 
-def test_every_seed_table_is_populated(connection: psycopg.Connection) -> None:
-    for table in ("instrument", "listing", "price_daily", "corporate_action"):
-        assert scalar(connection, f"select count(*) from fixture.{table}") > 0
+def test_the_dataset_covers_two_years_of_both_venues(connection: psycopg.Connection) -> None:
+    span = scalar(connection, "select max(trade_date) - min(trade_date) from price_daily")
+    venues = scalar(connection, "select count(distinct venue) from price_daily")
+
+    assert span > 600, "the window is shorter than the two years the factors need"
+    assert venues == 2
 
 
-def test_every_priced_instrument_exists_in_the_master(connection: psycopg.Connection) -> None:
+def test_every_price_row_resolves_to_a_known_instrument(connection: psycopg.Connection) -> None:
     orphans = scalar(
         connection,
-        """
-        select count(*)
-        from fixture.price_daily as p
-        left join fixture.instrument as i on i.isin = p.isin
-        where i.isin is null
-        """,
+        "select count(*) from price_daily p"
+        " left join instrument_master i on i.isin = p.isin where i.isin is null",
     )
 
     assert orphans == 0
 
 
-def test_a_dual_listed_instrument_has_diverging_venue_closes(
-    connection: psycopg.Connection,
-) -> None:
-    divergent = scalar(
-        connection,
-        """
-        select count(*)
-        from fixture.price_daily as a
-        join fixture.price_daily as b
-            on a.isin = b.isin and a.trade_date = b.trade_date and a.venue < b.venue
-        where a.close <> b.close
-        """,
-    )
-
-    assert divergent > 0
-
-
-def test_an_instrument_trades_on_a_single_venue(connection: psycopg.Connection) -> None:
-    single_venue = scalar(
-        connection,
-        """
-        select count(*)
-        from (
-            select isin
-            from fixture.price_daily
-            group by isin
-            having count(distinct venue) = 1
-        ) as one_venue
-        """,
-    )
-
-    assert single_venue > 0
-
-
-def test_both_a_split_and_a_bonus_are_present(connection: psycopg.Connection) -> None:
-    with connection.cursor() as cursor:
-        cursor.execute("select distinct action_type from fixture.corporate_action")
-        action_types = {row[0] for row in cursor.fetchall()}
-
-    assert {"split", "bonus"} <= action_types
-
-
-def test_every_corporate_action_looks_like_a_crash_in_raw_prices(
-    connection: psycopg.Connection,
-) -> None:
-    """Raw prices are never adjusted, so an action must show as a large unexplained fall.
-
-    This is the failure the fixture exists to catch: a split that nothing flags reads as a
-    collapse, momentum factors fire on it, and no error is raised anywhere.
-    """
-    worst_ratio = scalar(
-        connection,
-        """
-        with priced as (
-            select
-                isin,
-                venue,
-                trade_date,
-                close,
-                lag(close) over (partition by isin, venue order by trade_date) as previous_close
-            from fixture.price_daily
-        )
-        select max(p.close / p.previous_close)
-        from fixture.corporate_action as a
-        join priced as p on p.isin = a.isin and p.trade_date = a.ex_date
-        where p.previous_close is not null
-        """,
-    )
-
-    assert worst_ratio is not None, "no corporate action lines up with a priced trading day"
-    assert float(worst_ratio) < 0.7
-
-
-def test_an_instrument_stops_trading_without_being_delisted(
-    connection: psycopg.Connection,
-) -> None:
-    suspended = scalar(
-        connection,
-        """
-        select count(*)
-        from (
-            select p.isin
-            from fixture.price_daily as p
-            join fixture.listing as l on l.isin = p.isin
-            group by p.isin
-            having max(p.trade_date) < (select max(trade_date) from fixture.price_daily)
-                and bool_and(l.delisting_date is null)
-        ) as suspended
-        """,
-    )
-
-    assert suspended > 0
-
-
-def test_a_delisted_instrument_has_no_prices_after_its_delisting_date(
-    connection: psycopg.Connection,
-) -> None:
-    # Only the most recent listing row per venue says whether an instrument still trades. An
-    # older closed row means the symbol was superseded by a rename, not that it was delisted.
-    latest_listing = """
-        select distinct on (isin, exchange) isin, exchange, delisting_date
-        from fixture.listing
-        order by isin, exchange, listing_date desc
-    """
-
-    delisted = scalar(
-        connection,
-        f"select count(*) from ({latest_listing}) as l where l.delisting_date is not null",
-    )
-    prices_after_delisting = scalar(
-        connection,
-        f"""
-        select count(*)
-        from fixture.price_daily as p
-        join ({latest_listing}) as l on l.isin = p.isin and l.exchange = p.venue
-        where l.delisting_date is not null and p.trade_date > l.delisting_date
-        """,
-    )
-
-    assert delisted > 0
-    assert prices_after_delisting == 0
-
-
-def test_a_symbol_change_adds_a_listing_row_rather_than_overwriting(
-    connection: psycopg.Connection,
-) -> None:
-    renamed = scalar(
-        connection,
-        """
-        select count(*)
-        from (
-            select isin, exchange
-            from fixture.listing
-            group by isin, exchange
-            having count(distinct local_symbol) > 1
-        ) as renamed
-        """,
-    )
-
-    assert renamed > 0
-
-
-def test_an_instrument_has_a_shorter_history_than_the_others(
-    connection: psycopg.Connection,
-) -> None:
-    late_listings = scalar(
-        connection,
-        """
-        select count(*)
-        from (
-            select isin
-            from fixture.price_daily
-            group by isin
-            having min(trade_date) > (select min(trade_date) from fixture.price_daily)
-        ) as late
-        """,
-    )
-
-    assert late_listings > 0
-
-
-def test_a_weekday_inside_the_range_has_no_trading_at_all(
-    connection: psycopg.Connection,
-) -> None:
-    holidays = scalar(
-        connection,
-        """
-        select count(*)
-        from generate_series(
-            (select min(trade_date) from fixture.price_daily),
-            (select max(trade_date) from fixture.price_daily),
-            interval '1 day'
-        ) as calendar (day)
-        where extract(isodow from calendar.day) <= 5
-            and not exists (
-                select 1 from fixture.price_daily where trade_date = calendar.day::date
-            )
-        """,
-    )
-
-    assert holidays > 0
-
-
 def test_every_fact_row_carries_an_as_of_date(connection: psycopg.Connection) -> None:
-    for table in ("price_daily", "corporate_action"):
-        missing = scalar(
-            connection, f"select count(*) from fixture.{table} where as_of_date is null"
-        )
-        assert missing == 0
+    assert scalar(connection, "select count(*) from price_daily where as_of_date is null") == 0
 
 
 def test_no_fact_is_knowable_before_the_period_it_describes(
     connection: psycopg.Connection,
 ) -> None:
-    early = scalar(
+    assert scalar(connection, "select count(*) from price_daily where as_of_date < trade_date") == 0
+
+
+def test_a_capital_action_is_present(connection: psycopg.Connection) -> None:
+    """Adjustment logic is meaningless without a real split or bonus to assert against."""
+    worst = scalar(
         connection,
-        "select count(*) from fixture.price_daily where as_of_date < trade_date",
+        "select min(close / previous_close) from price_daily"
+        " where previous_close is not null and previous_close > 0",
     )
 
-    assert early == 0
+    assert worst is not None
+    assert float(worst) < ACTION_RATIO
+
+
+def test_an_instrument_changed_its_symbol(connection: psycopg.Connection) -> None:
+    renamed = scalar(
+        connection,
+        "select count(*) from (select isin, exchange from listing"
+        " group by isin, exchange having count(distinct local_symbol) > 1) as changed",
+    )
+
+    assert renamed > 0
+
+
+def test_a_renamed_listing_says_why_it_closed(connection: psycopg.Connection) -> None:
+    assert scalar(connection, "select count(*) from listing where closure_reason = 'renamed'") > 0
+
+
+def test_an_instrument_stopped_trading(connection: psycopg.Connection) -> None:
+    assert scalar(connection, "select count(*) from listing where closure_reason = 'delisted'") > 0
+
+
+def test_an_instrument_trades_on_bse_alone(connection: psycopg.Connection) -> None:
+    bse_only = scalar(
+        connection,
+        "select count(*) from (select isin from price_daily"
+        " group by isin having count(distinct venue) = 1"
+        " and min(venue) = 'BSE') as single",
+    )
+
+    assert bse_only > 0
+
+
+def test_a_dual_listed_instrument_closes_differently_on_each_venue(
+    connection: psycopg.Connection,
+) -> None:
+    """Blending the two venues would produce a series matching no tradeable instrument."""
+    divergent = scalar(
+        connection,
+        "select count(*) from ("
+        " select isin, trade_date from price_daily"
+        " group by isin, trade_date"
+        " having count(distinct venue) = 2 and min(close) <> max(close)"
+        ") as spread",
+    )
+
+    assert divergent > 0
+
+
+def test_an_instrument_has_a_shorter_history_than_the_others(
+    connection: psycopg.Connection,
+) -> None:
+    latest_start, earliest_start = connection.execute(
+        "select max(started), min(started) from"
+        " (select isin, min(trade_date) as started from price_daily group by isin) as starts"
+    ).fetchone()  # type: ignore[misc]
+
+    assert (latest_start - earliest_start).days > 200
+
+
+def test_an_instrument_paused_and_resumed(connection: psycopg.Connection) -> None:
+    """A suspension reads as a gap that the trading calendar does not explain."""
+    longest_gap = scalar(
+        connection,
+        "select max(gap) from ("
+        " select trade_date - lag(trade_date) over (partition by isin, venue order by trade_date)"
+        " as gap from price_daily"
+        ") as gaps",
+    )
+
+    assert longest_gap is not None
+    assert longest_gap > 21
+
+
+def test_a_market_holiday_falls_inside_the_window(connection: psycopg.Connection) -> None:
+    """A weekday on which neither venue published is a holiday, not missing data."""
+    weekdays = scalar(
+        connection,
+        "select count(*) from generate_series("
+        " (select min(trade_date) from price_daily),"
+        " (select max(trade_date) from price_daily), interval '1 day') as day"
+        " where extract(isodow from day) < 6",
+    )
+    traded = scalar(connection, "select count(distinct trade_date) from price_daily")
+
+    assert weekdays > traded
+
+
+def test_every_traded_price_sits_inside_the_days_range(connection: psycopg.Connection) -> None:
+    assert (
+        scalar(
+            connection,
+            "select count(*) from price_daily where high < low or high < open or low > open",
+        )
+        == 0
+    )

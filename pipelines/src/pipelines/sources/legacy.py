@@ -29,6 +29,9 @@ class BseLegacyRow(BhavcopyRow):
 
     BSE published two legacy files per day. Only this one names the instrument by ISIN; the
     other identifies it by scrip code alone and cannot be joined without the instrument master.
+
+    The format carries no ticker, so a bar reports the scrip code as the venue-local symbol. BSE
+    began publishing a ticker with the UDiFF cutover.
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -61,13 +64,17 @@ class BseLegacyRow(BhavcopyRow):
     def series(self) -> str:
         return self.group
 
+    @property
+    def security_name(self) -> str:
+        return self.name
+
     def to_bar(self, venue: str) -> PriceBar:
         return PriceBar(
             isin=self.isin,
             venue=venue,
             trade_date=self.trade_date,
             as_of_date=self.trade_date,
-            local_symbol=self.name,
+            local_symbol=self.scrip_code,
             scrip_code=self.scrip_code,
             open=self.open,
             high=self.high,
@@ -106,6 +113,10 @@ class NseLegacyRow(BhavcopyRow):
     @property
     def series(self) -> str:
         return self.security_series
+
+    @property
+    def security_name(self) -> str:
+        return self.symbol
 
     def to_bar(self, venue: str) -> PriceBar:
         return PriceBar(

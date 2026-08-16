@@ -168,14 +168,32 @@ def test_a_corporate_action_cannot_be_updated(migrated: Config, postgres_dsn: st
             connection.execute("update corporate_action set ratio_to = 10")
 
 
-def test_a_bar_whose_high_is_below_its_close_is_rejected(
+def test_a_bar_whose_high_is_below_its_open_is_rejected(
     migrated: Config, postgres_dsn: str
 ) -> None:
     with _connect(postgres_dsn) as connection:
         _add_instrument(connection, "INE002A01018")
 
         with pytest.raises(psycopg.errors.CheckViolation):
-            _add_bar(connection, "INE002A01018", as_of_date="2026-07-31", close="120", high="110")
+            connection.execute(
+                f"insert into price_daily ({BAR_COLUMNS})"
+                " values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                ("INE002A01018", "NSE", "2026-07-31", "2026-07-31", "120", "110", "95", "100", 1),
+            )
+
+
+def test_a_close_outside_the_traded_range_is_accepted(migrated: Config, postgres_dsn: str) -> None:
+    """BSE computes the close from the last half hour, so a thin day closes outside high and low."""
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE002A01018")
+
+        _add_bar(connection, "INE002A01018", as_of_date="2026-07-31", close="120", high="110")
+
+        assert connection.execute("select count(*) from price_daily").fetchone() == (1,)
+
+        # The downgrade of this migration reimposes the stricter constraint, which no row may
+        # then violate.
+        connection.execute("delete from price_daily")
 
 
 def test_a_split_without_a_ratio_is_rejected(migrated: Config, postgres_dsn: str) -> None:

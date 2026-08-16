@@ -23,6 +23,7 @@ class UdiffRow(BhavcopyRow):
     isin: str = Field(alias="ISIN")
     ticker_symbol: str = Field(alias="TckrSymb")
     security_series: str = Field(alias="SctySrs")
+    instrument_name: str = Field(alias="FinInstrmNm")
     open: Decimal = Field(alias="OpnPric")
     high: Decimal = Field(alias="HghPric")
     low: Decimal = Field(alias="LwPric")
@@ -37,6 +38,10 @@ class UdiffRow(BhavcopyRow):
     @property
     def series(self) -> str:
         return self.security_series
+
+    @property
+    def security_name(self) -> str:
+        return self.instrument_name.strip()
 
     def to_bar(self, venue: str) -> PriceBar:
         return PriceBar(
