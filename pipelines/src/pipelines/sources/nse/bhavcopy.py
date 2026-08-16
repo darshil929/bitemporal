@@ -6,14 +6,19 @@ from collections.abc import Sequence
 from datetime import date
 
 from pipelines.models.market import PriceBar
+from pipelines.sources.bhavcopy import BhavcopyRow, normalize
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import ThrottledClient
-from pipelines.sources.errors import SourceUnavailable
-from pipelines.sources.udiff import UdiffRow, normalize, parse_udiff
+from pipelines.sources.errors import SourceUnavailable, UnknownSchemaVersion
+from pipelines.sources.legacy import parse_nse_legacy
+from pipelines.sources.udiff import parse_udiff
 
 SOURCE_ID = "nse_bhavcopy_equity"
 VENUE = "NSE"
 CACHE_SUFFIX = ".csv.zip"
+
+UDIFF = "udiff"
+LEGACY = "nse_legacy"
 
 # The archive host drops a request carrying no cookie, without answering. A cookie is issued by
 # the main site, so one page there precedes the first archive read.
@@ -31,24 +36,36 @@ class NseBhavcopy:
         self._base_url = base_url.rstrip("/")
         self._holds_cookie = False
 
-    def url_for(self, partition: date) -> str:
-        return f"{self._base_url}/cm/BhavCopy_NSE_CM_0_0_0_{partition:%Y%m%d}_F_0000.csv.zip"
+    def url_for(self, partition: date, schema_version: str) -> str:
+        if schema_version == UDIFF:
+            return f"{self._base_url}/cm/BhavCopy_NSE_CM_0_0_0_{partition:%Y%m%d}_F_0000.csv.zip"
+        if schema_version == LEGACY:
+            month = f"{partition:%b}".upper()
+            return (
+                f"{self._base_url}/historical/EQUITIES/{partition:%Y}/{month}"
+                f"/cm{partition:%d}{month}{partition:%Y}bhav.csv.zip"
+            )
+        raise UnknownSchemaVersion(f"{SOURCE_ID} has no url for {schema_version}")
 
-    def fetch(self, partition: date) -> bytes:
+    def fetch(self, partition: date, schema_version: str = UDIFF) -> bytes:
         key = partition.isoformat()
         archive = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX)
 
         if archive is None:
             self._obtain_cookie()
-            archive = self._client.get(self.url_for(partition))
+            archive = self._client.get(self.url_for(partition, schema_version))
             self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, archive)
 
         return _extract(archive)
 
-    def parse(self, payload: bytes, schema_version: str) -> Sequence[UdiffRow]:
-        return parse_udiff(payload)
+    def parse(self, payload: bytes, schema_version: str) -> Sequence[BhavcopyRow]:
+        if schema_version == UDIFF:
+            return parse_udiff(payload)
+        if schema_version == LEGACY:
+            return parse_nse_legacy(payload)
+        raise UnknownSchemaVersion(f"{SOURCE_ID} has no parser for {schema_version}")
 
-    def normalize(self, records: Sequence[UdiffRow]) -> Sequence[PriceBar]:
+    def normalize(self, records: Sequence[BhavcopyRow]) -> Sequence[PriceBar]:
         return normalize(records, VENUE)
 
     def _obtain_cookie(self) -> None:
