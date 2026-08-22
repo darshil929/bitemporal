@@ -19,6 +19,13 @@ CACHE_SUFFIX = ".json"
 
 REQUIRED_FIELDS = frozenset({"scrip_code", "Purpose", "exdate"})
 
+# The endpoint answers a request carrying none of these with a page rather than JSON.
+REQUIRED_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Origin": "https://www.bseindia.com",
+    "Referer": "https://www.bseindia.com/",
+}
+
 # The purpose is free text. Each pattern below names an action whose effect on the share count or
 # on value is derivable from the text itself.
 BONUS = re.compile(r"^bonus issue\s+(\d+)\s*:\s*(\d+)", re.IGNORECASE)
@@ -72,7 +79,10 @@ def parse_purpose(
 
 def parse_actions(payload: bytes) -> tuple[dict[str, str], ...]:
     """Read the response into raw records, performing no interpretation."""
-    document = json.loads(payload.decode("utf-8"))
+    try:
+        document = json.loads(payload.decode("utf-8"))
+    except json.JSONDecodeError as error:
+        raise SchemaDrift("corporate actions response is not json") from error
     if not isinstance(document, list):
         raise SchemaDrift("corporate actions response is not a list")
 
@@ -159,7 +169,7 @@ class BseCorporateActions:
         if cached is not None:
             return cached
 
-        payload = self._client.get(self.url_for(scrip_code))
+        payload = self._client.get(self.url_for(scrip_code), REQUIRED_HEADERS)
         self._cache.write(SOURCE_ID, scrip_code, CACHE_SUFFIX, payload)
         return payload
 

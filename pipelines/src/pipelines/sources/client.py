@@ -3,6 +3,7 @@
 import logging
 import threading
 import time
+from collections.abc import Mapping
 
 import httpx
 from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
@@ -67,15 +68,15 @@ class ThrottledClient:
             reraise=True,
         )
 
-    def get(self, url: str) -> bytes:
+    def get(self, url: str, headers: Mapping[str, str] | None = None) -> bytes:
         try:
-            return self._retrying(self._request, url)
+            return self._retrying(self._request, url, headers)
         except (httpx.HTTPStatusError, httpx.TransportError) as error:
             raise SourceUnavailable(f"{self.source_id} did not serve {url}") from error
 
-    def _request(self, url: str) -> bytes:
+    def _request(self, url: str, headers: Mapping[str, str] | None = None) -> bytes:
         self._throttle.wait()
-        response = self._client.get(url)
+        response = self._client.get(url, headers=dict(headers) if headers else None)
 
         if response.status_code == httpx.codes.NOT_FOUND:
             raise NotPublished(f"{self.source_id} has nothing at {url}")

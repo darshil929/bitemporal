@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -313,6 +314,30 @@ class SourceSchemaVersion(Base):
             "effective_to is null or effective_to >= effective_from",
             name="ends_after_it_starts",
         ),
+    )
+
+
+class TradingDay(Base):
+    """Whether a venue's day passed validation, and what it failed on if it did not.
+
+    Downstream reads consume complete days only. A day revalidated after a correction appends a
+    row rather than replacing one, so the verdict that stood on a past date stays readable.
+    """
+
+    __tablename__ = "trading_day"
+
+    venue: Mapped[str] = mapped_column(String(12), primary_key=True)
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    is_complete: Mapped[bool] = mapped_column(Boolean)
+    bars: Mapped[int] = mapped_column(Integer)
+    divergent_instruments: Mapped[int] = mapped_column(Integer)
+    detail: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
+        CheckConstraint("bars >= 0", name="bars_is_not_negative"),
+        CheckConstraint("(is_complete) = (detail is null)", name="detail_explains_a_failure"),
     )
 
 

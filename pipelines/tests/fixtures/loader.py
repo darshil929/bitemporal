@@ -31,6 +31,7 @@ SEED_TABLES = (
     "price_daily",
     "delivery_daily",
     "corporate_action",
+    "trading_day",
 )
 
 

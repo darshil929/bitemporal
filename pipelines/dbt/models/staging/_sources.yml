@@ -17,5 +17,9 @@ sources:
         description: >
           Shares that settled rather than closing out intraday. Published in a file of its
           own, hours after the bhavcopy and sometimes not at all.
+      - name: trading_day
+        description: >
+          Whether a venue's day passed validation. Downstream reads consume complete days
+          only, so a missing file reads as an absence rather than a flat price.
       - name: corporate_action
         description: Actions that change the share count or pay out value, as reported on a date.
