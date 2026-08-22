@@ -40,6 +40,7 @@ from pipelines.sources.errors import NotPublished, SourceError
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
 from pipelines.sources.nse.delivery import NseDelivery
 from pipelines.sources.registry import SourceDefinition, load_definitions
+from pipelines.validation import DayVerdict, validate_day
 
 logger = logging.getLogger("fixture")
 
@@ -68,11 +69,6 @@ ACTION_RATIO = Decimal("0.7")
 UDIFF = "udiff"
 
 ACTIONS_BASE_URL = "https://api.bseindia.com/BseIndiaAPI/api"
-ACTIONS_HEADERS = {
-    "Accept": "application/json, text/plain, */*",
-    "Origin": "https://www.bseindia.com",
-    "Referer": "https://www.bseindia.com/",
-}
 
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -387,7 +383,7 @@ def collect_actions(
     """Read the action history of every BSE scrip in the dataset."""
     settings = SourceSettings()
     client = httpx.Client(
-        headers={"User-Agent": settings.source_user_agent, **ACTIONS_HEADERS},
+        headers={"User-Agent": settings.source_user_agent},
         follow_redirects=True,
     )
     adapter = BseCorporateActions(
@@ -537,6 +533,69 @@ def _write_delivery(seed_dir: Path, records: Sequence[DeliveryRecord]) -> int:
     return written
 
 
+def validate_committed_days() -> tuple[DayVerdict, ...]:
+    """Reach a verdict on every venue day the committed dataset holds."""
+    by_day: dict[tuple[str, date], list[PriceBar]] = defaultdict(list)
+    with (SEED_DIR / "price_daily.csv").open(encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            bar = PriceBar(
+                isin=row["isin"],
+                venue=row["venue"],
+                trade_date=date.fromisoformat(row["trade_date"]),
+                as_of_date=date.fromisoformat(row["as_of_date"]),
+                local_symbol="",
+                scrip_code=None,
+                open=Decimal(row["open"]),
+                high=Decimal(row["high"]),
+                low=Decimal(row["low"]),
+                close=Decimal(row["close"]),
+                previous_close=Decimal(row["previous_close"]) if row["previous_close"] else None,
+                volume=int(row["volume"]),
+                turnover=Decimal(row["turnover"]) if row["turnover"] else None,
+                trade_count=int(row["trade_count"]) if row["trade_count"] else None,
+            )
+            by_day[(bar.venue, bar.trade_date)].append(bar)
+
+    counts: dict[str, list[int]] = defaultdict(list)
+    for (venue, _), bars in by_day.items():
+        counts[venue].append(len(bars))
+    typical = {venue: sorted(values)[len(values) // 2] for venue, values in counts.items()}
+
+    verdicts = []
+    for (venue, day), bars in sorted(by_day.items()):
+        other = [b for v, d in by_day if v != venue and d == day for b in by_day[(v, d)]]
+        verdicts.append(validate_day(venue, day, bars, other, typical_bars=typical[venue]))
+    return tuple(verdicts)
+
+
+def _write_trading_days(seed_dir: Path, verdicts: Sequence[DayVerdict]) -> None:
+    with (seed_dir / "trading_day.csv").open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(
+            [
+                "venue",
+                "trade_date",
+                "as_of_date",
+                "is_complete",
+                "bars",
+                "divergent_instruments",
+                "detail",
+            ]
+        )
+        for verdict in verdicts:
+            writer.writerow(
+                [
+                    verdict.venue,
+                    verdict.trade_date.isoformat(),
+                    verdict.as_of_date.isoformat(),
+                    "true" if verdict.is_complete else "false",
+                    verdict.bars,
+                    verdict.divergent_instruments,
+                    verdict.detail or "",
+                ]
+            )
+
+
 def _dominant_lines(traded: dict[tuple[str, str, str], Decimal]) -> set[tuple[str, str, str]]:
     best: dict[tuple[str, str], tuple[Decimal, str]] = {}
     for (isin, venue, line), turnover in traded.items():
@@ -639,7 +698,7 @@ def _serialise(tracks: dict[str, dict[str, Track]]) -> dict[str, Entry]:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=["download", "survey", "emit", "delivery"])
+    parser.add_argument("stage", choices=["download", "survey", "emit", "delivery", "validate"])
     parser.add_argument("--start", type=date.fromisoformat, required=True)
     parser.add_argument("--end", type=date.fromisoformat, required=True)
     parser.add_argument("--survey-file", type=Path, default=SURVEY_FILE)
@@ -657,6 +716,13 @@ def main() -> int:
             json.dumps(_serialise(tracks), indent=1, sort_keys=True), encoding="utf-8"
         )
         logger.info("survey written", extra={"instruments": len(tracks)})
+        return 0
+
+    if arguments.stage == "validate":
+        verdicts = validate_committed_days()
+        _write_trading_days(SEED_DIR, verdicts)
+        incomplete = sum(1 for item in verdicts if not item.is_complete)
+        logger.info("verdicts written", extra={"days": len(verdicts), "incomplete": incomplete})
         return 0
 
     if arguments.stage == "delivery":

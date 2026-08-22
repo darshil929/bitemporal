@@ -47,3 +47,16 @@ jobs:
       - run: make test-engine
         env:
           SANITIZER: ${{ matrix.sanitizer }}
+
+  contract-checks:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync
+      - name: Read each source and assert its columns
+        run: uv run pytest -m contract -v

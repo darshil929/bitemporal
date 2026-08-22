@@ -20,7 +20,7 @@ CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 SQL_SOURCES = $(shell find infra pipelines -name '*.sql' -not -path '*/target/*' 2>/dev/null)
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine test-python test-dbt test-web ci up down migrate seed
+.PHONY: setup lint test-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -64,6 +64,9 @@ test-engine:
 test-python:
 	uv run pytest
 
+test-contracts:
+	uv run pytest -m contract
+
 test-dbt:
 	cd pipelines/dbt && uv run dbt parse --profiles-dir .
 	cd pipelines/dbt && uv run dbt build --profiles-dir . --target fixture
@@ -85,3 +88,12 @@ migrate:
 
 seed:
 	uv run python scripts/load_fixture_seed.py
+
+# Reads every trading day both venues have published, throttled and cached to disk. Hours on
+# a cold cache, and resumable: a day already cached costs no request.
+BACKFILL_FROM ?= 1994-01-01
+BACKFILL_TO ?= $(shell date +%Y-%m-%d)
+
+backfill:
+	uv run python scripts/build_fixture_dataset.py download \
+		--start $(BACKFILL_FROM) --end $(BACKFILL_TO)

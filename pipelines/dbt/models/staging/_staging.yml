@@ -190,7 +190,51 @@ models:
         description: Shares that moved to a demat account rather than closing out intraday.
         data_tests: [not_null]
 
+  - name: stg_trading_day
+    description: >
+      One verdict per venue and trading day, holding the latest known on the as-of date.
+    columns:
+      - name: venue
+        description: Exchange the day belongs to.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [BSE, NSE]
+      - name: trade_date
+        description: The day the verdict describes.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The day the verdict was reached.
+        data_tests: [not_null]
+      - name: is_complete
+        description: Whether the day passed every check and may be read downstream.
+        data_tests: [not_null]
+      - name: bars
+        description: How many bars the venue published.
+        data_tests: [not_null]
+      - name: divergent_instruments
+        description: Instruments whose two venue closes disagreed beyond tolerance.
+        data_tests: [not_null]
+      - name: detail
+        description: What the day failed on, absent when it passed.
+
 unit_tests:
+  - name: a_revalidated_day_supersedes_its_earlier_verdict
+    description: A day checked again after a correction appends a verdict rather than replacing one.
+    model: stg_trading_day
+    given:
+      - input: source('market', 'trading_day')
+        rows:
+          - {venue: NSE, trade_date: "2025-06-02", as_of_date: "2025-06-02",
+             is_complete: false, bars: 5, divergent_instruments: 0, detail: truncated}
+          - {venue: NSE, trade_date: "2025-06-02", as_of_date: "2025-06-03",
+             is_complete: true, bars: 2100, divergent_instruments: 0, detail: }
+    expect:
+      rows:
+        - {venue: NSE, trade_date: "2025-06-02", as_of_date: "2025-06-03",
+           is_complete: true, bars: 2100}
+
   - name: a_corrected_bar_supersedes_the_one_it_corrects
     description: A venue republishing a day appends a row, and only the later one survives.
     model: stg_price_daily
