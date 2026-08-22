@@ -29,14 +29,16 @@ from pipelines.config.settings import SourceSettings
 from pipelines.identity import derive_listings, venue_key
 from pipelines.models.corporate_action import CorporateActionRecord
 from pipelines.models.identity import ListingRecord
-from pipelines.models.market import PriceBar
+from pipelines.models.market import DeliveryRecord, PriceBar
 from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.bse.corporate_actions import BseCorporateActions
+from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import NotPublished, SourceError
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
+from pipelines.sources.nse.delivery import NseDelivery
 from pipelines.sources.registry import SourceDefinition, load_definitions
 
 logger = logging.getLogger("fixture")
@@ -445,6 +447,96 @@ def _write_actions(seed_dir: Path, actions: Sequence[CorporateActionRecord]) -> 
             )
 
 
+def collect_delivery(start: date, end: date, cache: DiskCache) -> tuple[DeliveryRecord, ...]:
+    """Read the delivery figure for every trading day in the range, at both venues.
+
+    Neither file names an instrument by ISIN, so each is resolved through the listing that the
+    dataset already records for the venue-local identifier it carries.
+    """
+    listings = _committed_listings()
+    settings = SourceSettings()
+    plain = httpx.Client(headers={"User-Agent": settings.source_user_agent}, follow_redirects=True)
+    browser = httpx.Client(
+        headers={"User-Agent": BROWSER_USER_AGENT, "Accept-Language": "en-US,en;q=0.9"},
+        follow_redirects=True,
+    )
+
+    adapters: dict[str, tuple[BseDelivery | NseDelivery, dict[str, str]]] = {
+        "BSE": (
+            BseDelivery(
+                ThrottledClient("bse_delivery", plain, Throttle(2.0)),
+                cache,
+                "https://www.bseindia.com/BSEDATA/gross",
+            ),
+            {key: isin for (venue, key), isin in listings.items() if venue == "BSE"},
+        ),
+        "NSE": (
+            NseDelivery(
+                ThrottledClient("nse_delivery", browser, Throttle(2.0)),
+                cache,
+                "https://nsearchives.nseindia.com",
+            ),
+            {key: isin for (venue, key), isin in listings.items() if venue == "NSE"},
+        ),
+    }
+
+    records: list[DeliveryRecord] = []
+    for venue, (adapter, resolver) in adapters.items():
+        published = missing = 0
+        for day in _weekdays(start, end):
+            try:
+                payload = adapter.fetch(day)
+            except NotPublished:
+                missing += 1
+                continue
+            except SourceError:
+                logger.warning("delivery unavailable", extra={"venue": venue, "day": day})
+                continue
+            published += 1
+            records.extend(adapter.normalize(adapter.parse(payload), resolver))
+        logger.info(
+            "delivery collected",
+            extra={"venue": venue, "published": published, "missing": missing},
+        )
+
+    return tuple(records)
+
+
+def _committed_listings() -> dict[tuple[str, str], str]:
+    """Map each venue-local identifier in the dataset to the ISIN it belongs to."""
+    resolver: dict[tuple[str, str], str] = {}
+    with (SEED_DIR / "listing.csv").open(encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            key = row["scrip_code"] or row["local_symbol"]
+            resolver[(row["exchange"], key)] = row["isin"]
+    return resolver
+
+
+def _write_delivery(seed_dir: Path, records: Sequence[DeliveryRecord]) -> int:
+    seen: set[tuple[str, str, date]] = set()
+    ordered = sorted(records, key=lambda item: (item.isin, item.venue, item.trade_date))
+    with (seed_dir / "delivery_daily.csv").open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["isin", "venue", "trade_date", "as_of_date", "delivery_quantity"])
+        written = 0
+        for item in ordered:
+            key = (item.isin, item.venue, item.trade_date)
+            if key in seen:
+                continue
+            seen.add(key)
+            writer.writerow(
+                [
+                    item.isin,
+                    item.venue,
+                    item.trade_date.isoformat(),
+                    item.as_of_date.isoformat(),
+                    item.delivery_quantity,
+                ]
+            )
+            written += 1
+    return written
+
+
 def _dominant_lines(traded: dict[tuple[str, str, str], Decimal]) -> set[tuple[str, str, str]]:
     best: dict[tuple[str, str], tuple[Decimal, str]] = {}
     for (isin, venue, line), turnover in traded.items():
@@ -547,7 +639,7 @@ def _serialise(tracks: dict[str, dict[str, Track]]) -> dict[str, Entry]:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=["download", "survey", "emit"])
+    parser.add_argument("stage", choices=["download", "survey", "emit", "delivery"])
     parser.add_argument("--start", type=date.fromisoformat, required=True)
     parser.add_argument("--end", type=date.fromisoformat, required=True)
     parser.add_argument("--survey-file", type=Path, default=SURVEY_FILE)
@@ -565,6 +657,12 @@ def main() -> int:
             json.dumps(_serialise(tracks), indent=1, sort_keys=True), encoding="utf-8"
         )
         logger.info("survey written", extra={"instruments": len(tracks)})
+        return 0
+
+    if arguments.stage == "delivery":
+        records = collect_delivery(arguments.start, arguments.end, cache)
+        written = _write_delivery(SEED_DIR, records)
+        logger.info("delivery written", extra={"rows": written})
         return 0
 
     survey_data = json.loads(arguments.survey_file.read_text(encoding="utf-8"))

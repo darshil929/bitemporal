@@ -12,8 +12,7 @@ select distinct on (isin, venue, trade_date)
     previous_close,
     volume,
     turnover,
-    trade_count,
-    delivery_quantity
+    trade_count
 from {{ source('market', 'price_daily') }}
 where as_of_date <= '{{ var("as_of_date", "9999-12-31") }}'
 order by isin asc, venue asc, trade_date asc, as_of_date desc

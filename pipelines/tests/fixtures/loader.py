@@ -25,7 +25,13 @@ PIPELINES_ROOT = Path(__file__).resolve().parents[2]
 SEED_SCHEMA = "fixture"
 
 # Ordered so foreign keys resolve.
-SEED_TABLES = ("instrument_master", "listing", "price_daily", "corporate_action")
+SEED_TABLES = (
+    "instrument_master",
+    "listing",
+    "price_daily",
+    "delivery_daily",
+    "corporate_action",
+)
 
 
 @contextmanager

@@ -25,6 +25,32 @@ models:
         description: Absolute gap between the venue closes, in basis points of their midpoint.
         data_tests: [not_null]
 
+  - name: int_delivery_participation
+    description: >
+      The share of a day's volume that settled. Joins the bar to the delivery figure published
+      separately for the same instrument, venue and day.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier.
+        data_tests: [not_null]
+      - name: venue
+        description: Exchange both figures were published by.
+        data_tests: [not_null]
+      - name: trade_date
+        description: The day both figures describe.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The later of the two knowable dates, since the delivery file arrives second.
+        data_tests: [not_null]
+      - name: volume
+        description: Shares traded, from the bhavcopy.
+        data_tests: [not_null]
+      - name: delivery_quantity
+        description: Shares that settled, from the delivery file.
+        data_tests: [not_null]
+      - name: delivery_percentage
+        description: Delivery as a percentage of volume, absent on a day that traded nothing.
+
 unit_tests:
   - name: the_spread_is_measured_against_the_midpoint
     description: A one rupee gap on a hundred rupee midpoint is a hundred basis points.
@@ -49,5 +75,35 @@ unit_tests:
         rows:
           - {isin: INE0QVH01025, venue: BSE, trade_date: "2025-01-02",
              as_of_date: "2025-01-02", close: 100.5}
+    expect:
+      rows: []
+
+  - name: a_day_traded_round_shows_a_low_delivery_share
+    description: Half a day's volume settling reads as fifty percent participation.
+    model: int_delivery_participation
+    given:
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02",
+             as_of_date: "2025-01-02", volume: 1000}
+      - input: ref('stg_delivery_daily')
+        rows:
+          - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02",
+             as_of_date: "2025-01-02", delivery_quantity: 500}
+    expect:
+      rows:
+        - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", volume: 1000,
+           delivery_quantity: 500, delivery_percentage: "50.0000"}
+
+  - name: a_bar_with_no_delivery_figure_is_left_out
+    description: The delivery file arrives separately and sometimes not at all.
+    model: int_delivery_participation
+    given:
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02",
+             as_of_date: "2025-01-02", volume: 1000}
+      - input: ref('stg_delivery_daily')
+        rows: []
     expect:
       rows: []
