@@ -27,3 +27,17 @@ class PriceBar(BaseModel):
     volume: int
     turnover: Decimal | None
     trade_count: int | None
+
+
+class DeliveryRecord(BaseModel):
+    """Shares that settled rather than closing out intraday, for one instrument and day.
+
+    `as_of_date` equals `trade_date`: the venue publishes the figure the same evening as the bar
+    it belongs to, so a backfill records when it was knowable rather than when it was collected.
+    """
+
+    isin: str
+    venue: str
+    trade_date: date
+    as_of_date: date
+    delivery_quantity: int

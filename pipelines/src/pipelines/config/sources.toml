@@ -38,3 +38,36 @@ effective_to = 2024-07-05
 [[source.schema_version]]
 version = "udiff"
 effective_from = 2024-07-08
+
+[[source]]
+source_id = "nse_delivery"
+tier = 1
+sebi_curation_ref = "Equity Cash Market, row 2"
+base_url = "https://nsearchives.nseindia.com"
+requests_per_second = 0.5
+cache_policy = "permanent"
+owner_notes = """
+Names an instrument by ticker and series, never by ISIN, so a row resolves through the listing in
+force on its trade date. A series that settles no delivery reports a dash rather than a zero.
+"""
+
+[[source.schema_version]]
+version = "sec_bhavdata_full"
+effective_from = 2020-01-01
+
+[[source]]
+source_id = "bse_delivery"
+tier = 1
+sebi_curation_ref = "Equity Cash Market, row 2"
+base_url = "https://www.bseindia.com/BSEDATA/gross"
+requests_per_second = 0.5
+cache_policy = "permanent"
+owner_notes = """
+Pipe delimited text inside a zip, filed under the year and named by day and month alone. Scrip
+codes and quantities are zero padded. A date the venue holds nothing for answers with the home
+page carrying HTTP 200.
+"""
+
+[[source.schema_version]]
+version = "scbseall"
+effective_from = 2010-01-01

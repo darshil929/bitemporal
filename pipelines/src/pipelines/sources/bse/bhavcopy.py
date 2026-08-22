@@ -44,7 +44,7 @@ class BseBhavcopy:
 
         url = self.url_for(partition, schema_version)
         payload = self._client.get(url)
-        _reject_error_page(payload, url)
+        reject_error_page(payload, url)
         self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)
         return payload
 
@@ -59,7 +59,7 @@ class BseBhavcopy:
         return normalize(records, VENUE)
 
 
-def _reject_error_page(payload: bytes, url: str) -> None:
+def reject_error_page(payload: bytes, url: str) -> None:
     """BSE answers a request for a file it does not hold with its home page, carrying HTTP 200.
 
     Without this the page reaches the cache and every later run reads it back as a bhavcopy.

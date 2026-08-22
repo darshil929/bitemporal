@@ -51,8 +51,6 @@ models:
         description: Value traded, used to designate an instrument's primary venue.
       - name: trade_count
         description: Number of trades executed.
-      - name: delivery_quantity
-        description: Shares that settled rather than closing out intraday. Published separately.
 
   - name: stg_instruments
     description: One row per instrument, keyed on ISIN.
@@ -162,6 +160,36 @@ models:
           `ratio_from` over `ratio_to`. A price before the ex-date is multiplied by it, so a one
           for five split reads 0.2 and a one for one bonus reads 0.5. Absent for a dividend.
 
+  - name: stg_delivery_daily
+    description: >
+      Shares that settled rather than closing out intraday, one row per instrument, venue and
+      day, holding the latest version known on the as-of date.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier, resolved from the venue-local one.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: venue
+        description: Exchange the figure was published by.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [BSE, NSE]
+      - name: trade_date
+        description: The day the figure describes.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The day the figure became knowable, which is the evening of the trade date.
+        data_tests: [not_null]
+      - name: delivery_quantity
+        description: Shares that moved to a demat account rather than closing out intraday.
+        data_tests: [not_null]
+
 unit_tests:
   - name: a_corrected_bar_supersedes_the_one_it_corrects
     description: A venue republishing a day appends a row, and only the later one survives.
@@ -171,10 +199,10 @@ unit_tests:
         rows:
           - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-02",
              open: 100, high: 110, low: 95, close: 105, previous_close: 104, volume: 10,
-             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+             turnover: 1000, trade_count: 5}
           - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-03",
              open: 100, high: 110, low: 95, close: 108, previous_close: 104, volume: 10,
-             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+             turnover: 1000, trade_count: 5}
     expect:
       rows:
         - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-03",
@@ -188,10 +216,10 @@ unit_tests:
         rows:
           - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", as_of_date: "2025-01-02",
              open: 100, high: 110, low: 95, close: 105, previous_close: 104, volume: 10,
-             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+             turnover: 1000, trade_count: 5}
           - {isin: INE002A01018, venue: BSE, trade_date: "2025-01-02", as_of_date: "2025-01-02",
              open: 100, high: 110, low: 95, close: 106, previous_close: 104, volume: 10,
-             turnover: 1000, trade_count: 5, delivery_quantity: 4}
+             turnover: 1000, trade_count: 5}
     expect:
       rows:
         - {isin: INE002A01018, venue: BSE, trade_date: "2025-01-02", close: "106.0000"}

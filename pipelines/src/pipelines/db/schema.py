@@ -182,9 +182,6 @@ class PriceDaily(Base):
     turnover: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
     trade_count: Mapped[int | None] = mapped_column(BigInteger)
 
-    # Published in a separate file per venue, later than the bar itself.
-    delivery_quantity: Mapped[int | None] = mapped_column(BigInteger)
-
     __table_args__ = (
         CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
         # The close is not constrained to the traded range: BSE computes it from the last half
@@ -197,12 +194,33 @@ class PriceDaily(Base):
             "open >= 0 and high >= 0 and low >= 0 and close >= 0 and volume >= 0",
             name="quantities_are_not_negative",
         ),
-        CheckConstraint(
-            "delivery_quantity is null or delivery_quantity <= volume",
-            name="delivery_is_part_of_volume",
-        ),
         # The hypertable is created without default indexes, so this one is declared here.
         Index("ix_price_daily_trade_date", "trade_date"),
+    )
+
+
+class DeliveryDaily(Base):
+    """Shares that settled rather than closing out intraday, for one instrument, venue and day.
+
+    A venue publishes this in a file of its own, hours after the bhavcopy and sometimes not at
+    all, so it is a fact in its own right rather than a column on the bar. Neither file names an
+    instrument by ISIN, so a row is resolved through the listing in force on its trade date.
+    """
+
+    __tablename__ = "delivery_daily"
+
+    isin: Mapped[str] = mapped_column(
+        String(12), ForeignKey("instrument_master.isin"), primary_key=True
+    )
+    venue: Mapped[str] = mapped_column(String(12), primary_key=True)
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    delivery_quantity: Mapped[int] = mapped_column(BigInteger)
+
+    __table_args__ = (
+        CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
+        CheckConstraint("delivery_quantity >= 0", name="quantity_is_not_negative"),
+        Index("ix_delivery_daily_trade_date", "trade_date"),
     )
 
 
