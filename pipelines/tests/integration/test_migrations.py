@@ -196,6 +196,49 @@ def test_a_close_outside_the_traded_range_is_accepted(migrated: Config, postgres
         connection.execute("delete from price_daily")
 
 
+def test_an_unhandled_action_is_recorded_with_its_text(migrated: Config, postgres_dsn: str) -> None:
+    """A spin off carries no terms, so the text is what records that anything happened."""
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE155A01022")
+
+        connection.execute(
+            "insert into corporate_action"
+            " (isin, action_type, ex_date, source_id, as_of_date, qualifier, purpose)"
+            " values (%s, 'unhandled', %s, %s, %s, %s, %s)",
+            (
+                "INE155A01022",
+                "2025-10-14",
+                "bse_corporate_actions",
+                "2025-12-31",
+                "spin off",
+                "Spin Off",
+            ),
+        )
+
+        assert connection.execute(
+            "select count(*) from corporate_action where action_type = 'unhandled'"
+        ).fetchone() == (1,)
+
+        # The downgrade of this migration drops every unhandled action, and the test after it
+        # reads a table holding only what it inserts.
+        connection.execute("delete from corporate_action")
+
+
+def test_an_unhandled_action_without_its_text_is_rejected(
+    migrated: Config, postgres_dsn: str
+) -> None:
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE155A01022")
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "insert into corporate_action"
+                " (isin, action_type, ex_date, source_id, as_of_date, qualifier)"
+                " values (%s, 'unhandled', %s, %s, %s, %s)",
+                ("INE155A01022", "2025-10-14", "bse_corporate_actions", "2025-12-31", "spin off"),
+            )
+
+
 def test_a_split_without_a_ratio_is_rejected(migrated: Config, postgres_dsn: str) -> None:
     with _connect(postgres_dsn) as connection:
         _add_instrument(connection, "INE002A01018")

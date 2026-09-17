@@ -73,8 +73,13 @@ def test_an_ordinary_and_a_special_dividend_on_one_day_stay_apart() -> None:
 
 def test_an_action_whose_terms_are_not_in_the_text_is_reported_unhandled() -> None:
     """A spin off changes value by an amount the purpose text does not carry."""
-    assert parse_purpose("Spin Off")[0] == "unhandled"
+    assert parse_purpose("Spin Off") == ("unhandled", "spin off", None, None, None)
     assert parse_purpose("Scheme of Arrangement")[0] == "unhandled"
+
+
+def test_two_unhandled_actions_on_one_day_stay_apart() -> None:
+    """The qualifier carries the text, which is what separates them in the key."""
+    assert parse_purpose("Spin Off")[1] != parse_purpose("Scheme of Arrangement")[1]
 
 
 def test_a_response_that_is_not_a_list_is_rejected() -> None:
@@ -110,11 +115,25 @@ def test_the_recorded_shriram_split_normalizes() -> None:
     assert splits[0].ratio_to == Decimal(5)
 
 
-def test_a_spin_off_is_left_out_rather_than_guessed(caplog: pytest.LogCaptureFixture) -> None:
+def test_the_recorded_spin_off_keeps_its_text_and_carries_no_terms() -> None:
+    """Tata Motors Passenger Vehicles fell 40 percent on this demerger with no action beside it."""
     actions = normalize(parse_actions(payload("500570")), SCRIP_TO_ISIN, REPORTED_ON)
+    unhandled = [item for item in actions if item.action_type == "unhandled"]
 
-    assert all(item.action_type != "unhandled" for item in actions)
-    assert not [item for item in actions if item.ex_date == date(2025, 10, 14)]
+    assert len(unhandled) == 1
+    assert unhandled[0].ex_date == date(2025, 10, 14)
+    assert unhandled[0].isin == TATA_MOTORS_PV
+    assert unhandled[0].purpose == "Spin Off"
+    assert unhandled[0].qualifier == "spin off"
+    assert unhandled[0].ratio_from is None
+    assert unhandled[0].dividend_amount is None
+
+
+def test_an_action_with_terms_keeps_no_text() -> None:
+    """The text is held where it is the only record of what happened, not everywhere."""
+    actions = normalize(parse_actions(payload("500325")), SCRIP_TO_ISIN, REPORTED_ON)
+
+    assert all(item.purpose is None for item in actions)
 
 
 def test_a_scrip_outside_the_mapping_is_skipped() -> None:

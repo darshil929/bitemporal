@@ -38,7 +38,9 @@ VENUE_PATTERN = "^[A-Z][A-Z0-9]{1,11}$"
 
 INSTRUMENT_TYPES = ("equity", "preference_share", "debt", "etf", "warrant", "right")
 CLOSURE_REASONS = ("delisted", "renamed", "merged")
-ACTION_TYPES = ("split", "bonus", "consolidation", "rights", "dividend")
+ACTION_TYPES = ("split", "bonus", "consolidation", "rights", "dividend", "unhandled")
+# An action whose terms the purpose text does not carry, a spin off or a scheme of arrangement.
+UNTERMED_TYPES = ("dividend", "unhandled")
 INGESTION_OUTCOMES = ("succeeded", "not_published", "failed")
 
 PRICE = Numeric(18, 4)
@@ -49,9 +51,12 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
+def _rendered(values: tuple[str, ...]) -> str:
+    return "(" + ", ".join(f"'{value}'" for value in values) + ")"
+
+
 def _in_list(column: str, values: tuple[str, ...]) -> str:
-    rendered = ", ".join(f"'{value}'" for value in values)
-    return f"{column} in ({rendered})"
+    return f"{column} in {_rendered(values)}"
 
 
 class InstrumentMaster(Base):
@@ -251,6 +256,8 @@ class CorporateAction(Base):
     ratio_from: Mapped[Decimal | None] = mapped_column(RATIO)
     ratio_to: Mapped[Decimal | None] = mapped_column(RATIO)
     dividend_amount: Mapped[Decimal | None] = mapped_column(PRICE)
+    # The source text, which is the only record of what an unhandled action did.
+    purpose: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(_in_list("action_type", ACTION_TYPES), name="action_type"),
@@ -259,8 +266,12 @@ class CorporateAction(Base):
             name="a_dividend_pays_an_amount",
         ),
         CheckConstraint(
-            "(action_type <> 'dividend') = (ratio_from is not null)",
-            name="everything_else_changes_a_ratio",
+            f"(action_type not in {_rendered(UNTERMED_TYPES)}) = (ratio_from is not null)",
+            name="terms_match_the_action_type",
+        ),
+        CheckConstraint(
+            "action_type <> 'unhandled' or purpose is not null",
+            name="an_unhandled_action_keeps_its_text",
         ),
         CheckConstraint("(ratio_from is null) = (ratio_to is null)", name="ratio_has_both_sides"),
         CheckConstraint(

@@ -63,6 +63,21 @@ def test_a_bar_on_the_ex_date_is_left_alone() -> None:
     assert factor_for(schedule[RELIANCE], date(2025, 1, 10)) == Decimal(1)
 
 
+def test_an_unhandled_action_scales_nothing() -> None:
+    """Its terms are unknown, so a price before it stays as traded and the move stays flagged."""
+    spin_off = CorporateActionRecord(
+        isin=RELIANCE,
+        action_type="unhandled",
+        ex_date=date(2025, 10, 14),
+        source_id="bse_corporate_actions",
+        as_of_date=REPORTED_ON,
+        qualifier="spin off",
+        purpose="Spin Off",
+    )
+
+    assert factor_schedule([spin_off]) == {}
+
+
 def test_a_one_for_one_bonus_halves_earlier_prices() -> None:
     schedule = factor_schedule([action("bonus", "2024-10-28", "1", "2")])
 
