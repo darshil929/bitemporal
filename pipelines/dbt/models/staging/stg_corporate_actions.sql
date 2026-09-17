@@ -10,6 +10,7 @@ select distinct on (isin, action_type, ex_date, qualifier, source_id)
     ratio_from,
     ratio_to,
     dividend_amount,
+    purpose,
     case
         when ratio_from is not null and ratio_to is not null
             then round(ratio_from / ratio_to, 6)

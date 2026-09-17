@@ -36,6 +36,9 @@ DIVIDEND = re.compile(r"dividend\s*-\s*rs\.?\s*-\s*([\d.]+)", re.IGNORECASE)
 QUALIFIER = re.compile(r"^(interim|final|special)\s+dividend", re.IGNORECASE)
 DEFAULT_QUALIFIER = "ordinary"
 
+# The qualifier of an unhandled action is its purpose text, which a long one is cut to.
+QUALIFIER_LIMIT = 64
+
 
 def parse_purpose(
     purpose: str,
@@ -44,8 +47,8 @@ def parse_purpose(
 
     Returns the type, a qualifier naming the kind of dividend, the share count before and after,
     and a dividend amount. An action whose terms are not in the text, a spin off or a scheme of
-    arrangement, is reported as `unhandled` so that the caller records it rather than mistaking it
-    for nothing having happened.
+    arrangement, is reported as `unhandled`, qualified by the text in lower case so that two of
+    them sharing an ex-date stay apart.
     """
     text = " ".join(purpose.split())
 
@@ -74,7 +77,7 @@ def parse_purpose(
             Decimal(dividend.group(1)),
         )
 
-    return "unhandled", DEFAULT_QUALIFIER, None, None, None
+    return "unhandled", text.lower()[:QUALIFIER_LIMIT], None, None, None
 
 
 def parse_actions(payload: bytes) -> tuple[dict[str, str], ...]:
@@ -97,7 +100,10 @@ def parse_actions(payload: bytes) -> tuple[dict[str, str], ...]:
 def normalize(
     records: Sequence[dict[str, str]], isin_for_scrip: dict[str, str], as_of_date: date
 ) -> tuple[CorporateActionRecord, ...]:
-    """Map raw records onto canonical actions, dropping those with no derivable terms.
+    """Map raw records onto canonical actions.
+
+    An action whose terms the text does not carry is recorded as `unhandled` with that text. A
+    price move it caused is then marked rather than reading as a fall nothing explains.
 
     The endpoint repeats some rows verbatim, so an action already seen is recorded once.
     """
@@ -111,10 +117,10 @@ def normalize(
         if isin is None:
             continue
 
+        purpose = " ".join(record["Purpose"].split())
         action_type, qualifier, ratio_from, ratio_to, amount = parse_purpose(record["Purpose"])
         if action_type == "unhandled":
-            unhandled.append(f"{scrip_code} {record['exdate']} {record['Purpose'].strip()}")
-            continue
+            unhandled.append(f"{scrip_code} {record['exdate']} {purpose}")
 
         seal = (isin, action_type, record["exdate"], qualifier)
         if seal in seen:
@@ -132,12 +138,13 @@ def normalize(
                 ratio_from=ratio_from,
                 ratio_to=ratio_to,
                 dividend_amount=amount,
+                purpose=purpose if action_type == "unhandled" else None,
             )
         )
 
     if unhandled:
         logger.warning(
-            "corporate actions carry no derivable terms",
+            "corporate actions recorded without derivable terms",
             extra={"source_id": SOURCE_ID, "count": len(unhandled), "examples": unhandled[:5]},
         )
 

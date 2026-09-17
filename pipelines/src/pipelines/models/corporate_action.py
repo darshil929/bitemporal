@@ -12,6 +12,10 @@ class CorporateActionRecord(BaseModel):
     `ratio_from` and `ratio_to` are the share count before and after: a one-for-one bonus is 1 to
     2, a split from a face value of ten to two is 1 to 5. Both collapse to the same adjustment
     factor, so adjustment never branches on action type.
+
+    An action whose terms are not in the purpose text carries the type `unhandled`, no terms, and
+    the text itself in `purpose`. Its `qualifier` is that text in lower case, which separates two
+    such actions sharing an ex-date.
     """
 
     isin: str
@@ -23,3 +27,4 @@ class CorporateActionRecord(BaseModel):
     ratio_from: Decimal | None = None
     ratio_to: Decimal | None = None
     dividend_amount: Decimal | None = None
+    purpose: str | None = None

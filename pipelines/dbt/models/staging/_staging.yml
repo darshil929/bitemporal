@@ -134,7 +134,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: [split, bonus, consolidation, rights, dividend]
+                values: [split, bonus, consolidation, rights, dividend, unhandled]
       - name: ex_date
         description: First day the price trades without the entitlement.
         data_tests: [not_null]
@@ -155,6 +155,10 @@ models:
         description: Share count after the action.
       - name: dividend_amount
         description: Amount paid per share.
+      - name: purpose
+        description: >
+          The source text, held for an action whose terms it does not carry. Null for an action
+          whose terms were read out of it.
       - name: adjustment_factor
         description: >
           `ratio_from` over `ratio_to`. A price before the ex-date is multiplied by it, so a one
@@ -277,10 +281,25 @@ unit_tests:
         rows:
           - {isin: INE721A01047, action_type: split, ex_date: "2025-01-10",
              qualifier: ordinary, source_id: bse_corporate_actions, as_of_date: "2025-01-10",
-             ratio_from: 1, ratio_to: 5, dividend_amount: }
+             ratio_from: 1, ratio_to: 5, dividend_amount: , purpose: }
     expect:
       rows:
         - {isin: INE721A01047, action_type: split, adjustment_factor: "0.200000"}
+
+  - name: an_unhandled_action_carries_its_text_and_no_factor
+    description: >
+      A spin off changes value by an amount the purpose text does not carry, so it reaches the
+      staging layer with the text and without a factor.
+    model: stg_corporate_actions
+    given:
+      - input: source('market', 'corporate_action')
+        rows:
+          - {isin: INE155A01022, action_type: unhandled, ex_date: "2025-10-14",
+             qualifier: spin off, source_id: bse_corporate_actions, as_of_date: "2025-12-31",
+             ratio_from: , ratio_to: , dividend_amount: , purpose: Spin Off}
+    expect:
+      rows:
+        - {isin: INE155A01022, action_type: unhandled, purpose: Spin Off, adjustment_factor: }
 
   - name: a_dividend_carries_no_adjustment_factor
     description: A dividend leaves the share count alone, so a price series is not scaled for one.
@@ -290,7 +309,7 @@ unit_tests:
         rows:
           - {isin: INE002A01018, action_type: dividend, ex_date: "2025-08-14",
              qualifier: final, source_id: bse_corporate_actions, as_of_date: "2025-08-14",
-             ratio_from: , ratio_to: , dividend_amount: 5.5}
+             ratio_from: , ratio_to: , dividend_amount: 5.5, purpose: }
     expect:
       rows:
         - {isin: INE002A01018, action_type: dividend, adjustment_factor: }

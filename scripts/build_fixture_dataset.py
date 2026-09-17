@@ -425,6 +425,7 @@ def _write_actions(seed_dir: Path, actions: Sequence[CorporateActionRecord]) -> 
                 "ratio_from",
                 "ratio_to",
                 "dividend_amount",
+                "purpose",
             ]
         )
         for item in ordered:
@@ -439,6 +440,7 @@ def _write_actions(seed_dir: Path, actions: Sequence[CorporateActionRecord]) -> 
                     "" if item.ratio_from is None else str(item.ratio_from),
                     "" if item.ratio_to is None else str(item.ratio_to),
                     "" if item.dividend_amount is None else str(item.dividend_amount),
+                    item.purpose or "",
                 ]
             )
 
