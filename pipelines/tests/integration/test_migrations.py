@@ -196,6 +196,27 @@ def test_a_close_outside_the_traded_range_is_accepted(migrated: Config, postgres
         connection.execute("delete from price_daily")
 
 
+def test_a_listing_can_close_as_superseded(migrated: Config, postgres_dsn: str) -> None:
+    """A change of ISIN ends a stretch without the instrument leaving the venue."""
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE721A01013")
+
+        connection.execute(
+            "insert into listing"
+            " (isin, exchange, local_symbol, scrip_code, listing_date, delisting_date,"
+            " closure_reason) values (%s, 'BSE', 'SHRIRAMFIN', '511218', %s, %s, 'superseded')",
+            ("INE721A01013", "2024-01-02", "2025-01-09"),
+        )
+
+        assert connection.execute(
+            "select count(*) from listing where closure_reason = 'superseded'"
+        ).fetchone() == (1,)
+
+        # The downgrade of this migration takes a superseded stretch back to delisted, and the
+        # tests after this one read a table holding only what they insert.
+        connection.execute("delete from listing")
+
+
 def test_an_unhandled_action_is_recorded_with_its_text(migrated: Config, postgres_dsn: str) -> None:
     """A spin off carries no terms, so the text is what records that anything happened."""
     with _connect(postgres_dsn) as connection:
