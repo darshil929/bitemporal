@@ -110,6 +110,7 @@ def normalize(
     actions: list[CorporateActionRecord] = []
     seen: set[tuple[str, str, str, str]] = set()
     unhandled: list[str] = []
+    empty = 0
 
     for record in records:
         scrip_code = str(record["scrip_code"])
@@ -120,6 +121,10 @@ def normalize(
         purpose = " ".join(record["Purpose"].split())
         action_type, qualifier, ratio_from, ratio_to, amount = parse_purpose(record["Purpose"])
         if action_type == "unhandled":
+            if not purpose:
+                # The row states nothing, so there is nothing to record or to mark a move with.
+                empty += 1
+                continue
             unhandled.append(f"{scrip_code} {record['exdate']} {purpose}")
 
         seal = (isin, action_type, record["exdate"], qualifier)
@@ -140,6 +145,12 @@ def normalize(
                 dividend_amount=amount,
                 purpose=purpose if action_type == "unhandled" else None,
             )
+        )
+
+    if empty:
+        logger.warning(
+            "corporate actions carrying no purpose text left out",
+            extra={"source_id": SOURCE_ID, "count": empty},
         )
 
     if unhandled:

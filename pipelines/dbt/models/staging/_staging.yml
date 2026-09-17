@@ -109,11 +109,14 @@ models:
       - name: delisting_date
         description: Last day of the stretch, absent while it remains open.
       - name: closure_reason
-        description: Why the stretch closed.
+        description: >
+          Why the stretch closed. `superseded` means another ISIN took the instrument over under
+          the same venue-local identifier, which a face value change does; the instrument never
+          left the venue.
         data_tests:
           - accepted_values:
               arguments:
-                values: [delisted, renamed, merged]
+                values: [delisted, renamed, merged, superseded]
 
   - name: stg_corporate_actions
     description: >

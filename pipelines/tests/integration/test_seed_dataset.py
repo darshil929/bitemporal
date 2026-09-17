@@ -86,6 +86,46 @@ def test_an_instrument_stopped_trading(connection: psycopg.Connection) -> None:
     assert scalar(connection, "select count(*) from listing where closure_reason = 'delisted'") > 0
 
 
+def test_both_sides_of_a_change_of_isin_are_present(connection: psycopg.Connection) -> None:
+    """A series running across a split needs the predecessor and the successor, not one of them."""
+    pairs = scalar(
+        connection,
+        "select count(*) from listing predecessor join listing successor"
+        " on successor.exchange = predecessor.exchange"
+        " and coalesce(successor.scrip_code, successor.local_symbol)"
+        " = coalesce(predecessor.scrip_code, predecessor.local_symbol)"
+        " and successor.isin <> predecessor.isin"
+        " and successor.listing_date > predecessor.delisting_date"
+        " where predecessor.closure_reason = 'superseded'",
+    )
+
+    assert pairs > 0
+
+
+def test_an_action_without_derivable_terms_is_recorded(connection: psycopg.Connection) -> None:
+    """A demerger stated only in free text must reach the database to mark the move it caused."""
+    unhandled = scalar(
+        connection,
+        "select count(*) from corporate_action"
+        " where action_type = 'unhandled' and purpose is not null and purpose <> ''",
+    )
+    inside_the_window = scalar(
+        connection,
+        "select count(*) from corporate_action where action_type = 'unhandled'"
+        " and ex_date >= (select min(trade_date) from price_daily)",
+    )
+
+    assert unhandled > 0
+    assert inside_the_window > 0
+
+
+def test_no_action_is_knowable_before_it_happened(connection: psycopg.Connection) -> None:
+    """The venue publishes no announcement date, so an action reads as known when collected."""
+    ahead = scalar(connection, "select count(*) from corporate_action where ex_date > as_of_date")
+
+    assert ahead == 0
+
+
 def test_an_instrument_trades_on_bse_alone(connection: psycopg.Connection) -> None:
     bse_only = scalar(
         connection,
