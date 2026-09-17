@@ -22,6 +22,10 @@ ISIN_PATTERN = re.compile("^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 # end of the observed window.
 SETTLED_AFTER = timedelta(days=90)
 
+# A face value change issues a new ISIN, and the successor trades on the next day the venue is
+# open under the identifier the venue keeps. A weekend beside a holiday fits inside this.
+SUCCESSION_WINDOW = timedelta(days=7)
+
 # Liquidity migrates between venues gradually, so the designation is recomputed monthly from the
 # quarter behind it.
 TURNOVER_WINDOW = timedelta(days=90)
@@ -86,7 +90,11 @@ def derive_instruments(
 def derive_listings(
     bars: Sequence[PriceBar], venue_last_day: dict[str, date]
 ) -> tuple[ListingRecord, ...]:
-    """Group bars into stretches, closing one whenever the symbol changes."""
+    """Group bars into stretches, closing one whenever the symbol changes.
+
+    A stretch that stops while the venue keeps trading is closed as delisted, unless another ISIN
+    takes the instrument over under the same venue-local identifier, which supersedes it.
+    """
     spells: dict[tuple[str, str, str], list[Spell]] = defaultdict(list)
 
     for bar in sorted(bars, key=lambda item: (item.isin, item.venue, item.trade_date)):
@@ -111,7 +119,45 @@ def derive_listings(
                 )
             )
 
-    return tuple(listings)
+    return mark_supersessions(listings)
+
+
+def venue_identifier(listing: ListingRecord) -> str:
+    """What the venue keeps when the ISIN changes: the scrip code at BSE, the ticker at NSE."""
+    return listing.scrip_code or listing.local_symbol
+
+
+def mark_supersessions(listings: Sequence[ListingRecord]) -> tuple[ListingRecord, ...]:
+    """Record a stretch that ended because a new ISIN took the instrument over.
+
+    Shriram Finance stopped as `INE721A01013` on 2025-01-09 and resumed as `INE721A01047` the next
+    day, keeping its scrip code and its ticker. The instrument never left the venue, so the stretch
+    closes as superseded rather than delisted. Which ISIN succeeded it is not recorded here.
+    """
+    openings: dict[tuple[str, str], list[tuple[date, str]]] = defaultdict(list)
+    for listing in listings:
+        openings[(listing.exchange, venue_identifier(listing))].append(
+            (listing.listing_date, listing.isin)
+        )
+
+    return tuple(
+        listing.model_copy(update={"closure_reason": "superseded"})
+        if _taken_over(listing, openings[(listing.exchange, venue_identifier(listing))])
+        else listing
+        for listing in listings
+    )
+
+
+def _taken_over(listing: ListingRecord, openings: Sequence[tuple[date, str]]) -> bool:
+    """Whether another ISIN opened under the same identifier as this stretch closed."""
+    closed_on = listing.delisting_date
+    if listing.closure_reason != "delisted" or closed_on is None:
+        return False
+
+    return any(
+        isin != listing.isin and closed_on < opened_on <= closed_on + SUCCESSION_WINDOW
+        for opened_on, isin in openings
+    )
 
 
 def _absorb_untickered(history: list[Spell], key: str) -> list[Spell]:

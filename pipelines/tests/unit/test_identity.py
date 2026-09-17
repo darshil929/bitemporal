@@ -15,6 +15,8 @@ from pipelines.models.market import PriceBar
 
 RELIANCE = "INE002A01018"
 INFOSYS = "INE009A01021"
+SHRIRAM_OLD = "INE721A01013"
+SHRIRAM_NEW = "INE721A01047"
 
 
 def bar(
@@ -82,6 +84,76 @@ def test_a_listing_that_stops_early_is_recorded_as_delisted() -> None:
 
     assert listings[0].closure_reason == "delisted"
     assert listings[0].delisting_date == date(2025, 2, 3)
+
+
+def test_a_stretch_ended_by_a_change_of_isin_is_superseded() -> None:
+    """Shriram Finance kept its scrip code and ticker across the split that issued a new ISIN."""
+    bars = [
+        bar(
+            isin=SHRIRAM_OLD,
+            venue="BSE",
+            symbol="SHRIRAMFIN",
+            scrip_code="511218",
+            day="2024-01-02",
+        ),
+        bar(
+            isin=SHRIRAM_OLD,
+            venue="BSE",
+            symbol="SHRIRAMFIN",
+            scrip_code="511218",
+            day="2025-01-09",
+        ),
+        bar(
+            isin=SHRIRAM_NEW,
+            venue="BSE",
+            symbol="SHRIRAMFIN",
+            scrip_code="511218",
+            day="2025-01-10",
+        ),
+        bar(
+            isin=SHRIRAM_NEW,
+            venue="BSE",
+            symbol="SHRIRAMFIN",
+            scrip_code="511218",
+            day="2025-12-01",
+        ),
+    ]
+
+    listings = derive_listings(bars, {"BSE": date(2025, 12, 1)})
+
+    assert [(item.isin, item.closure_reason) for item in listings] == [
+        (SHRIRAM_OLD, "superseded"),
+        (SHRIRAM_NEW, None),
+    ]
+    assert listings[0].delisting_date == date(2025, 1, 9)
+
+
+def test_the_ticker_carries_the_supersession_at_nse() -> None:
+    """NSE publishes no scrip code, so the ticker is what runs through the change."""
+    bars = [
+        bar(isin=SHRIRAM_OLD, symbol="SHRIRAMFIN", day="2024-01-02"),
+        bar(isin=SHRIRAM_OLD, symbol="SHRIRAMFIN", day="2025-01-09"),
+        bar(isin=SHRIRAM_NEW, symbol="SHRIRAMFIN", day="2025-01-10"),
+        bar(isin=SHRIRAM_NEW, symbol="SHRIRAMFIN", day="2025-12-01"),
+    ]
+
+    listings = derive_listings(bars, {"NSE": date(2025, 12, 1)})
+
+    assert [item.closure_reason for item in listings] == ["superseded", None]
+
+
+def test_a_later_arrival_under_the_same_ticker_is_not_a_supersession() -> None:
+    """A ticker reused weeks afterwards is a different instrument, not a successor."""
+    bars = [
+        bar(isin=SHRIRAM_OLD, symbol="SHRIRAMFIN", day="2024-01-02"),
+        bar(isin=SHRIRAM_OLD, symbol="SHRIRAMFIN", day="2025-01-09"),
+        bar(isin=SHRIRAM_NEW, symbol="SHRIRAMFIN", day="2025-03-10"),
+        bar(isin=SHRIRAM_NEW, symbol="SHRIRAMFIN", day="2025-12-01"),
+    ]
+
+    listings = derive_listings(bars, {"NSE": date(2025, 12, 1)})
+
+    assert [item.closure_reason for item in listings] == ["delisted", None]
 
 
 def test_a_listing_still_trading_at_the_end_stays_open() -> None:

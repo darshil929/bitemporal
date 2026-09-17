@@ -37,7 +37,7 @@ ISIN_PATTERN = "^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
 VENUE_PATTERN = "^[A-Z][A-Z0-9]{1,11}$"
 
 INSTRUMENT_TYPES = ("equity", "preference_share", "debt", "etf", "warrant", "right")
-CLOSURE_REASONS = ("delisted", "renamed", "merged")
+CLOSURE_REASONS = ("delisted", "renamed", "merged", "superseded")
 ACTION_TYPES = ("split", "bonus", "consolidation", "rights", "dividend", "unhandled")
 # An action whose terms the purpose text does not carry, a spin off or a scheme of arrangement.
 UNTERMED_TYPES = ("dividend", "unhandled")
