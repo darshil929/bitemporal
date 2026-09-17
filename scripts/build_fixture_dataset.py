@@ -66,6 +66,9 @@ PRICE_COLUMNS = [
 # published on the row.
 ACTION_RATIO = Decimal("0.7")
 
+# A successor opens on the next day the venue is open, and a weekend beside a holiday fits here.
+SUCCESSION_WINDOW = timedelta(days=7)
+
 UDIFF = "udiff"
 
 ACTIONS_BASE_URL = "https://api.bseindia.com/BseIndiaAPI/api"
@@ -234,7 +237,7 @@ class Requirement:
     """One property the committed dataset must exhibit, and how to spot it."""
 
     name: str
-    holds: Callable[[Entry], bool]
+    holds: Callable[[str, Entry], bool]
     wanted: int = 1
 
 
@@ -242,40 +245,43 @@ def _day(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
-def _requirements(range_end: date) -> list[Requirement]:
+def _requirements(range_end: date, survey_data: dict[str, Entry]) -> list[Requirement]:
     settled = range_end - timedelta(days=90)
     recent = range_end - timedelta(days=60)
     late = range_end - timedelta(days=400)
 
-    def had_a_capital_action(entry: Entry) -> bool:
+    def had_a_capital_action(_isin: str, entry: Entry) -> bool:
         return any(
             venue["worst_ratio"] is not None and Decimal(venue["worst_ratio"]) < ACTION_RATIO
             for venue in entry.values()
         )
 
-    def changed_symbol(entry: Entry) -> bool:
+    def changed_symbol(_isin: str, entry: Entry) -> bool:
         # Only NSE names an instrument by ticker across the whole window, so only NSE can show
         # a rename rather than a change in how the file identifies instruments.
         nse = entry.get("NSE")
         return nse is not None and len(nse["symbols"]) > 1
 
-    def stopped_trading(entry: Entry) -> bool:
+    def stopped_trading(isin: str, entry: Entry) -> bool:
+        """Left the venue, rather than handing over to the ISIN a face value change issued."""
         ends = [_day(venue["last_day"]) for venue in entry.values()]
+        if succession_of(isin, survey_data) is not None:
+            return False
         return bool(ends) and all(end is not None and end < settled for end in ends)
 
-    def paused_and_resumed(entry: Entry) -> bool:
+    def paused_and_resumed(_isin: str, entry: Entry) -> bool:
         return any(
             venue["longest_gap"] >= 15 and (_day(venue["last_day"]) or date.min) > recent
             for venue in entry.values()
         )
 
-    def listed_only_on_bse(entry: Entry) -> bool:
+    def listed_only_on_bse(_isin: str, entry: Entry) -> bool:
         return set(entry) == {"BSE"}
 
-    def listed_on_both(entry: Entry) -> bool:
+    def listed_on_both(_isin: str, entry: Entry) -> bool:
         return set(entry) == {"BSE", "NSE"}
 
-    def started_late(entry: Entry) -> bool:
+    def started_late(_isin: str, entry: Entry) -> bool:
         starts = [_day(venue["first_day"]) for venue in entry.values()]
         return bool(starts) and all(start is not None and start > late for start in starts)
 
@@ -290,6 +296,37 @@ def _requirements(range_end: date) -> list[Requirement]:
     ]
 
 
+def succession_of(isin: str, survey_data: dict[str, Entry]) -> str | None:
+    """The ISIN on the other side of a face value change, if the survey holds one.
+
+    A split issues a new ISIN, and the successor opens under the ticker the predecessor closed
+    under, on the next day the venue is open. Without both sides the dataset cannot exercise a
+    series that runs across one.
+    """
+    for venue, track in survey_data[isin].items():
+        opened, closed = _day(track["first_day"]), _day(track["last_day"])
+        if opened is None or closed is None:
+            continue
+
+        for other, entry in survey_data.items():
+            counterpart = entry.get(venue)
+            if other == isin or counterpart is None:
+                continue
+            if not set(counterpart["symbols"]) & set(track["symbols"]):
+                continue
+
+            other_opened, other_closed = (
+                _day(counterpart["first_day"]),
+                _day(counterpart["last_day"]),
+            )
+            if other_opened and closed < other_opened <= closed + SUCCESSION_WINDOW:
+                return other
+            if other_closed and other_closed < opened <= other_closed + SUCCESSION_WINDOW:
+                return other
+
+    return None
+
+
 def choose(survey_data: dict[str, Entry], range_end: date) -> dict[str, str]:
     """Pick instruments until every requirement is met, preferring the most traded."""
 
@@ -299,14 +336,14 @@ def choose(survey_data: dict[str, Entry], range_end: date) -> dict[str, str]:
     ranked = sorted(survey_data, key=liquidity, reverse=True)
     chosen: dict[str, str] = {}
 
-    for requirement in _requirements(range_end):
+    for requirement in _requirements(range_end, survey_data):
         found = 0
         for isin in ranked:
             if found >= requirement.wanted:
                 break
             if isin in chosen:
                 continue
-            if requirement.holds(survey_data[isin]):
+            if requirement.holds(isin, survey_data[isin]):
                 chosen[isin] = requirement.name
                 found += 1
         if found < requirement.wanted:
@@ -318,6 +355,14 @@ def choose(survey_data: dict[str, Entry], range_end: date) -> dict[str, str]:
                     "wanted": requirement.wanted,
                 },
             )
+
+    for isin in list(chosen):
+        counterpart = succession_of(isin, survey_data)
+        if counterpart is not None and counterpart not in chosen:
+            chosen[counterpart] = "succession"
+
+    if "succession" not in chosen.values():
+        logger.warning("no instrument in the dataset has both sides of a change of ISIN")
 
     return chosen
 
@@ -380,7 +425,7 @@ def emit(
 def collect_actions(
     listings: Sequence[ListingRecord], cache: DiskCache, reported_on: date
 ) -> tuple[CorporateActionRecord, ...]:
-    """Read the action history of every BSE scrip in the dataset."""
+    """Read the action history of every BSE scrip in the dataset, up to the collection date."""
     settings = SourceSettings()
     client = httpx.Client(
         headers={"User-Agent": settings.source_user_agent},
@@ -405,7 +450,15 @@ def collect_actions(
             continue
         actions.extend(adapter.normalize(adapter.parse(payload), isin_for_scrip, reported_on))
 
-    return tuple(actions)
+    # The endpoint publishes no announcement date, so every action carries the day it was
+    # collected. One with a later ex-date would then claim to have been knowable before it was
+    # announced, which is lookahead in the one environment CI reads.
+    knowable = [action for action in actions if action.ex_date <= reported_on]
+    ahead = len(actions) - len(knowable)
+    if ahead:
+        logger.info("actions ahead of the collection date left out", extra={"actions": ahead})
+
+    return tuple(knowable)
 
 
 def _write_actions(seed_dir: Path, actions: Sequence[CorporateActionRecord]) -> None:
