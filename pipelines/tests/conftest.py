@@ -8,6 +8,7 @@ from alembic.config import Config
 from testcontainers.community.postgres import PostgresContainer
 
 from fixtures.loader import load_seed
+from pipelines.resources import Database
 
 # Matches the image the local stack runs, so tests exercise the same extensions.
 POSTGRES_IMAGE = "timescale/timescaledb-ha:pg17"
@@ -16,6 +17,16 @@ PIPELINES_ROOT = Path(__file__).resolve().parents[1]
 
 # The seed dataset occupies the fixture schema in the same container.
 MIGRATION_SCHEMA = "dev"
+
+
+class PointedDatabase(Database):
+    """The database resource, pointed at the schema a test built rather than the configured one."""
+
+    dsn: str = ""
+    schema: str = MIGRATION_SCHEMA
+
+    def connect(self) -> psycopg.Connection:  # type: ignore[override]
+        return psycopg.connect(self.dsn, options=f"-csearch_path={self.schema},public")
 
 
 @pytest.fixture(scope="session")
