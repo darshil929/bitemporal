@@ -4,9 +4,10 @@ import logging
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Protocol
 
 import psycopg
 
@@ -37,9 +38,21 @@ class UnresolvedInstrument(SourceError):
 
 @dataclass
 class Spell:
-    """A stretch during which one instrument traded under one symbol at one venue."""
+    """A run of days one instrument traded under one symbol at one venue."""
 
     symbol: str
+    scrip_code: str | None
+    first_day: date
+    last_day: date
+
+
+@dataclass(frozen=True)
+class Stretch:
+    """One period a venue named one instrument one way, whether read from files or from storage."""
+
+    isin: str
+    exchange: str
+    local_symbol: str
     scrip_code: str | None
     first_day: date
     last_day: date
@@ -90,31 +103,48 @@ def derive_instruments(
 def derive_listings(
     bars: Sequence[PriceBar], venue_last_day: dict[str, date]
 ) -> tuple[ListingRecord, ...]:
-    """Group bars into stretches, closing one whenever the symbol changes.
-
-    A stretch that stops while the venue keeps trading is closed as delisted, unless another ISIN
-    takes the instrument over under the same venue-local identifier, which supersedes it.
-    """
+    """Group bars into stretches and close each one the venue's own record ended."""
     spells: dict[tuple[str, str, str], list[Spell]] = defaultdict(list)
 
     for bar in sorted(bars, key=lambda item: (item.isin, item.venue, item.trade_date)):
         extend_spell(spells[(bar.isin, bar.venue, venue_key(bar))], bar)
 
+    stretches = [
+        Stretch(isin, venue, spell.symbol, spell.scrip_code, spell.first_day, spell.last_day)
+        for (isin, venue, _), history in sorted(spells.items())
+        for spell in history
+    ]
+    return close_listings(stretches, venue_last_day)
+
+
+def close_listings(
+    stretches: Sequence[Stretch], venue_last_day: dict[str, date]
+) -> tuple[ListingRecord, ...]:
+    """Turn observed stretches into listings, closing each one that ended.
+
+    A stretch the venue kept trading past is closed as renamed when another follows it under the
+    same venue-local identifier, and as delisted when none does, unless another ISIN took the
+    instrument over, which supersedes it.
+    """
+    grouped: dict[tuple[str, str, str], list[Stretch]] = defaultdict(list)
+    for stretch in stretches:
+        grouped[(stretch.isin, stretch.exchange, stretch.scrip_code or "")].append(stretch)
+
     listings = []
-    for (isin, venue, key), history in sorted(spells.items()):
-        history = _absorb_untickered(history, key)
-        for index, spell in enumerate(history):
+    for (isin, venue, key), history in sorted(grouped.items()):
+        history = _absorb_untickered(sorted(history, key=lambda item: item.first_day), key)
+        for index, stretch in enumerate(history):
             renamed = index < len(history) - 1
-            stopped = spell.last_day < venue_last_day[venue] - SETTLED_AFTER
+            stopped = stretch.last_day < venue_last_day[venue] - SETTLED_AFTER
             closed = renamed or stopped
             listings.append(
                 ListingRecord(
                     isin=isin,
                     exchange=venue,
-                    local_symbol=spell.symbol,
-                    scrip_code=spell.scrip_code,
-                    listing_date=spell.first_day,
-                    delisting_date=spell.last_day if closed else None,
+                    local_symbol=stretch.local_symbol,
+                    scrip_code=stretch.scrip_code,
+                    listing_date=stretch.first_day,
+                    delisting_date=stretch.last_day if closed else None,
                     closure_reason=("renamed" if renamed else "delisted") if closed else None,
                 )
             )
@@ -160,16 +190,16 @@ def _taken_over(listing: ListingRecord, openings: Sequence[tuple[date, str]]) ->
     )
 
 
-def _absorb_untickered(history: list[Spell], key: str) -> list[Spell]:
+def _absorb_untickered(history: list[Stretch], key: str) -> list[Stretch]:
     """Fold a stretch that carried no ticker into the one that follows it.
 
     The BSE file published no ticker before the cutover, so those rows report the scrip code as
     the symbol. They belong to the stretch that names the instrument rather than forming one of
     their own, and folding them keeps every bar inside a listing.
     """
-    if len(history) >= 2 and history[0].symbol == key:
-        history[1].first_day = history[0].first_day
-        return history[1:]
+    if len(history) >= 2 and history[0].local_symbol == key:
+        widened = replace(history[1], first_day=history[0].first_day)
+        return [widened, *history[2:]]
     return history
 
 
@@ -187,7 +217,26 @@ def _computation_days(first: date, last: date) -> list[date]:
     return inside
 
 
-def derive_primary_venue(bars: Sequence[PriceBar]) -> tuple[PrimaryVenueRecord, ...]:
+class TradedValue(Protocol):
+    """What designating a primary venue needs of a row: who traded where, when, and how much.
+
+    Read-only members, so a bar read from a file and a summary read from storage both satisfy it.
+    """
+
+    @property
+    def isin(self) -> str: ...
+
+    @property
+    def venue(self) -> str: ...
+
+    @property
+    def trade_date(self) -> date: ...
+
+    @property
+    def turnover(self) -> Decimal | None: ...
+
+
+def derive_primary_venue(bars: Sequence[TradedValue]) -> tuple[PrimaryVenueRecord, ...]:
     """Designate, month by month, the venue an instrument's series is computed from.
 
     The designation carries the date it was computed, so a backtest reads the venue that trailing

@@ -11,9 +11,9 @@ import pytest
 from alembic.config import Config
 from dagster import build_asset_context
 
-from conftest import MIGRATION_SCHEMA
+from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.bhavcopy import ingest
-from pipelines.resources import Bhavcopies, Database
+from pipelines.resources import Bhavcopies
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.errors import NotPublished
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
@@ -47,15 +47,6 @@ class RecordedBhavcopies:
 
         adapter.fetch = fetch  # type: ignore[method-assign]
         return adapter
-
-
-class PointedDatabase(Database):
-    """Connections to the schema the migrations under test built."""
-
-    dsn: str = ""
-
-    def connect(self):  # type: ignore[override]
-        return psycopg.connect(self.dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public")
 
 
 def payload(source_id: str, name: str) -> bytes:
