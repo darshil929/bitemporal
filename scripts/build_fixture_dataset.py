@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
+import io
 import json
 import logging
 import sys
@@ -21,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import TypedDict
+from typing import TextIO, TypedDict
 
 import httpx
 
@@ -113,6 +115,19 @@ class Track:
             if self.worst_ratio is None or ratio < self.worst_ratio:
                 self.worst_ratio = ratio
                 self.worst_ratio_day = bar.trade_date
+
+
+def seed_writer(path: Path) -> TextIO:
+    """A gzipped CSV, written without a timestamp so an unchanged rebuild produces the same bytes."""
+    return io.TextIOWrapper(
+        gzip.GzipFile(filename=path, mode="wb", compresslevel=9, mtime=0),
+        encoding="utf-8",
+        newline="",
+    )
+
+
+def seed_reader(path: Path) -> TextIO:
+    return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8", newline="")
 
 
 def _trading_days_between(trading_days: list[date], start: date, end: date) -> int:
@@ -467,7 +482,7 @@ def _write_actions(seed_dir: Path, actions: Sequence[CorporateActionRecord]) -> 
     ordered = sorted(
         actions, key=lambda item: (item.isin, item.ex_date, item.action_type, item.qualifier)
     )
-    with (seed_dir / "corporate_action.csv").open("w", encoding="utf-8", newline="") as handle:
+    with seed_writer(seed_dir / "corporate_action.csv.gz") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(
             [
@@ -558,7 +573,7 @@ def collect_delivery(start: date, end: date, cache: DiskCache) -> tuple[Delivery
 def _committed_listings() -> dict[tuple[str, str], str]:
     """Map each venue-local identifier in the dataset to the ISIN it belongs to."""
     resolver: dict[tuple[str, str], str] = {}
-    with (SEED_DIR / "listing.csv").open(encoding="utf-8") as handle:
+    with seed_reader(SEED_DIR / "listing.csv.gz") as handle:
         for row in csv.DictReader(handle):
             key = row["scrip_code"] or row["local_symbol"]
             resolver[(row["exchange"], key)] = row["isin"]
@@ -568,7 +583,7 @@ def _committed_listings() -> dict[tuple[str, str], str]:
 def _write_delivery(seed_dir: Path, records: Sequence[DeliveryRecord]) -> int:
     seen: set[tuple[str, str, date]] = set()
     ordered = sorted(records, key=lambda item: (item.isin, item.venue, item.trade_date))
-    with (seed_dir / "delivery_daily.csv").open("w", encoding="utf-8", newline="") as handle:
+    with seed_writer(seed_dir / "delivery_daily.csv.gz") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(["isin", "venue", "trade_date", "as_of_date", "delivery_quantity"])
         written = 0
@@ -593,7 +608,7 @@ def _write_delivery(seed_dir: Path, records: Sequence[DeliveryRecord]) -> int:
 def validate_committed_days() -> tuple[DayVerdict, ...]:
     """Reach a verdict on every venue day the committed dataset holds."""
     by_day: dict[tuple[str, date], list[PriceBar]] = defaultdict(list)
-    with (SEED_DIR / "price_daily.csv").open(encoding="utf-8") as handle:
+    with seed_reader(SEED_DIR / "price_daily.csv.gz") as handle:
         for row in csv.DictReader(handle):
             bar = PriceBar(
                 isin=row["isin"],
@@ -626,7 +641,7 @@ def validate_committed_days() -> tuple[DayVerdict, ...]:
 
 
 def _write_trading_days(seed_dir: Path, verdicts: Sequence[DayVerdict]) -> None:
-    with (seed_dir / "trading_day.csv").open("w", encoding="utf-8", newline="") as handle:
+    with seed_writer(seed_dir / "trading_day.csv.gz") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(
             [
@@ -668,7 +683,7 @@ def _write_prices(
     dominant: set[tuple[str, str, str]],
 ) -> int:
     written = 0
-    with (seed_dir / "price_daily.csv").open("w", encoding="utf-8", newline="") as handle:
+    with seed_writer(seed_dir / "price_daily.csv.gz") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(PRICE_COLUMNS)
         for key in sorted(dominant):
@@ -698,7 +713,7 @@ def _price_row(bar: PriceBar) -> list[str]:
 
 
 def _write_instruments(seed_dir: Path, chosen: dict[str, str], names: dict[str, str]) -> None:
-    with (seed_dir / "instrument_master.csv").open("w", encoding="utf-8", newline="") as handle:
+    with seed_writer(seed_dir / "instrument_master.csv.gz") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(["isin", "name", "sector", "country", "instrument_type"])
         for isin in sorted(chosen):
@@ -706,7 +721,7 @@ def _write_instruments(seed_dir: Path, chosen: dict[str, str], names: dict[str, 
 
 
 def _write_listings(seed_dir: Path, listings: Sequence[ListingRecord]) -> None:
-    with (seed_dir / "listing.csv").open("w", encoding="utf-8", newline="") as handle:
+    with seed_writer(seed_dir / "listing.csv.gz") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(
             [

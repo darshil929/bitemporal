@@ -11,6 +11,9 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
+        # The committed dataset is the one large thing this repository holds on purpose: real
+        # bars for 38 instruments over two years, gzipped, which PR CI reads offline.
+        exclude: ^pipelines/tests/fixtures/seed/
       - id: mixed-line-ending
 
   # Every linter below runs through the same command make lint uses, so the two

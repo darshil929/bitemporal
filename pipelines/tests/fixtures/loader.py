@@ -1,7 +1,8 @@
 """Materialize the committed seed dataset into a Postgres database.
 
 The schema comes from the migrations rather than a copy kept beside the data, so the fixture
-exercises the tables the application actually uses.
+exercises the tables the application actually uses. Each table is one gzipped CSV, which is a
+fifth of the size a repository keeps a copy of on every rebuild.
 
 `listing_date` in the seed is the first day an instrument appears in the recorded window, not the
 day it listed. A test asserting a real listing date would be asserting the window.
@@ -11,6 +12,7 @@ because adjustment needs every action ahead of a bar. Their `as_of_date` is the 
 collected rather than announced, which the venue does not publish.
 """
 
+import gzip
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -65,14 +67,14 @@ def load_seed(dsn: str, seed_dir: Path = SEED_DIR) -> None:
     ) as connection:
         with connection.cursor() as cursor:
             for table in SEED_TABLES:
-                csv_path = seed_dir / f"{table}.csv"
-                columns = csv_path.read_text(encoding="utf-8").splitlines()[0]
+                rows = gzip.decompress((seed_dir / f"{table}.csv.gz").read_bytes())
+                columns = rows.split(b"\n", 1)[0].decode("utf-8")
                 copy = (
                     f"copy {SEED_SCHEMA}.{table} ({columns})"
                     " from stdin with (format csv, header true)"
                 )
 
                 with cursor.copy(copy) as copier:
-                    copier.write(csv_path.read_bytes())
+                    copier.write(rows)
 
         connection.commit()
