@@ -179,6 +179,11 @@ class PriceDaily(Base):
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
     as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
 
+    # How the venue named the instrument that day: its ticker, and the scrip code BSE keeps
+    # across a rename. Identity derivation reads these, since a rename is only visible in them.
+    local_symbol: Mapped[str] = mapped_column(Text)
+    scrip_code: Mapped[str | None] = mapped_column(Text)
+
     open: Mapped[Decimal] = mapped_column(PRICE)
     high: Mapped[Decimal] = mapped_column(PRICE)
     low: Mapped[Decimal] = mapped_column(PRICE)
