@@ -43,6 +43,18 @@ class BhavcopyRow(BaseModel):
         raise NotImplementedError
 
 
+def names_by_isin(rows: Sequence[BhavcopyRow], venue: str) -> dict[str, str]:
+    """The name each equity row carries, keyed on ISIN.
+
+    A venue names an instrument in every file it publishes, so the master takes its name from the
+    day being read rather than from a separate source.
+    """
+    equity_series = EQUITY_SERIES[venue]
+    return {
+        row.to_bar(venue).isin: row.security_name for row in rows if row.series in equity_series
+    }
+
+
 def normalize(rows: Sequence[BhavcopyRow], venue: str) -> tuple[PriceBar, ...]:
     """Map the equity rows onto canonical bars, keyed on ISIN."""
     equity_series = EQUITY_SERIES[venue]
