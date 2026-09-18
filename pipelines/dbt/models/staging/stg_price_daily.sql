@@ -5,6 +5,8 @@ select distinct on (isin, venue, trade_date)
     venue,
     trade_date,
     as_of_date,
+    local_symbol,
+    scrip_code,
     open,
     high,
     low,

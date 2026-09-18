@@ -19,8 +19,8 @@ from pipelines.models.market import DeliveryRecord, PriceBar
 logger = logging.getLogger(__name__)
 
 BAR_COLUMNS = (
-    "isin, venue, trade_date, as_of_date, open, high, low, close, previous_close,"
-    " volume, turnover, trade_count"
+    "isin, venue, trade_date, as_of_date, local_symbol, scrip_code, open, high, low, close,"
+    " previous_close, volume, turnover, trade_count"
 )
 BAR_KEY = "(isin, venue, trade_date, as_of_date)"
 
@@ -67,6 +67,8 @@ def persist_bars(connection: psycopg.Connection, bars: Sequence[PriceBar]) -> in
             bar.venue,
             bar.trade_date,
             bar.as_of_date,
+            bar.local_symbol,
+            bar.scrip_code,
             bar.open,
             bar.high,
             bar.low,

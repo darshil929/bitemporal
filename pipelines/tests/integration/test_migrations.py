@@ -14,7 +14,7 @@ FACT_TABLES = frozenset({"price_daily", "corporate_action", "ingestion_log"})
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
 MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES
 
-BAR_COLUMNS = "isin, venue, trade_date, as_of_date, open, high, low, close, volume"
+BAR_COLUMNS = "isin, venue, trade_date, as_of_date, local_symbol, open, high, low, close, volume"
 
 
 def _connect(dsn: str) -> psycopg.Connection:
@@ -46,8 +46,8 @@ def _add_bar(
     high: str = "110",
 ) -> None:
     connection.execute(
-        f"insert into price_daily ({BAR_COLUMNS}) values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        (isin, "NSE", "2026-07-31", as_of_date, "100", high, "95", close, 1000),
+        f"insert into price_daily ({BAR_COLUMNS}) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (isin, "NSE", "2026-07-31", as_of_date, "TESTCO", "100", high, "95", close, 1000),
     )
 
 
@@ -177,8 +177,19 @@ def test_a_bar_whose_high_is_below_its_open_is_rejected(
         with pytest.raises(psycopg.errors.CheckViolation):
             connection.execute(
                 f"insert into price_daily ({BAR_COLUMNS})"
-                " values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                ("INE002A01018", "NSE", "2026-07-31", "2026-07-31", "120", "110", "95", "100", 1),
+                " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    "INE002A01018",
+                    "NSE",
+                    "2026-07-31",
+                    "2026-07-31",
+                    "TESTCO",
+                    "120",
+                    "110",
+                    "95",
+                    "100",
+                    1,
+                ),
             )
 
 
