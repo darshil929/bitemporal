@@ -13,6 +13,7 @@ from decimal import Decimal
 import psycopg
 
 from pipelines.identity import Stretch
+from pipelines.models.market import PriceBar
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,23 @@ select venue, max(trade_date) from price_daily where as_of_date <= %(as_of)s gro
 
 FAR_FUTURE = date(9999, 12, 31)
 
+BAR_FIELDS = (
+    "isin",
+    "venue",
+    "trade_date",
+    "as_of_date",
+    "local_symbol",
+    "scrip_code",
+    "open",
+    "high",
+    "low",
+    "close",
+    "previous_close",
+    "volume",
+    "turnover",
+    "trade_count",
+)
+
 
 @dataclass(frozen=True)
 class TurnoverPoint:
@@ -90,3 +108,58 @@ def read_turnover(
 
 def venue_last_days(connection: psycopg.Connection, as_of: date = FAR_FUTURE) -> dict[str, date]:
     return {venue: last for venue, last in connection.execute(VENUE_LAST_DAYS, {"as_of": as_of})}
+
+
+BARS_FOR_DAY = """
+select distinct on (isin, venue)
+    isin, venue, trade_date, as_of_date, local_symbol, scrip_code,
+    open, high, low, close, previous_close, volume, turnover, trade_count
+from price_daily
+where trade_date = %(trade_date)s and as_of_date <= %(as_of)s
+order by isin, venue, as_of_date desc
+"""
+
+# A day with no verdict has not been validated, and one validated before a correction arrived is
+# revalidated because the correction carries a later as-of date than the verdict standing.
+DAYS_AWAITING_A_VERDICT = """
+select distinct p.trade_date
+from price_daily p
+where p.as_of_date <= %(as_of)s
+  and not exists (
+      select 1 from trading_day d
+      where d.venue = p.venue
+        and d.trade_date = p.trade_date
+        and d.as_of_date >= p.as_of_date
+  )
+order by p.trade_date
+"""
+
+# How many instruments a venue usually lists, against which a truncated file is recognised.
+TYPICAL_BARS = """
+select venue, percentile_disc(0.5) within group (order by bars) as typical
+from (
+    select venue, trade_date, count(*) as bars
+    from price_daily where as_of_date <= %(as_of)s group by venue, trade_date
+) as days
+group by venue
+"""
+
+
+def read_bars(
+    connection: psycopg.Connection, trade_date: date, as_of: date = FAR_FUTURE
+) -> tuple[PriceBar, ...]:
+    """Every venue's bars for one day, each resolved to the version standing on the as-of date."""
+    rows = connection.execute(BARS_FOR_DAY, {"trade_date": trade_date, "as_of": as_of}).fetchall()
+    return tuple(PriceBar(**dict(zip(BAR_FIELDS, row, strict=True))) for row in rows)
+
+
+def days_awaiting_a_verdict(
+    connection: psycopg.Connection, as_of: date = FAR_FUTURE
+) -> tuple[date, ...]:
+    return tuple(row[0] for row in connection.execute(DAYS_AWAITING_A_VERDICT, {"as_of": as_of}))
+
+
+def typical_bars(connection: psycopg.Connection, as_of: date = FAR_FUTURE) -> dict[str, int]:
+    return {
+        venue: int(count) for venue, count in connection.execute(TYPICAL_BARS, {"as_of": as_of})
+    }
