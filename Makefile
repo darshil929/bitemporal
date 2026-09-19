@@ -90,8 +90,9 @@ seed:
 	uv run python scripts/load_fixture_seed.py
 
 # Reads every trading day both venues have published, throttled and cached to disk. Hours on
-# a cold cache, and resumable: a day already cached costs no request.
-BACKFILL_FROM ?= 1994-01-01
+# a cold cache, and resumable: a day already cached costs no request. The default start is the
+# first day either venue names its instruments by ISIN; a venue skips the days before its own.
+BACKFILL_FROM ?= 2011-06-22
 BACKFILL_TO ?= $(shell date +%Y-%m-%d)
 
 backfill:

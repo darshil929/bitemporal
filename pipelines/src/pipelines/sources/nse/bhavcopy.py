@@ -1,11 +1,10 @@
 """NSE equity bhavcopy, served as a zipped CSV behind a session cookie."""
 
-import io
-import zipfile
 from collections.abc import Sequence
 from datetime import date
 
 from pipelines.models.market import PriceBar
+from pipelines.sources.archive import extract_csv
 from pipelines.sources.bhavcopy import BhavcopyRow, normalize
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import ThrottledClient
@@ -55,7 +54,7 @@ class NseBhavcopy:
             archive = self._read_archive(self.url_for(partition, schema_version))
             self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, archive)
 
-        return _extract(archive)
+        return extract_csv(archive)
 
     def _read_archive(self, url: str) -> bytes:
         """Fetch through the session cookie, collecting a fresh one if the held one has expired.
@@ -86,15 +85,3 @@ class NseBhavcopy:
             return
         self._client.get(COOKIE_SOURCE_URL)
         self._holds_cookie = True
-
-
-def _extract(archive: bytes) -> bytes:
-    """Return the single CSV the archive carries."""
-    try:
-        with zipfile.ZipFile(io.BytesIO(archive)) as opened:
-            names = [name for name in opened.namelist() if name.lower().endswith(".csv")]
-            if len(names) != 1:
-                raise SourceUnavailable(f"archive holds {len(names)} csv entries, expected one")
-            return opened.read(names[0])
-    except zipfile.BadZipFile as error:
-        raise SourceUnavailable("archive is not a zip file") from error

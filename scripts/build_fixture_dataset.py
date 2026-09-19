@@ -38,7 +38,7 @@ from pipelines.sources.bse.corporate_actions import BseCorporateActions
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
-from pipelines.sources.errors import NotPublished, SourceError
+from pipelines.sources.errors import NotPublished, SourceError, UnknownSchemaVersion
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
 from pipelines.sources.nse.delivery import NseDelivery
 from pipelines.sources.registry import SourceDefinition, load_definitions
@@ -194,11 +194,16 @@ def read_day(adapter: object, definition: SourceDefinition, day: date) -> tuple[
 def download(start: date, end: date, cache: DiskCache) -> None:
     adapters = _adapters(cache)
     for venue, (adapter, definition) in adapters.items():
-        published = missing = failed = 0
+        published = missing = uncovered = failed = 0
         for day in _weekdays(start, end):
             try:
                 read_day(adapter, definition, day)
                 published += 1
+            except UnknownSchemaVersion:
+                # Each venue names its instruments by ISIN from a different day, so a range
+                # covering both reaches days one of them cannot key. Those are out of range
+                # rather than unavailable, and cost no request.
+                uncovered += 1
             except NotPublished:
                 missing += 1
             except SourceError:
@@ -206,7 +211,13 @@ def download(start: date, end: date, cache: DiskCache) -> None:
                 logger.warning("day unavailable", extra={"venue": venue, "day": day.isoformat()})
         logger.info(
             "download complete",
-            extra={"venue": venue, "published": published, "missing": missing, "failed": failed},
+            extra={
+                "venue": venue,
+                "published": published,
+                "missing": missing,
+                "uncovered": uncovered,
+                "failed": failed,
+            },
         )
 
 

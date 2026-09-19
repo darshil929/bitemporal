@@ -1,9 +1,10 @@
-"""BSE equity bhavcopy, served as a bare CSV to a plain client."""
+"""BSE equity bhavcopy, served to a plain client: bare CSV after the cutover, zipped before."""
 
 from collections.abc import Sequence
 from datetime import date
 
 from pipelines.models.market import PriceBar
+from pipelines.sources.archive import extract_csv
 from pipelines.sources.bhavcopy import BhavcopyRow, normalize
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import ThrottledClient
@@ -30,10 +31,11 @@ class BseBhavcopy:
         self._base_url = base_url.rstrip("/")
 
     def url_for(self, partition: date, schema_version: str) -> str:
+        """The legacy file is only served zipped; the plain CSV covers recent days alone."""
         if schema_version == UDIFF:
             return f"{self._base_url}/BhavCopy_BSE_CM_0_0_0_{partition:%Y%m%d}_F_0000.CSV"
         if schema_version == LEGACY:
-            return f"{self._base_url}/EQ_ISINCODE_{partition:%d%m%y}.CSV"
+            return f"{self._base_url}/EQ_ISINCODE_{partition:%d%m%y}.zip"
         raise UnknownSchemaVersion(f"{SOURCE_ID} has no url for {schema_version}")
 
     def fetch(self, partition: date, schema_version: str = UDIFF) -> bytes:
@@ -45,6 +47,8 @@ class BseBhavcopy:
         url = self.url_for(partition, schema_version)
         payload = self._client.get(url)
         reject_error_page(payload, url)
+        if schema_version == LEGACY:
+            payload = extract_csv(payload)
         self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)
         return payload
 

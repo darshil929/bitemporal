@@ -7,11 +7,17 @@ sebi_curation_ref = "Equity Cash Market, row 1"
 base_url = "https://www.bseindia.com/download/BhavCopy/Equity/"
 requests_per_second = 0.5
 cache_policy = "permanent"
-owner_notes = "Serves a bare CSV to a plain client. No cookie or browser header required."
+owner_notes = """
+Serves a bare CSV to a plain client. No cookie or browser header required. The legacy file is
+served zipped, the plain CSV covering only about the last two years, and a day the venue holds
+nothing for is answered with the BSE home page under HTTP 200.
+"""
 
+# EQ_ISINCODE runs back to December 2016, but TRADING_DATE appears on 23 June 2017 and the rows
+# before it carry no trade date.
 [[source.schema_version]]
 version = "bse_legacy"
-effective_from = 2007-01-01
+effective_from = 2017-06-23
 effective_to = 2024-07-05
 
 [[source.schema_version]]
@@ -30,9 +36,11 @@ The archive host rejects a plain client. A browser User-Agent plus a cookie obta
 nseindia.com is required, and the published ceiling is 3 requests per second.
 """
 
+# Files run back to the 1990s, and ISIN and TOTALTRADES appear on 22 June 2011. A row before
+# that names its instrument by ticker alone and cannot be keyed.
 [[source.schema_version]]
 version = "nse_legacy"
-effective_from = 1994-01-01
+effective_from = 2011-06-22
 effective_to = 2024-07-05
 
 [[source.schema_version]]
