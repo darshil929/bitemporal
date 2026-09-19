@@ -56,7 +56,10 @@ def ingest(
 
     published = unpublished = failed = written = 0
     bars_read = 0
-    instruments: set[str] = set()
+    # The same few thousand instruments appear on every day of the run. Writing each one again
+    # for every day is most of what a long run spends on identity, so a name already stored by
+    # this run is left alone until the venue publishes a different one.
+    named: dict[str, str] = {}
 
     with database.connect() as connection:
         for day in weekdays(date.fromisoformat(window.start), date.fromisoformat(window.end)):
@@ -98,11 +101,14 @@ def ingest(
 
             bars = require_resolvable(adapter.normalize(rows))
             names = names_by_isin(rows, venue)
+            introduced = derive_instruments(bars, names)
+            unwritten = [item for item in introduced if named.get(item.isin) != item.name]
 
             # Every fact references the instrument master, so the identities a day introduces are
             # written first. Listings and the primary venue read the whole history and are derived
             # downstream rather than one day at a time.
-            persist_identity(connection, derive_instruments(bars, names), (), ())
+            persist_identity(connection, unwritten, (), ())
+            named.update((item.isin, item.name) for item in unwritten)
             written += persist_bars(connection, bars)
             record_ingestion(
                 connection, definition.source_id, partition, version, "succeeded", len(bars)
@@ -112,7 +118,6 @@ def ingest(
 
             published += 1
             bars_read += len(bars)
-            instruments.update(bar.isin for bar in bars)
 
     if failed and not published:
         raise SourceError(
@@ -141,7 +146,7 @@ def ingest(
             "failed": failed,
             "bars": bars_read,
             "written": written,
-            "instruments": len(instruments),
+            "instruments": len(named),
         }
     )
 
