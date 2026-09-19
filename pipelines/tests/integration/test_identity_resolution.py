@@ -12,7 +12,7 @@ from pipelines.identity import (
     derive_listings,
     derive_primary_venue,
     persist_identity,
-    require_resolvable,
+    resolvable,
 )
 from pipelines.models.market import PriceBar
 
@@ -68,7 +68,7 @@ def venue_last_day(bars: tuple[PriceBar, ...]) -> dict[str, date]:
 
 
 def test_every_bar_in_the_dataset_resolves(bars: tuple[PriceBar, ...]) -> None:
-    assert require_resolvable(bars) == bars
+    assert resolvable(bars) == bars
 
 
 def test_every_bar_resolves_to_exactly_one_listing(

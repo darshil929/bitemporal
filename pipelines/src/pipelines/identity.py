@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 ISIN_PATTERN = re.compile("^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
+# A venue mislabels a row at a time. A file the parser has mistaken for another format names no
+# instrument on nearly every row.
+UNRESOLVED_SHARE = 0.01
+
 # A listing that stops before the venue does has stopped trading rather than simply reached the
 # end of the observed window.
 SETTLED_AFTER = timedelta(days=90)
@@ -81,17 +85,36 @@ def extend_spell(history: list[Spell], bar: PriceBar) -> None:
     history.append(Spell(bar.local_symbol, bar.scrip_code, bar.trade_date, bar.trade_date))
 
 
-def require_resolvable(bars: Iterable[PriceBar]) -> tuple[PriceBar, ...]:
-    """Return the bars unchanged, refusing any whose ISIN is not one.
+def resolvable(bars: Iterable[PriceBar]) -> tuple[PriceBar, ...]:
+    """Return the bars that name an instrument, leaving out the few that do not.
 
-    A row that cannot be resolved is a defect in the source or the parser. Dropping it would
-    quietly shrink the universe, so it stops the ingestion instead.
+    BSE publishes a blank or NA in the ISIN column on a hundred or so rows across its history.
+    Such a row names nothing to key a bar on and cannot be stored, so it is logged and left out
+    rather than costing the day the rest of its bars.
+
+    Past a small share the file is not what the parser takes it for, and the day is refused.
     """
-    checked = tuple(bars)
-    unresolved = sorted({bar.isin for bar in checked if not ISIN_PATTERN.match(bar.isin)})
-    if unresolved:
-        raise UnresolvedInstrument(f"{len(unresolved)} identifiers are not ISINs: {unresolved[:5]}")
-    return checked
+    read = tuple(bars)
+    unresolved = [bar for bar in read if not ISIN_PATTERN.match(bar.isin)]
+
+    for bar in unresolved:
+        logger.warning(
+            "row names no instrument",
+            extra={
+                "venue": bar.venue,
+                "trade_date": bar.trade_date.isoformat(),
+                "identifier": bar.isin,
+                "local_symbol": bar.local_symbol,
+            },
+        )
+
+    if unresolved and len(unresolved) > UNRESOLVED_SHARE * len(read):
+        named = sorted({bar.isin for bar in unresolved})
+        raise UnresolvedInstrument(
+            f"{len(unresolved)} of {len(read)} rows name no instrument: {named[:5]}"
+        )
+
+    return tuple(bar for bar in read if ISIN_PATTERN.match(bar.isin))
 
 
 def derive_instruments(
