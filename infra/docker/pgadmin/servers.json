@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "bitemporal",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "bitemporal",
+      "Username": "bitemporal",
+      "SSLMode": "prefer",
+      "Comment": "Reached over the compose network, where the database listens on its own port."
+    }
+  }
+}
