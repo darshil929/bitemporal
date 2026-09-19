@@ -23,3 +23,11 @@ class UnknownSchemaVersion(SourceError):
 
 class SchemaDrift(SourceError):
     """The response no longer carries the columns the parser reads."""
+
+
+class MalformedRow(SourceError):
+    """A row the parser cannot read as a bar.
+
+    Raised for a defect in the published file rather than in the request, so a caller records
+    the partition as failed and carries on with the rest.
+    """

@@ -9,7 +9,7 @@ from typing import Annotated
 from pydantic import ConfigDict, Field, field_validator
 
 from pipelines.models.market import PriceBar
-from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone
+from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone, validated
 from pipelines.sources.errors import SchemaDrift
 
 # BSE dates its legacy rows 15-Jan-24 and NSE dates its own 15-JAN-2024.
@@ -156,9 +156,9 @@ def _read(payload: bytes, required: frozenset[str], label: str) -> csv.DictReade
 
 def parse_bse_legacy(payload: bytes) -> tuple[BseLegacyRow, ...]:
     reader = _read(payload, BSE_LEGACY_COLUMNS, "bse legacy")
-    return tuple(BseLegacyRow.model_validate(row) for row in reader)
+    return validated(BseLegacyRow, reader, "bse legacy")
 
 
 def parse_nse_legacy(payload: bytes) -> tuple[NseLegacyRow, ...]:
     reader = _read(payload, NSE_LEGACY_COLUMNS, "nse legacy")
-    return tuple(NseLegacyRow.model_validate(row) for row in reader)
+    return validated(NseLegacyRow, reader, "nse legacy")
