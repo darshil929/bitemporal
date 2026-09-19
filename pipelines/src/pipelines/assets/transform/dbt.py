@@ -26,6 +26,7 @@ SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "price_daily": [BSE, NSE],
     "instrument_master": [BSE, NSE, IDENTITY],
     "listing": [IDENTITY],
+    "instrument_succession": [IDENTITY],
     "trading_day": [COMPLETENESS],
     "delivery_daily": [],
     "corporate_action": [],
