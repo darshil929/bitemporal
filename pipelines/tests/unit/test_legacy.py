@@ -121,7 +121,7 @@ def bse_line(scrip: int) -> str:
 
 
 def test_a_mangled_line_is_dropped_and_the_rest_of_the_day_survives() -> None:
-    """Losing a day's other bars over two broken lines costs more than it protects."""
+    """A line the venue mangled is left out, and the rest of the day is read."""
     good = [bse_line(500000 + offset) for offset in range(200)]
     payload = "\n".join([BSE_HEADER, *good, RAN_TOGETHER]).encode()
 
@@ -180,7 +180,7 @@ def test_a_dated_file_keeps_the_date_it_carries() -> None:
 
 
 def test_a_file_describing_another_day_is_refused() -> None:
-    """Every dated day read so far describes the day requested, so one that does not is wrong."""
+    """A dated file describes the day it was asked for, so one that does not is the wrong file."""
     payload = f"{BSE_HEADER}\n{bse_line(500002)}".encode()
 
     with pytest.raises(WrongDay):

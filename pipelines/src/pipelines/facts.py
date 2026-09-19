@@ -41,23 +41,22 @@ def _append(
     key: str,
     rows: Sequence[tuple[object, ...]],
 ) -> int:
-    """Insert rows, leaving any version already stored untouched, and count those written."""
+    """Insert rows, leaving any version already stored untouched, and count those written.
+
+    The rows of one trading day are written in a single statement.
+    """
     if not rows:
         return 0
 
     placeholders = ", ".join(["%s"] * len(rows[0]))
     statement = (
-        f"insert into {table} ({columns}) values ({placeholders})"
-        f" on conflict {key} do nothing returning 1"
+        f"insert into {table} ({columns}) values ({placeholders}) on conflict {key} do nothing"
     )
 
-    written = 0
     with connection.cursor() as cursor:
-        for row in rows:
-            cursor.execute(statement, row)
-            written += cursor.rowcount
-
-    return written
+        cursor.executemany(statement, rows)
+        # Rows already stored conflict and are not counted, so this is what the day added.
+        return cursor.rowcount
 
 
 def persist_bars(connection: psycopg.Connection, bars: Sequence[PriceBar]) -> int:
