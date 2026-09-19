@@ -39,7 +39,7 @@ def ingest(
 
     with database.connect() as connection:
         try:
-            rows = adapter.parse(adapter.fetch(day, version), version)
+            rows = adapter.parse(adapter.fetch(day, version), version, day)
         except NotPublished as absence:
             record_ingestion(
                 connection,

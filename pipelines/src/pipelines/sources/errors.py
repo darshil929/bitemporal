@@ -31,3 +31,7 @@ class MalformedRow(SourceError):
     Raised for a defect in the published file rather than in the request, so a caller records
     the partition as failed and carries on with the rest.
     """
+
+
+class WrongDay(SourceError):
+    """The file a venue served describes a different trading day than the one requested."""
