@@ -99,33 +99,46 @@ def test_a_legacy_response_missing_a_column_is_rejected() -> None:
     assert "ISIN_CODE" in str(failure.value)
 
 
-def test_a_row_that_is_not_a_bar_names_the_line_it_sits_on() -> None:
-    """BSE ran two records together on 2022-02-07, truncating an ISIN across the join.
+BSE_HEADER = (
+    "SC_CODE,SC_NAME,SC_GROUP,SC_TYPE,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,NO_TRADES,"
+    "NO_OF_SHRS,NET_TURNOV,TDCLOINDI,ISIN_CODE,TRADING_DATE,FILLER2,FILLER3"
+)
 
-    The misalignment puts a company name where the trade date belongs. Pydantic reports that
-    as a validation error, which no caller recognises as a source failure, so a single line
-    ended a run that had already read a thousand days.
-    """
-    header = (
-        "SC_CODE,SC_NAME,SC_GROUP,SC_TYPE,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,NO_TRADES,"
-        "NO_OF_SHRS,NET_TURNOV,TDCLOINDI,ISIN_CODE,TRADING_DATE,FILLER2,FILLER3"
+# BSE ran two records together on 2022-02-07, truncating an ISIN across the join, so a company
+# name lands in the trade date column.
+RAN_TOGETHER = (
+    "531240,SHAMROCK IND,XT,Q,6.53,6.90,6.53,6.55,6.53,6.87,4,1060,6942.00,,INE540108,"
+    "TIAANC      ,X ,Q,8.00,8.20,7.82,7.93,8.15,8.06,125,23356,16010.00,,INE802B01019,"
+    "07-Feb-22,,"
+)
+
+
+def bse_line(scrip: int) -> str:
+    return (
+        f"{scrip},NAME {scrip}  ,A ,Q,2341.40,2347.05,2222.45,2258.45,2258.00,2331.70,"
+        "1517,9702,21995538.00,,INE117A01022,07-Feb-22,,"
     )
-    good = (
-        "500002,ABB LTD.    ,A ,Q,2341.40,2347.05,2222.45,2258.45,2258.00,2331.70,1517,9702,"
-        "21995538.00,,INE117A01022,07-Feb-22,,"
-    )
-    ran_together = (
-        "531240,SHAMROCK IND,XT,Q,6.53,6.90,6.53,6.55,6.53,6.87,4,1060,6942.00,,INE540108,"
-        "TIAANC      ,X ,Q,8.00,8.20,7.82,7.93,8.15,8.06,125,23356,16010.00,,INE802B01019,"
-        "07-Feb-22,,"
-    )
-    payload = f"{header}\n{good}\n{ran_together}".encode()
+
+
+def test_a_mangled_line_is_dropped_and_the_rest_of_the_day_survives() -> None:
+    """Losing a day's other bars over two broken lines costs more than it protects."""
+    good = [bse_line(500000 + offset) for offset in range(200)]
+    payload = "\n".join([BSE_HEADER, *good, RAN_TOGETHER]).encode()
+
+    rows = parse_bse_legacy(payload)
+
+    assert len(rows) == 200
+    assert all(row.trade_date == date(2022, 2, 7) for row in rows)
+
+
+def test_a_file_read_with_the_wrong_layout_is_refused() -> None:
+    """Nearly every line failing means the parser is wrong about the file, not the venue."""
+    payload = "\n".join([BSE_HEADER, bse_line(500002), RAN_TOGETHER, RAN_TOGETHER]).encode()
 
     with pytest.raises(MalformedRow) as raised:
         parse_bse_legacy(payload)
 
-    assert "line 3" in str(raised.value)
-    assert "531240" in str(raised.value)
+    assert "2 lines that are not bars" in str(raised.value)
 
 
 def test_a_malformed_row_is_reported_as_a_source_failure() -> None:

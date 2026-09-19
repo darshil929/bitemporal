@@ -17,11 +17,18 @@ BSE_DATE_FORMAT = "%d-%b-%y"
 NSE_DATE_FORMAT = "%d-%b-%Y"
 
 
-def _parse_day(value: str | date, fmt: str) -> date:
-    """A trade date names a calendar day at the venue and carries no time or offset."""
+def _parse_day(value: object, fmt: str) -> date:
+    """A trade date names a calendar day at the venue and carries no time or offset.
+
+    A line carrying fewer fields than the header leaves this one absent rather than wrong, and
+    csv presents that as None. Refusing it here reports the line as unreadable instead of
+    raising out of the validator.
+    """
     if isinstance(value, date):
         return value
-    return datetime.strptime(value.strip(), fmt).date()  # noqa: DTZ007
+    if value is None:
+        raise ValueError("trade date is absent")
+    return datetime.strptime(str(value).strip(), fmt).date()  # noqa: DTZ007
 
 
 class BseLegacyRow(BhavcopyRow):
@@ -52,7 +59,7 @@ class BseLegacyRow(BhavcopyRow):
 
     @field_validator("trade_date", mode="before")
     @classmethod
-    def _parse_date(cls, value: str | date) -> date:
+    def _parse_date(cls, value: object) -> date:
         return _parse_day(value, BSE_DATE_FORMAT)
 
     @field_validator("group", "scrip_code", "isin", "name", mode="before")
@@ -107,7 +114,7 @@ class NseLegacyRow(BhavcopyRow):
 
     @field_validator("trade_date", mode="before")
     @classmethod
-    def _parse_date(cls, value: str | date) -> date:
+    def _parse_date(cls, value: object) -> date:
         return _parse_day(value, NSE_DATE_FORMAT)
 
     @property
