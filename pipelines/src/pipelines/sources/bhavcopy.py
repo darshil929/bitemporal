@@ -91,9 +91,8 @@ def validated[RowT: BhavcopyRow](
     """Read the rows that are bars, dropping the few a venue mangles.
 
     A venue occasionally publishes a line that is not a bar: BSE ran two records together on
-    2022-02-07, truncating an ISIN across the join. Losing that day's other 3,931 bars over two
-    broken lines costs more than it protects, so a line that cannot be read is logged and left
-    out.
+    2022-02-07, truncating an ISIN across the join. Such a line is logged and left out, and the
+    rest of the day stands.
 
     Past a small share the file is being read wrongly rather than carrying a bad line, and the
     day is refused instead. Completeness does not cover this: it marks a day short only once it

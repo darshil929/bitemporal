@@ -43,9 +43,7 @@ def _append(
 ) -> int:
     """Insert rows, leaving any version already stored untouched, and count those written.
 
-    The rows of one trading day go in a single statement. A day carries a few thousand bars and
-    a full history carries thousands of days, so a round trip per row is what a backfill spends
-    most of its time on.
+    The rows of one trading day are written in a single statement.
     """
     if not rows:
         return 0

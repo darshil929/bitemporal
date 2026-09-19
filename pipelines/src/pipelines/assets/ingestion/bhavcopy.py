@@ -3,8 +3,7 @@
 A partition is a weekday, since neither venue publishes at a weekend. A weekday the venue did not
 publish is a holiday: the attempt is recorded and the day stores no bars, rather than failing.
 
-A run covers a range of days rather than one, so a backfill reads the whole history through a
-single throttled client and a single session instead of building both for every day.
+A run covers a range of days, reading them through one throttled client and one venue session.
 """
 
 from collections.abc import Iterator
@@ -56,9 +55,8 @@ def ingest(
 
     published = unpublished = failed = written = 0
     bars_read = 0
-    # The same few thousand instruments appear on every day of the run. Writing each one again
-    # for every day is most of what a long run spends on identity, so a name already stored by
-    # this run is left alone until the venue publishes a different one.
+    # The same instruments appear on every day of a run, under the same names. A name already
+    # stored stands until the venue publishes a different one.
     named: dict[str, str] = {}
 
     with database.connect() as connection:
@@ -81,8 +79,7 @@ def ingest(
                 connection.commit()
                 continue
             except SourceError as failure:
-                # One day the venue published badly costs that day. A run covering years of
-                # them would otherwise end on the first, discarding everything read before it.
+                # A day the venue published badly costs that day and no more of the run.
                 record_ingestion(
                     connection,
                     definition.source_id,

@@ -160,7 +160,7 @@ def test_the_legacy_format_is_read_for_a_day_before_the_cutover(
 def test_a_run_covering_several_days_reads_each_of_them(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """A backfill is one run over a range, so the venue is read through one client and session."""
+    """A run covers a range of days, reading the venue through one client and one session."""
     bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20260814.csv")})
     window = PartitionKeyRange(start="2026-08-10", end="2026-08-14")
 
@@ -174,7 +174,7 @@ def test_a_run_covering_several_days_reads_each_of_them(
 def test_a_day_the_venue_published_badly_costs_that_day_alone(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """A run over years would otherwise end on the first bad file, discarding what came before."""
+    """The run carries on, and the day the venue published badly is recorded as failed."""
     bhavcopies = RecordedBhavcopies(
         {"BSE": payload("bse_bhavcopy_equity", "20260814.csv")}, unreadable={date(2026, 8, 12)}
     )

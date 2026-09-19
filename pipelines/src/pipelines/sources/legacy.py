@@ -170,9 +170,8 @@ def _read(payload: bytes, required: frozenset[str], label: str) -> csv.DictReade
 def parse_bse_legacy(payload: bytes, partition: date | None = None) -> tuple[BseLegacyRow, ...]:
     """Read a BSE legacy bhavcopy, dating its rows from the request when the file does not.
 
-    A file that carries its own trade date is held to it: every one of the 1,735 dated days read
-    so far describes the day it was asked for, so one that disagrees is the wrong file rather
-    than a surprise.
+    A file that carries its own trade date describes the day it was asked for, and one that
+    disagrees is the wrong file.
     """
     reader = _read(payload, BSE_UNDATED_COLUMNS, "bse legacy")
     undated = BSE_DATED_COLUMN not in {name.strip() for name in reader.fieldnames or ()}
