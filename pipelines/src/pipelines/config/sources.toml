@@ -13,11 +13,11 @@ served zipped, the plain CSV covering only about the last two years, and a day t
 nothing for is answered with the BSE home page under HTTP 200.
 """
 
-# EQ_ISINCODE runs back to December 2016, but TRADING_DATE appears on 23 June 2017 and the rows
-# before it carry no trade date.
+# EQ_ISINCODE runs back to 8 December 2016. TRADING_DATE appears on 23 June 2017, and a file
+# without it is dated from the day it was asked for.
 [[source.schema_version]]
 version = "bse_legacy"
-effective_from = 2017-06-23
+effective_from = 2016-12-08
 effective_to = 2024-07-05
 
 [[source.schema_version]]

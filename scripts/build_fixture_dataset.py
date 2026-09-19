@@ -187,7 +187,7 @@ def _weekdays(start: date, end: date) -> list[date]:
 def read_day(adapter: object, definition: SourceDefinition, day: date) -> tuple[PriceBar, ...]:
     version = definition.version_for(day)
     payload = adapter.fetch(day, version)  # type: ignore[attr-defined]
-    rows = adapter.parse(payload, version)  # type: ignore[attr-defined]
+    rows = adapter.parse(payload, version, day)  # type: ignore[attr-defined]
     return tuple(adapter.normalize(rows))  # type: ignore[attr-defined]
 
 
@@ -417,7 +417,7 @@ def emit(
             try:
                 version = definition.version_for(day)
                 payload = adapter.fetch(day, version)  # type: ignore[attr-defined]
-                rows = adapter.parse(payload, version)  # type: ignore[attr-defined]
+                rows = adapter.parse(payload, version, day)  # type: ignore[attr-defined]
             except SourceError:
                 continue
 

@@ -10,7 +10,7 @@ from pydantic import ConfigDict, Field, field_validator
 
 from pipelines.models.market import PriceBar
 from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone, validated
-from pipelines.sources.errors import SchemaDrift
+from pipelines.sources.errors import SchemaDrift, WrongDay
 
 # BSE dates its legacy rows 15-Jan-24 and NSE dates its own 15-JAN-2024.
 BSE_DATE_FORMAT = "%d-%b-%y"
@@ -147,6 +147,12 @@ class NseLegacyRow(BhavcopyRow):
 BSE_LEGACY_COLUMNS = frozenset(
     field.alias for field in BseLegacyRow.model_fields.values() if field.alias
 )
+
+# BSE published this file without a trade date column until 23 June 2017, and once afterwards on
+# 14 December 2017. The layouts are otherwise the same, the column standing where TRADING_DATE
+# does now, so the day the file was asked for supplies what it does not carry.
+BSE_DATED_COLUMN = "TRADING_DATE"
+BSE_UNDATED_COLUMNS = BSE_LEGACY_COLUMNS - {BSE_DATED_COLUMN}
 NSE_LEGACY_COLUMNS = frozenset(
     field.alias for field in NseLegacyRow.model_fields.values() if field.alias
 )
@@ -161,9 +167,28 @@ def _read(payload: bytes, required: frozenset[str], label: str) -> csv.DictReade
     return reader
 
 
-def parse_bse_legacy(payload: bytes) -> tuple[BseLegacyRow, ...]:
-    reader = _read(payload, BSE_LEGACY_COLUMNS, "bse legacy")
-    return validated(BseLegacyRow, reader, "bse legacy")
+def parse_bse_legacy(payload: bytes, partition: date | None = None) -> tuple[BseLegacyRow, ...]:
+    """Read a BSE legacy bhavcopy, dating its rows from the request when the file does not.
+
+    A file that carries its own trade date is held to it: every one of the 1,735 dated days read
+    so far describes the day it was asked for, so one that disagrees is the wrong file rather
+    than a surprise.
+    """
+    reader = _read(payload, BSE_UNDATED_COLUMNS, "bse legacy")
+    undated = BSE_DATED_COLUMN not in {name.strip() for name in reader.fieldnames or ()}
+
+    if undated and partition is None:
+        raise SchemaDrift(f"bse legacy bhavcopy is missing ['{BSE_DATED_COLUMN}']")
+
+    rows = ({**row, BSE_DATED_COLUMN: partition} for row in reader) if undated else reader
+    parsed = validated(BseLegacyRow, rows, "bse legacy")
+
+    if not undated and partition is not None:
+        served = {row.trade_date for row in parsed}
+        if served and served != {partition}:
+            raise WrongDay(f"bse legacy bhavcopy for {partition} describes {sorted(served)[:3]}")
+
+    return parsed
 
 
 def parse_nse_legacy(payload: bytes) -> tuple[NseLegacyRow, ...]:

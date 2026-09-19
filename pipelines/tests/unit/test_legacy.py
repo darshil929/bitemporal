@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from pipelines.sources.bhavcopy import EQUITY_SERIES, normalize
-from pipelines.sources.errors import MalformedRow, SchemaDrift, SourceError
+from pipelines.sources.errors import MalformedRow, SchemaDrift, SourceError, WrongDay
 from pipelines.sources.legacy import parse_bse_legacy, parse_nse_legacy
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
@@ -144,3 +144,44 @@ def test_a_file_read_with_the_wrong_layout_is_refused() -> None:
 def test_a_malformed_row_is_reported_as_a_source_failure() -> None:
     """A caller counts the day as failed and carries on, rather than the run ending."""
     assert issubclass(MalformedRow, SourceError)
+
+
+# BSE published this header until 23 June 2017, and once afterwards on 14 December 2017. It is
+# the dated layout with a filler standing where the trade date does now.
+BSE_UNDATED_HEADER = BSE_HEADER.replace("TRADING_DATE", "FILLER1")
+
+
+def undated_line(scrip: int) -> str:
+    return bse_line(scrip).replace("07-Feb-22", "")
+
+
+def test_a_file_without_a_trade_date_is_dated_from_the_day_it_was_asked_for() -> None:
+    payload = f"{BSE_UNDATED_HEADER}\n{undated_line(500002)}".encode()
+
+    rows = parse_bse_legacy(payload, date(2017, 3, 14))
+
+    assert [row.trade_date for row in rows] == [date(2017, 3, 14)]
+
+
+def test_a_file_without_a_trade_date_and_no_day_to_use_is_refused() -> None:
+    """Nothing in the file says which day it describes, so it cannot be read on its own."""
+    payload = f"{BSE_UNDATED_HEADER}\n{undated_line(500002)}".encode()
+
+    with pytest.raises(SchemaDrift):
+        parse_bse_legacy(payload)
+
+
+def test_a_dated_file_keeps_the_date_it_carries() -> None:
+    payload = f"{BSE_HEADER}\n{bse_line(500002)}".encode()
+
+    rows = parse_bse_legacy(payload, date(2022, 2, 7))
+
+    assert [row.trade_date for row in rows] == [date(2022, 2, 7)]
+
+
+def test_a_file_describing_another_day_is_refused() -> None:
+    """Every dated day read so far describes the day requested, so one that does not is wrong."""
+    payload = f"{BSE_HEADER}\n{bse_line(500002)}".encode()
+
+    with pytest.raises(WrongDay):
+        parse_bse_legacy(payload, date(2022, 2, 8))

@@ -70,7 +70,9 @@ class NseBhavcopy:
             self._obtain_cookie()
             return self._client.get(url)
 
-    def parse(self, payload: bytes, schema_version: str) -> Sequence[BhavcopyRow]:
+    def parse(
+        self, payload: bytes, schema_version: str, partition: date | None = None
+    ) -> Sequence[BhavcopyRow]:
         if schema_version == UDIFF:
             return parse_udiff(payload)
         if schema_version == LEGACY:

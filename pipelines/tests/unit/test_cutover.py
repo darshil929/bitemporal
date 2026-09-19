@@ -24,10 +24,10 @@ NSE_BASE = "https://nsearchives.nseindia.com/content/"
 LAST_LEGACY_DAY = date(2024, 7, 5)
 FIRST_UDIFF_DAY = date(2024, 7, 8)
 
-# The first day each venue's file names its instruments by ISIN. BSE publishes EQ_ISINCODE from
-# December 2016 with no trade date column until this day, and NSE's earlier files carry no ISIN.
+# The first day each venue serves a file naming its instruments by ISIN. BSE holds nothing
+# earlier under EQ_ISINCODE, and NSE's earlier files carry no ISIN column.
 FIRST_KEYED_DAY = {
-    "bse_bhavcopy_equity": date(2017, 6, 23),
+    "bse_bhavcopy_equity": date(2016, 12, 8),
     "nse_bhavcopy_equity": date(2011, 6, 22),
 }
 

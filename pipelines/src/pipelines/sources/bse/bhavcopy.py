@@ -52,11 +52,13 @@ class BseBhavcopy:
         self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)
         return payload
 
-    def parse(self, payload: bytes, schema_version: str) -> Sequence[BhavcopyRow]:
+    def parse(
+        self, payload: bytes, schema_version: str, partition: date | None = None
+    ) -> Sequence[BhavcopyRow]:
         if schema_version == UDIFF:
             return parse_udiff(payload)
         if schema_version == LEGACY:
-            return parse_bse_legacy(payload)
+            return parse_bse_legacy(payload, partition)
         raise UnknownSchemaVersion(f"{SOURCE_ID} has no parser for {schema_version}")
 
     def normalize(self, records: Sequence[BhavcopyRow]) -> Sequence[PriceBar]:
