@@ -51,6 +51,56 @@ models:
       - name: delivery_percentage
         description: Delivery as a percentage of volume, absent on a day that traded nothing.
 
+  - name: int_instrument_lineage
+    description: >
+      Every ISIN mapped to the one it trades under now. An instrument that never changed face
+      value maps to itself, so a join through this model never drops a row.
+    columns:
+      - name: isin
+        description: An ISIN the instrument has traded under at some point.
+        data_tests: [not_null, unique]
+      - name: current_isin
+        description: The ISIN it trades under now, after every change of face value.
+        data_tests: [not_null]
+
+  - name: int_continuous_prices
+    description: >
+      A price series that spans a change of face value, keyed on the ISIN the instrument trades
+      under now and scaled by every action that followed each bar. A split issues a new ISIN
+      holding no earlier bars, so a series read from stg_price_daily alone stops at the split.
+    columns:
+      - name: isin
+        description: The ISIN the instrument trades under now, which the whole series is keyed on.
+        data_tests: [not_null]
+      - name: source_isin
+        description: The ISIN the bar was published under, which differs before a face value change.
+        data_tests: [not_null]
+      - name: venue
+        description: Exchange the bar was published by.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [BSE, NSE]
+      - name: trade_date
+        description: The day the bar describes.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The day the bar became knowable.
+        data_tests: [not_null]
+      - name: close_as_traded
+        description: The close the venue published, carrying no adjustment.
+        data_tests: [not_null]
+      - name: adjustment_factor
+        description: Product of every count-changing action after this bar.
+        data_tests: [not_null]
+      - name: close
+        description: The close scaled by that factor, which is what a series is drawn from.
+        data_tests: [not_null]
+      - name: volume
+        description: Shares traded, divided by the factor, since a bonus multiplies the count.
+        data_tests: [not_null]
+
 unit_tests:
   - name: the_spread_is_measured_against_the_midpoint
     description: A one rupee gap on a hundred rupee midpoint is a hundred basis points.
@@ -107,3 +157,99 @@ unit_tests:
         rows: []
     expect:
       rows: []
+
+  - name: an_instrument_that_never_split_maps_to_itself
+    description: Joining through the lineage must not drop an instrument with no succession.
+    model: int_instrument_lineage
+    given:
+      - input: ref('stg_instruments')
+        rows:
+          - {isin: INE002A01018}
+          - {isin: INE721A01013}
+          - {isin: INE721A01047}
+      - input: ref('stg_successions')
+        rows:
+          - {predecessor_isin: INE721A01013, successor_isin: INE721A01047,
+             changed_on: "2025-01-10"}
+    expect:
+      rows:
+        - {isin: INE002A01018, current_isin: INE002A01018}
+        - {isin: INE721A01013, current_isin: INE721A01047}
+        - {isin: INE721A01047, current_isin: INE721A01047}
+
+  - name: a_second_change_of_face_value_carries_the_lineage_further
+    description: An ISIN that split twice maps to the last one, not the middle one.
+    model: int_instrument_lineage
+    given:
+      - input: ref('stg_instruments')
+        rows:
+          - {isin: INE000A01011}
+          - {isin: INE000A01029}
+          - {isin: INE000A01037}
+      - input: ref('stg_successions')
+        rows:
+          - {predecessor_isin: INE000A01011, successor_isin: INE000A01029,
+             changed_on: "2024-06-03"}
+          - {predecessor_isin: INE000A01029, successor_isin: INE000A01037,
+             changed_on: "2025-06-03"}
+    expect:
+      rows:
+        - {isin: INE000A01011, current_isin: INE000A01037}
+        - {isin: INE000A01029, current_isin: INE000A01037}
+        - {isin: INE000A01037, current_isin: INE000A01037}
+
+  - name: a_predecessor_bar_is_scaled_by_the_split_that_replaced_its_isin
+    description: >
+      The action sits under the successor, and the bar under the predecessor. Without the
+      lineage between them a one for five split reads as an eighty percent fall.
+    model: int_continuous_prices
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE721A01013, current_isin: INE721A01047}
+          - {isin: INE721A01047, current_isin: INE721A01047}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE721A01047, action_type: split, ex_date: "2025-01-10", qualifier: split,
+             adjustment_factor: 0.2}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE721A01013, venue: NSE, trade_date: "2025-01-09",
+             as_of_date: "2025-01-09", open: 2800, high: 2820, low: 2790, close: 2809.85,
+             volume: 1000}
+          - {isin: INE721A01047, venue: NSE, trade_date: "2025-01-10",
+             as_of_date: "2025-01-10", open: 560, high: 565, low: 530, close: 532,
+             volume: 5000}
+    expect:
+      rows:
+        - {isin: INE721A01047, source_isin: INE721A01013, venue: NSE,
+           trade_date: "2025-01-09", adjustment_factor: "0.2000000000",
+           close_as_traded: "2809.85", close: "561.9700", volume: "5000"}
+        - {isin: INE721A01047, source_isin: INE721A01047, venue: NSE,
+           trade_date: "2025-01-10", adjustment_factor: "1", close_as_traded: "532",
+           close: "532.0000", volume: "5000"}
+
+  - name: two_actions_sharing_an_ex_date_scale_a_bar_together
+    description: Bajaj Finance split one for two and issued a four for one bonus on one day.
+    model: int_continuous_prices
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE296A01024, current_isin: INE296A01032}
+          - {isin: INE296A01032, current_isin: INE296A01032}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE296A01032, action_type: split, ex_date: "2025-06-16", qualifier: split,
+             adjustment_factor: 0.5}
+          - {isin: INE296A01032, action_type: bonus, ex_date: "2025-06-16", qualifier: bonus,
+             adjustment_factor: 0.2}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE296A01024, venue: NSE, trade_date: "2025-06-13",
+             as_of_date: "2025-06-13", open: 9300, high: 9400, low: 9300, close: 9331,
+             volume: 1000}
+    expect:
+      rows:
+        - {isin: INE296A01032, source_isin: INE296A01024, venue: NSE,
+           trade_date: "2025-06-13", adjustment_factor: "0.1000000000",
+           close_as_traded: "9331", close: "933.1000", volume: "10000"}

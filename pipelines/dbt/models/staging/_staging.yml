@@ -226,6 +226,32 @@ models:
       - name: detail
         description: What the day failed on, absent when it passed.
 
+  - name: stg_successions
+    description: >
+      One row per change of face value, naming the ISIN that took the instrument over. Both
+      venues observe the same handover, so the pair appears once rather than per venue.
+    columns:
+      - name: predecessor_isin
+        description: The ISIN that stopped trading when the face value changed.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: successor_isin
+        description: The ISIN the instrument continued under.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: changed_on
+        description: The first day the instrument traded under the successor.
+        data_tests: [not_null]
+
 unit_tests:
   - name: a_revalidated_day_supersedes_its_earlier_verdict
     description: A day checked again after a correction appends a verdict rather than replacing one.
