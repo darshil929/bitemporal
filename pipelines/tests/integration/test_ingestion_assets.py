@@ -9,13 +9,13 @@ from pathlib import Path
 import psycopg
 import pytest
 from alembic.config import Config
-from dagster import build_asset_context
+from dagster import PartitionKeyRange, build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.bhavcopy import ingest
 from pipelines.resources import Bhavcopies
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
-from pipelines.sources.errors import NotPublished
+from pipelines.sources.errors import MalformedRow, NotPublished
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
 from pipelines.sources.registry import SourceDefinition
 
@@ -26,11 +26,15 @@ TRADE_DATE = "2026-08-14"
 class RecordedBhavcopies:
     """The real adapters and registry entries, reading a recorded response rather than the venue.
 
-    A venue mapped to None published nothing that day, which is what a holiday looks like.
+    A venue mapped to None published nothing that day, which is what a holiday looks like, and
+    a day named unreadable stands for one the venue published badly.
     """
 
-    def __init__(self, payloads: dict[str, bytes | None]) -> None:
+    def __init__(
+        self, payloads: dict[str, bytes | None], unreadable: set[date] | None = None
+    ) -> None:
         self._payloads = payloads
+        self._unreadable = unreadable or set()
         self._real = Bhavcopies()
 
     def definition(self, venue: str) -> SourceDefinition:
@@ -41,6 +45,8 @@ class RecordedBhavcopies:
         payload = self._payloads[venue]
 
         def fetch(partition: date, schema_version: str) -> bytes:
+            if partition in self._unreadable:
+                raise MalformedRow(f"{venue} published a file for {partition} that is not bars")
             if payload is None:
                 raise NotPublished(f"{venue} published nothing for {partition}")
             return payload
@@ -81,7 +87,7 @@ def test_a_published_day_reaches_the_database(database: PointedDatabase, postgre
     result = ingest(build_asset_context(partition_key=TRADE_DATE), "BSE", database, bhavcopies)
 
     stored = rows(postgres_dsn, "select count(*) from price_daily")[0][0]
-    assert result.metadata["outcome"] == "succeeded"
+    assert result.metadata["published"] == 1
     assert result.metadata["bars"] == stored
     assert stored > 0
 
@@ -121,13 +127,17 @@ def test_reading_the_same_day_twice_stores_it_once(
 def test_a_day_the_venue_never_published_stores_no_bars(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """A holiday is an outcome the log carries, not a failure and not a gap."""
+    """A holiday is an outcome the log carries, not a failure and not a gap.
+
+    The day is a weekday, since the partitions are weekdays and a weekend is never one.
+    """
     bhavcopies = RecordedBhavcopies({"BSE": None})
 
-    result = ingest(build_asset_context(partition_key="2026-08-15"), "BSE", database, bhavcopies)
+    result = ingest(build_asset_context(partition_key="2026-08-17"), "BSE", database, bhavcopies)
 
     logged = rows(postgres_dsn, "select outcome, row_count from ingestion_log")
-    assert result.metadata["outcome"] == "not_published"
+    assert result.metadata["unpublished"] == 1
+    assert result.metadata["published"] == 0
     assert logged == [("not_published", None)]
     assert rows(postgres_dsn, "select count(*) from price_daily")[0][0] == 0
 
@@ -142,5 +152,39 @@ def test_the_legacy_format_is_read_for_a_day_before_the_cutover(
 
     result = ingest(build_asset_context(partition_key="2024-01-15"), "BSE", database, bhavcopies)
 
-    assert result.metadata["schema_version"] == "bse_legacy"
+    logged = rows(postgres_dsn, "select schema_version from ingestion_log")
+    assert logged == [("bse_legacy",)]
     assert result.metadata["bars"] > 0
+
+
+def test_a_run_covering_several_days_reads_each_of_them(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A backfill is one run over a range, so the venue is read through one client and session."""
+    bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20260814.csv")})
+    window = PartitionKeyRange(start="2026-08-10", end="2026-08-14")
+
+    result = ingest(build_asset_context(partition_key_range=window), "BSE", database, bhavcopies)
+
+    logged = rows(postgres_dsn, "select count(distinct partition_key) from ingestion_log")
+    assert result.metadata["published"] == 5
+    assert logged[0][0] == 5
+
+
+def test_a_day_the_venue_published_badly_costs_that_day_alone(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A run over years would otherwise end on the first bad file, discarding what came before."""
+    bhavcopies = RecordedBhavcopies(
+        {"BSE": payload("bse_bhavcopy_equity", "20260814.csv")}, unreadable={date(2026, 8, 12)}
+    )
+    window = PartitionKeyRange(start="2026-08-10", end="2026-08-14")
+
+    result = ingest(build_asset_context(partition_key_range=window), "BSE", database, bhavcopies)
+
+    outcomes = dict(
+        rows(postgres_dsn, "select outcome, count(*) from ingestion_log group by outcome")
+    )
+    assert result.metadata["published"] == 4
+    assert result.metadata["failed"] == 1
+    assert outcomes == {"succeeded": 4, "failed": 1}

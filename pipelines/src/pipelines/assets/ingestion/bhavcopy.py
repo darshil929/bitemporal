@@ -1,12 +1,22 @@
-"""One trading day of one venue's published prices, stored as it was published.
+"""One venue's published prices, stored as they were published.
 
 A partition is a weekday, since neither venue publishes at a weekend. A weekday the venue did not
 publish is a holiday: the attempt is recorded and the day stores no bars, rather than failing.
+
+A run covers a range of days rather than one, so a backfill reads the whole history through a
+single throttled client and a single session instead of building both for every day.
 """
 
-from datetime import date
+from collections.abc import Iterator
+from datetime import date, timedelta
 
-from dagster import AssetExecutionContext, MaterializeResult, TimeWindowPartitionsDefinition, asset
+from dagster import (
+    AssetExecutionContext,
+    BackfillPolicy,
+    MaterializeResult,
+    TimeWindowPartitionsDefinition,
+    asset,
+)
 
 from pipelines.facts import persist_bars, record_ingestion
 from pipelines.identity import derive_instruments, persist_identity, require_resolvable
@@ -29,80 +39,118 @@ def trading_days(venue: str) -> TimeWindowPartitionsDefinition:
     )
 
 
+def weekdays(first: date, last: date) -> Iterator[date]:
+    day = first
+    while day <= last:
+        if day.weekday() < 5:
+            yield day
+        day += timedelta(days=1)
+
+
 def ingest(
     context: AssetExecutionContext, venue: str, database: Database, bhavcopies: Bhavcopies
 ) -> MaterializeResult[None]:
-    day = date.fromisoformat(context.partition_key)
+    window = context.partition_key_range
     definition = bhavcopies.definition(venue)
     adapter = bhavcopies.adapter(venue)
-    version = definition.version_for(day)
+
+    published = unpublished = failed = written = 0
+    bars_read = 0
+    instruments: set[str] = set()
 
     with database.connect() as connection:
-        try:
-            rows = adapter.parse(adapter.fetch(day, version), version, day)
-        except NotPublished as absence:
-            record_ingestion(
-                connection,
-                definition.source_id,
-                day.isoformat(),
-                version,
-                "not_published",
-                detail=str(absence),
-            )
-            connection.commit()
-            return MaterializeResult(
-                metadata={"venue": venue, "bars": 0, "outcome": "not_published"}
-            )
-        except SourceError as failure:
-            record_ingestion(
-                connection,
-                definition.source_id,
-                day.isoformat(),
-                version,
-                "failed",
-                detail=str(failure),
-            )
-            connection.commit()
-            raise
+        for day in weekdays(date.fromisoformat(window.start), date.fromisoformat(window.end)):
+            partition = day.isoformat()
+            version = definition.version_for(day)
 
-        bars = require_resolvable(adapter.normalize(rows))
-        names = names_by_isin(rows, venue)
+            try:
+                rows = adapter.parse(adapter.fetch(day, version), version, day)
+            except NotPublished as absence:
+                record_ingestion(
+                    connection,
+                    definition.source_id,
+                    partition,
+                    version,
+                    "not_published",
+                    detail=str(absence),
+                )
+                unpublished += 1
+                connection.commit()
+                continue
+            except SourceError as failure:
+                # One day the venue published badly costs that day. A run covering years of
+                # them would otherwise end on the first, discarding everything read before it.
+                record_ingestion(
+                    connection,
+                    definition.source_id,
+                    partition,
+                    version,
+                    "failed",
+                    detail=str(failure),
+                )
+                failed += 1
+                connection.commit()
+                context.log.warning(
+                    "trading day could not be read",
+                    extra={"venue": venue, "trade_date": partition, "detail": str(failure)},
+                )
+                continue
 
-        # Every fact references the instrument master, so the identities a day introduces are
-        # written first. Listings and the primary venue read the whole history and are derived
-        # downstream rather than one day at a time.
-        persist_identity(connection, derive_instruments(bars, names), (), ())
-        written = persist_bars(connection, bars)
-        record_ingestion(
-            connection, definition.source_id, day.isoformat(), version, "succeeded", len(bars)
+            bars = require_resolvable(adapter.normalize(rows))
+            names = names_by_isin(rows, venue)
+
+            # Every fact references the instrument master, so the identities a day introduces are
+            # written first. Listings and the primary venue read the whole history and are derived
+            # downstream rather than one day at a time.
+            persist_identity(connection, derive_instruments(bars, names), (), ())
+            written += persist_bars(connection, bars)
+            record_ingestion(
+                connection, definition.source_id, partition, version, "succeeded", len(bars)
+            )
+            # Each day stands on its own, so a run interrupted part way keeps what it read.
+            connection.commit()
+
+            published += 1
+            bars_read += len(bars)
+            instruments.update(bar.isin for bar in bars)
+
+    if failed and not published:
+        raise SourceError(
+            f"{venue} published no readable day between {window.start} and {window.end}"
         )
-        connection.commit()
 
     context.log.info(
         "bhavcopy ingested",
         extra={
             "venue": venue,
-            "trade_date": day.isoformat(),
-            "bars": len(bars),
-            "written": written,
+            "from": window.start,
+            "to": window.end,
+            "published": published,
+            "unpublished": unpublished,
+            "failed": failed,
+            "bars": bars_read,
         },
     )
     return MaterializeResult(
         metadata={
             "venue": venue,
-            "bars": len(bars),
+            "from": window.start,
+            "to": window.end,
+            "published": published,
+            "unpublished": unpublished,
+            "failed": failed,
+            "bars": bars_read,
             "written": written,
-            "instruments": len({bar.isin for bar in bars}),
-            "schema_version": version,
-            "outcome": "succeeded",
+            "instruments": len(instruments),
         }
     )
 
 
 @asset(
     partitions_def=trading_days("BSE"),
+    backfill_policy=BackfillPolicy.single_run(),
     group_name=GROUP,
-    description="BSE equity bars for one trading day.",
+    description="BSE equity bars for each trading day in the run.",
 )
 def bse_bhavcopy(
     context: AssetExecutionContext, database: Database, bhavcopies: Bhavcopies
@@ -112,8 +160,9 @@ def bse_bhavcopy(
 
 @asset(
     partitions_def=trading_days("NSE"),
+    backfill_policy=BackfillPolicy.single_run(),
     group_name=GROUP,
-    description="NSE equity bars for one trading day.",
+    description="NSE equity bars for each trading day in the run.",
 )
 def nse_bhavcopy(
     context: AssetExecutionContext, database: Database, bhavcopies: Bhavcopies
