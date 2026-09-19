@@ -9,6 +9,7 @@ from pipelines.identity import (
     UnresolvedInstrument,
     derive_listings,
     derive_primary_venue,
+    derive_successions,
     require_resolvable,
 )
 from pipelines.models.market import PriceBar
@@ -218,3 +219,40 @@ def test_the_final_span_stays_open() -> None:
     designations = derive_primary_venue(bars)
 
     assert designations[-1].effective_to is None
+
+
+def test_a_superseded_stretch_names_the_isin_that_took_it_over() -> None:
+    """The scrip code runs through the change, so it is what links the two ISINs."""
+    bars = [
+        bar(isin=SHRIRAM_OLD, venue="BSE", symbol="SHRIRAMFIN", scrip_code="511218", day=day)
+        for day in ("2024-01-02", "2025-01-09")
+    ] + [
+        bar(isin=SHRIRAM_NEW, venue="BSE", symbol="SHRIRAMFIN", scrip_code="511218", day=day)
+        for day in ("2025-01-10", "2025-12-01")
+    ]
+
+    successions = derive_successions(derive_listings(bars, {"BSE": date(2025, 12, 1)}))
+
+    assert len(successions) == 1
+    assert successions[0].predecessor_isin == SHRIRAM_OLD
+    assert successions[0].successor_isin == SHRIRAM_NEW
+    assert successions[0].exchange == "BSE"
+    assert successions[0].changed_on == date(2025, 1, 10)
+
+
+def test_a_ticker_reused_later_leaves_no_succession() -> None:
+    """Nothing links the two, so the earlier stretch stays delisted and is not stitched onward."""
+    bars = [
+        bar(isin=SHRIRAM_OLD, symbol="SHRIRAMFIN", day="2024-01-02"),
+        bar(isin=SHRIRAM_OLD, symbol="SHRIRAMFIN", day="2025-01-09"),
+        bar(isin=SHRIRAM_NEW, symbol="SHRIRAMFIN", day="2025-03-10"),
+        bar(isin=SHRIRAM_NEW, symbol="SHRIRAMFIN", day="2025-12-01"),
+    ]
+
+    assert derive_successions(derive_listings(bars, {"NSE": date(2025, 12, 1)})) == ()
+
+
+def test_a_listing_still_trading_has_no_successor() -> None:
+    bars = [bar(day="2025-01-02"), bar(day="2025-12-01")]
+
+    assert derive_successions(derive_listings(bars, {"NSE": date(2025, 12, 1)})) == ()

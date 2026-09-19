@@ -30,6 +30,7 @@ SEED_SCHEMA = "fixture"
 SEED_TABLES = (
     "instrument_master",
     "listing",
+    "instrument_succession",
     "price_daily",
     "delivery_daily",
     "corporate_action",

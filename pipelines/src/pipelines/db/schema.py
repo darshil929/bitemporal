@@ -132,6 +132,31 @@ class ListingSuspension(Base):
     )
 
 
+class InstrumentSuccession(Base):
+    """The ISIN that took an instrument over when a face value change issued a new one.
+
+    A split leaves no earlier history under the ISIN that carries it, so a series continuous
+    across one is built by following the predecessor recorded here. The venue-local identifier
+    runs through the change and is what links the two, so the handover is recorded per venue.
+    """
+
+    __tablename__ = "instrument_succession"
+
+    predecessor_isin: Mapped[str] = mapped_column(
+        String(12), ForeignKey("instrument_master.isin"), primary_key=True
+    )
+    exchange: Mapped[str] = mapped_column(String(12), primary_key=True)
+    successor_isin: Mapped[str] = mapped_column(String(12), ForeignKey("instrument_master.isin"))
+    changed_on: Mapped[date] = mapped_column(Date)
+
+    __table_args__ = (
+        CheckConstraint(f"exchange ~ '{VENUE_PATTERN}'", name="exchange_format"),
+        CheckConstraint(
+            "predecessor_isin <> successor_isin", name="an_isin_does_not_succeed_itself"
+        ),
+    )
+
+
 class InstrumentPrimaryVenue(Base):
     """The venue an instrument's series is computed from, over a span of dates.
 

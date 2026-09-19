@@ -11,7 +11,12 @@ from typing import Protocol
 
 import psycopg
 
-from pipelines.models.identity import InstrumentRecord, ListingRecord, PrimaryVenueRecord
+from pipelines.models.identity import (
+    InstrumentRecord,
+    ListingRecord,
+    PrimaryVenueRecord,
+    SuccessionRecord,
+)
 from pipelines.models.market import PriceBar
 from pipelines.sources.errors import SourceError
 
@@ -162,32 +167,75 @@ def mark_supersessions(listings: Sequence[ListingRecord]) -> tuple[ListingRecord
 
     Shriram Finance stopped as `INE721A01013` on 2025-01-09 and resumed as `INE721A01047` the next
     day, keeping its scrip code and its ticker. The instrument never left the venue, so the stretch
-    closes as superseded rather than delisted. Which ISIN succeeded it is not recorded here.
+    closes as superseded rather than delisted. Which ISIN succeeded it is recorded by
+    `derive_successions`, which reads the same link.
     """
-    openings: dict[tuple[str, str], list[tuple[date, str]]] = defaultdict(list)
-    for listing in listings:
-        openings[(listing.exchange, venue_identifier(listing))].append(
-            (listing.listing_date, listing.isin)
-        )
+    openings = _openings(listings)
 
     return tuple(
         listing.model_copy(update={"closure_reason": "superseded"})
-        if _taken_over(listing, openings[(listing.exchange, venue_identifier(listing))])
+        if _successor(listing, openings) is not None
         else listing
         for listing in listings
     )
 
 
-def _taken_over(listing: ListingRecord, openings: Sequence[tuple[date, str]]) -> bool:
-    """Whether another ISIN opened under the same identifier as this stretch closed."""
-    closed_on = listing.delisting_date
-    if listing.closure_reason != "delisted" or closed_on is None:
-        return False
+def derive_successions(listings: Sequence[ListingRecord]) -> tuple[SuccessionRecord, ...]:
+    """Link each superseded stretch to the ISIN that took it over.
 
-    return any(
-        isin != listing.isin and closed_on < opened_on <= closed_on + SUCCESSION_WINDOW
-        for opened_on, isin in openings
-    )
+    Bajaj Finance stopped as `INE296A01024` on 2025-06-13 and resumed as `INE296A01032` on
+    2025-06-16 under scrip code 500034 and ticker BAJFINANCE. Following that link is what lets a
+    series run across a split, the predecessor holding every bar before it and no history of its
+    own surviving under the successor.
+    """
+    openings = _openings(listings)
+    successions = []
+
+    for listing in listings:
+        taken_over = _successor(listing, openings)
+        if taken_over is None:
+            continue
+        changed_on, successor = taken_over
+        successions.append(
+            SuccessionRecord(
+                predecessor_isin=listing.isin,
+                exchange=listing.exchange,
+                successor_isin=successor,
+                changed_on=changed_on,
+            )
+        )
+
+    return tuple(sorted(successions, key=lambda item: (item.predecessor_isin, item.exchange)))
+
+
+def _openings(listings: Sequence[ListingRecord]) -> dict[tuple[str, str], list[tuple[date, str]]]:
+    """Every day an ISIN began trading, by venue and by the identifier the venue keeps."""
+    openings: dict[tuple[str, str], list[tuple[date, str]]] = defaultdict(list)
+    for listing in listings:
+        openings[(listing.exchange, venue_identifier(listing))].append(
+            (listing.listing_date, listing.isin)
+        )
+    return openings
+
+
+def _successor(
+    listing: ListingRecord, openings: dict[tuple[str, str], list[tuple[date, str]]]
+) -> tuple[date, str] | None:
+    """The ISIN that opened under the same identifier as this stretch closed, if one did.
+
+    A stretch already closed as renamed continued under the same ISIN, so only one closed as
+    delisted, or recognised as superseded on an earlier pass, can have been taken over.
+    """
+    closed_on = listing.delisting_date
+    if listing.closure_reason not in ("delisted", "superseded") or closed_on is None:
+        return None
+
+    taken_over = [
+        (opened_on, isin)
+        for opened_on, isin in openings[(listing.exchange, venue_identifier(listing))]
+        if isin != listing.isin and closed_on < opened_on <= closed_on + SUCCESSION_WINDOW
+    ]
+    return min(taken_over) if taken_over else None
 
 
 def _absorb_untickered(history: list[Stretch], key: str) -> list[Stretch]:
@@ -302,6 +350,7 @@ def persist_identity(
     instruments: Sequence[InstrumentRecord],
     listings: Sequence[ListingRecord],
     venues: Sequence[PrimaryVenueRecord],
+    successions: Sequence[SuccessionRecord] = (),
 ) -> None:
     """Write identity rows, leaving anything already recorded in place."""
     for instrument in instruments:
@@ -338,11 +387,26 @@ def persist_identity(
             (venue.isin, venue.effective_from, venue.as_of_date, venue.effective_to, venue.venue),
         )
 
+    for succession in successions:
+        connection.execute(
+            "insert into instrument_succession"
+            " (predecessor_isin, exchange, successor_isin, changed_on) values (%s, %s, %s, %s)"
+            " on conflict (predecessor_isin, exchange) do update set"
+            " successor_isin = excluded.successor_isin, changed_on = excluded.changed_on",
+            (
+                succession.predecessor_isin,
+                succession.exchange,
+                succession.successor_isin,
+                succession.changed_on,
+            ),
+        )
+
     logger.info(
         "identity written",
         extra={
             "instruments": len(instruments),
             "listings": len(listings),
             "primary_venues": len(venues),
+            "successions": len(successions),
         },
     )
