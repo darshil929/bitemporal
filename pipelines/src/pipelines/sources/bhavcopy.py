@@ -80,24 +80,46 @@ def normalize(rows: Sequence[BhavcopyRow], venue: str) -> tuple[PriceBar, ...]:
 # csv counts from the line after the header.
 FIRST_DATA_LINE = 2
 
+# A venue mangles a line at a time. A parser reading the wrong layout fails nearly every line,
+# so the share of unreadable lines is what separates the two.
+UNREADABLE_SHARE = 0.01
+
 
 def validated[RowT: BhavcopyRow](
     model: type[RowT], rows: Iterable[Mapping[str, Any]], label: str
 ) -> tuple[RowT, ...]:
-    """Read every row as a bar, naming the line a malformed file fails on.
+    """Read the rows that are bars, dropping the few a venue mangles.
 
     A venue occasionally publishes a line that is not a bar: BSE ran two records together on
-    2022-02-07, truncating an ISIN. Pydantic reports that as a validation error, which says
-    nothing about which file or line it came from and is not a source failure any caller
-    recognises.
+    2022-02-07, truncating an ISIN across the join. Losing that day's other 3,931 bars over two
+    broken lines costs more than it protects, so a line that cannot be read is logged and left
+    out.
+
+    Past a small share the file is being read wrongly rather than carrying a bad line, and the
+    day is refused instead. Completeness does not cover this: it marks a day short only once it
+    has lost half its bars.
     """
     parsed = []
+    unreadable = []
+
     for number, row in enumerate(rows, start=FIRST_DATA_LINE):
         try:
             parsed.append(model.model_validate(row))
-        except ValidationError as error:
-            first = next(iter(row.values()), "")
-            raise MalformedRow(
-                f"{label} bhavcopy line {number} is not a bar, beginning {first!r}"
-            ) from error
+        except ValidationError:
+            unreadable.append(number)
+            logger.warning(
+                "bhavcopy line is not a bar",
+                extra={
+                    "source": label,
+                    "line": number,
+                    "begins": next(iter(row.values()), ""),
+                },
+            )
+
+    if unreadable and len(unreadable) > UNREADABLE_SHARE * (len(parsed) + len(unreadable)):
+        raise MalformedRow(
+            f"{label} bhavcopy has {len(unreadable)} lines that are not bars"
+            f" beside {len(parsed)} that are, first at line {unreadable[0]}"
+        )
+
     return tuple(parsed)
