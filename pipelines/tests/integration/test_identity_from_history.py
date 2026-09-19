@@ -9,9 +9,12 @@ from dagster import build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.identity import instrument_identity
-from pipelines.checks.identity import every_bar_sits_inside_a_listing
+from pipelines.checks.identity import (
+    every_bar_sits_inside_a_listing,
+    every_superseded_listing_names_its_successor,
+)
 from pipelines.history import read_stretches, venue_last_days
-from pipelines.identity import close_listings
+from pipelines.identity import close_listings, derive_successions
 
 FIXTURE_SCHEMA = "fixture"
 
@@ -65,6 +68,23 @@ def test_a_change_of_isin_still_reads_as_superseded(seed: psycopg.Connection) ->
     assert derived[(BAJAJ_OLD, "NSE")][-1] == "superseded"
 
 
+def test_the_stored_bars_reproduce_the_committed_successions(seed: psycopg.Connection) -> None:
+    """Following the venue-local identifier out of storage has to reach the committed pairs."""
+    derived = {
+        (item.predecessor_isin, item.exchange, item.successor_isin, item.changed_on)
+        for item in derive_successions(close_listings(read_stretches(seed), venue_last_days(seed)))
+    }
+    committed = set(
+        seed.execute(
+            "select predecessor_isin, exchange, successor_isin, changed_on"
+            " from instrument_succession"
+        ).fetchall()
+    )
+
+    assert derived == committed
+    assert len(derived) == 6
+
+
 def test_a_rename_keeps_both_names(seed: psycopg.Connection) -> None:
     """Eternal traded as Zomato at NSE, and grouping by ticker alone loses the earlier bars."""
     stretches = [stretch for stretch in read_stretches(seed) if stretch.isin == ETERNAL]
@@ -87,15 +107,22 @@ def test_the_asset_writes_what_it_derives(
         check = every_bar_sits_inside_a_listing(
             build_asset_context(), PointedDatabase(dsn=postgres_dsn)
         )
+        linked = every_superseded_listing_names_its_successor(
+            build_asset_context(), PointedDatabase(dsn=postgres_dsn)
+        )
 
         stored = open_.execute("select count(*) from listing").fetchone()
 
         assert result.metadata["listings"] == (stored[0] if stored else 0)
         assert result.metadata["superseded"] == 6
+        assert result.metadata["successions"] == 6
         assert check.passed
         assert check.metadata["bars_outside_a_listing"].value == 0
+        assert linked.passed
+        assert linked.metadata["superseded_without_a_successor"].value == 0
 
         open_.execute("delete from price_daily")
+        open_.execute("delete from instrument_succession")
         open_.execute("delete from listing")
         open_.execute("delete from instrument_primary_venue")
         open_.execute("delete from instrument_master")

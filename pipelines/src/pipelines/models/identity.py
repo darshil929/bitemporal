@@ -28,6 +28,15 @@ class ListingRecord(BaseModel):
     closure_reason: str | None
 
 
+class SuccessionRecord(BaseModel):
+    """The ISIN that took an instrument over at one venue when its face value changed."""
+
+    predecessor_isin: str
+    exchange: str
+    successor_isin: str
+    changed_on: date
+
+
 class PrimaryVenueRecord(BaseModel):
     """The venue an instrument's series is computed from, over a span of dates."""
 

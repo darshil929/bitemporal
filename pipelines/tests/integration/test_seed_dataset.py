@@ -102,6 +102,24 @@ def test_both_sides_of_a_change_of_isin_are_present(connection: psycopg.Connecti
     assert pairs > 0
 
 
+def test_each_superseded_listing_reaches_its_successor(connection: psycopg.Connection) -> None:
+    """Both sides being present is not enough; the link between them has to be recorded."""
+    superseded = scalar(
+        connection, "select count(*) from listing where closure_reason = 'superseded'"
+    )
+    linked = scalar(
+        connection,
+        "select count(*) from listing l join instrument_succession s"
+        " on s.predecessor_isin = l.isin and s.exchange = l.exchange"
+        " join listing successor on successor.isin = s.successor_isin"
+        " and successor.exchange = s.exchange and successor.listing_date = s.changed_on"
+        " where l.closure_reason = 'superseded'",
+    )
+
+    assert superseded > 0
+    assert linked == superseded
+
+
 def test_an_action_without_derivable_terms_is_recorded(connection: psycopg.Connection) -> None:
     """A demerger stated only in free text must reach the database to mark the move it caused."""
     unhandled = scalar(

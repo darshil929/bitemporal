@@ -28,9 +28,9 @@ from typing import TextIO, TypedDict
 import httpx
 
 from pipelines.config.settings import SourceSettings
-from pipelines.identity import derive_listings, venue_key
+from pipelines.identity import derive_listings, derive_successions, venue_key
 from pipelines.models.corporate_action import CorporateActionRecord
-from pipelines.models.identity import ListingRecord
+from pipelines.models.identity import ListingRecord, SuccessionRecord
 from pipelines.models.market import DeliveryRecord, PriceBar
 from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
@@ -439,14 +439,18 @@ def emit(
     listings = derive_listings(kept, last_trading_day)
     actions = collect_actions(listings, cache, end)
 
+    successions = derive_successions(listings)
+
     _write_instruments(seed_dir, chosen, names)
     _write_listings(seed_dir, listings)
+    _write_successions(seed_dir, successions)
     _write_actions(seed_dir, actions)
     return {
         "instruments": len(chosen),
         "price_rows": written,
         "lines": len(dominant),
         "actions": len(actions),
+        "successions": len(successions),
     }
 
 
@@ -729,6 +733,21 @@ def _write_instruments(seed_dir: Path, chosen: dict[str, str], names: dict[str, 
         writer.writerow(["isin", "name", "sector", "country", "instrument_type"])
         for isin in sorted(chosen):
             writer.writerow([isin, names.get(isin, isin), "", "IN", "equity"])
+
+
+def _write_successions(seed_dir: Path, successions: Sequence[SuccessionRecord]) -> None:
+    with seed_writer(seed_dir / "instrument_succession.csv.gz") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["predecessor_isin", "exchange", "successor_isin", "changed_on"])
+        for succession in successions:
+            writer.writerow(
+                [
+                    succession.predecessor_isin,
+                    succession.exchange,
+                    succession.successor_isin,
+                    succession.changed_on.isoformat(),
+                ]
+            )
 
 
 def _write_listings(seed_dir: Path, listings: Sequence[ListingRecord]) -> None:
