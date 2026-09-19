@@ -2,12 +2,13 @@
 
 import logging
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, ValidationError
 
 from pipelines.models.market import PriceBar
+from pipelines.sources.errors import MalformedRow
 
 logger = logging.getLogger(__name__)
 
@@ -74,3 +75,29 @@ def normalize(rows: Sequence[BhavcopyRow], venue: str) -> tuple[PriceBar, ...]:
         )
 
     return tuple(bars)
+
+
+# csv counts from the line after the header.
+FIRST_DATA_LINE = 2
+
+
+def validated[RowT: BhavcopyRow](
+    model: type[RowT], rows: Iterable[Mapping[str, Any]], label: str
+) -> tuple[RowT, ...]:
+    """Read every row as a bar, naming the line a malformed file fails on.
+
+    A venue occasionally publishes a line that is not a bar: BSE ran two records together on
+    2022-02-07, truncating an ISIN. Pydantic reports that as a validation error, which says
+    nothing about which file or line it came from and is not a source failure any caller
+    recognises.
+    """
+    parsed = []
+    for number, row in enumerate(rows, start=FIRST_DATA_LINE):
+        try:
+            parsed.append(model.model_validate(row))
+        except ValidationError as error:
+            first = next(iter(row.values()), "")
+            raise MalformedRow(
+                f"{label} bhavcopy line {number} is not a bar, beginning {first!r}"
+            ) from error
+    return tuple(parsed)

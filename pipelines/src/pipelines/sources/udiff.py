@@ -9,7 +9,7 @@ from typing import Annotated
 from pydantic import ConfigDict, Field
 
 from pipelines.models.market import PriceBar
-from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone
+from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone, validated
 from pipelines.sources.errors import SchemaDrift
 
 
@@ -72,4 +72,4 @@ def parse_udiff(payload: bytes) -> tuple[UdiffRow, ...]:
     if missing:
         raise SchemaDrift(f"udiff bhavcopy is missing {sorted(missing)}")
 
-    return tuple(UdiffRow.model_validate(row) for row in reader)
+    return validated(UdiffRow, reader, "udiff")

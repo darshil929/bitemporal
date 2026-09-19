@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from pipelines.sources.bhavcopy import EQUITY_SERIES, normalize
-from pipelines.sources.errors import SchemaDrift
+from pipelines.sources.errors import MalformedRow, SchemaDrift, SourceError
 from pipelines.sources.legacy import parse_bse_legacy, parse_nse_legacy
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
@@ -97,3 +97,37 @@ def test_a_legacy_response_missing_a_column_is_rejected() -> None:
         parse_bse_legacy(truncated)
 
     assert "ISIN_CODE" in str(failure.value)
+
+
+def test_a_row_that_is_not_a_bar_names_the_line_it_sits_on() -> None:
+    """BSE ran two records together on 2022-02-07, truncating an ISIN across the join.
+
+    The misalignment puts a company name where the trade date belongs. Pydantic reports that
+    as a validation error, which no caller recognises as a source failure, so a single line
+    ended a run that had already read a thousand days.
+    """
+    header = (
+        "SC_CODE,SC_NAME,SC_GROUP,SC_TYPE,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,NO_TRADES,"
+        "NO_OF_SHRS,NET_TURNOV,TDCLOINDI,ISIN_CODE,TRADING_DATE,FILLER2,FILLER3"
+    )
+    good = (
+        "500002,ABB LTD.    ,A ,Q,2341.40,2347.05,2222.45,2258.45,2258.00,2331.70,1517,9702,"
+        "21995538.00,,INE117A01022,07-Feb-22,,"
+    )
+    ran_together = (
+        "531240,SHAMROCK IND,XT,Q,6.53,6.90,6.53,6.55,6.53,6.87,4,1060,6942.00,,INE540108,"
+        "TIAANC      ,X ,Q,8.00,8.20,7.82,7.93,8.15,8.06,125,23356,16010.00,,INE802B01019,"
+        "07-Feb-22,,"
+    )
+    payload = f"{header}\n{good}\n{ran_together}".encode()
+
+    with pytest.raises(MalformedRow) as raised:
+        parse_bse_legacy(payload)
+
+    assert "line 3" in str(raised.value)
+    assert "531240" in str(raised.value)
+
+
+def test_a_malformed_row_is_reported_as_a_source_failure() -> None:
+    """A caller counts the day as failed and carries on, rather than the run ending."""
+    assert issubclass(MalformedRow, SourceError)
