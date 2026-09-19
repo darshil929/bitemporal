@@ -1,7 +1,7 @@
 """The registered schema version drives both the url an adapter builds and the parser it uses."""
 
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -23,6 +23,13 @@ NSE_BASE = "https://nsearchives.nseindia.com/content/"
 
 LAST_LEGACY_DAY = date(2024, 7, 5)
 FIRST_UDIFF_DAY = date(2024, 7, 8)
+
+# The first day each venue's file names its instruments by ISIN. BSE publishes EQ_ISINCODE from
+# December 2016 with no trade date column until this day, and NSE's earlier files carry no ISIN.
+FIRST_KEYED_DAY = {
+    "bse_bhavcopy_equity": date(2017, 6, 23),
+    "nse_bhavcopy_equity": date(2011, 6, 22),
+}
 
 
 def client(source_id: str) -> ThrottledClient:
@@ -54,7 +61,7 @@ def test_the_bse_url_follows_the_version(tmp_path: Path) -> None:
     assert adapter.url_for(FIRST_UDIFF_DAY, "udiff").endswith(
         "BhavCopy_BSE_CM_0_0_0_20240708_F_0000.CSV"
     )
-    assert adapter.url_for(LAST_LEGACY_DAY, "bse_legacy").endswith("EQ_ISINCODE_050724.CSV")
+    assert adapter.url_for(LAST_LEGACY_DAY, "bse_legacy").endswith("EQ_ISINCODE_050724.zip")
 
 
 def test_the_nse_url_follows_the_version(tmp_path: Path) -> None:
@@ -72,7 +79,8 @@ def test_each_version_produces_its_own_row_type(tmp_path: Path) -> None:
     bse = bse_adapter(tmp_path)
     nse = nse_adapter(tmp_path)
     udiff_payload = (CASSETTES / "bse_bhavcopy_equity" / "20260814.csv").read_bytes()
-    legacy_payload = (CASSETTES / "bse_bhavcopy_equity" / "20240115_legacy.csv").read_bytes()
+    with zipfile.ZipFile(CASSETTES / "bse_bhavcopy_equity" / "20240115_legacy.csv.zip") as opened:
+        legacy_payload = opened.read(opened.namelist()[0])
 
     with zipfile.ZipFile(CASSETTES / "nse_bhavcopy_equity" / "20240115_legacy.csv.zip") as archive:
         nse_legacy_payload = archive.read(archive.namelist()[0])
@@ -109,3 +117,31 @@ def test_a_legacy_day_reaches_canonical_bars_end_to_end(tmp_path: Path) -> None:
     assert bars
     assert all(bar.trade_date == partition for bar in bars)
     assert all(bar.venue == "NSE" for bar in bars)
+
+
+def test_a_day_before_the_venue_named_its_instruments_by_isin_has_no_parser() -> None:
+    """A file without an ISIN column cannot be keyed, so no schema version covers those days."""
+    for source_id, first in FIRST_KEYED_DAY.items():
+        assert version_for(source_id, first)
+
+        with pytest.raises(UnknownSchemaVersion):
+            version_for(source_id, first - timedelta(days=1))
+
+
+@respx.mock
+def test_a_zipped_legacy_day_reaches_canonical_bars_end_to_end(tmp_path: Path) -> None:
+    """BSE serves the ISIN-bearing legacy file zipped, and only that shape reaches older days."""
+    archive = (CASSETTES / "bse_bhavcopy_equity" / "20240115_legacy.csv.zip").read_bytes()
+    route = respx.get(url__startswith=BSE_BASE).mock(
+        return_value=httpx.Response(200, content=archive)
+    )
+    adapter = bse_adapter(tmp_path)
+    partition = date(2024, 1, 15)
+    version = version_for("bse_bhavcopy_equity", partition)
+
+    bars = adapter.normalize(adapter.parse(adapter.fetch(partition, version), version))
+
+    assert route.calls[0].request.url.path.endswith("EQ_ISINCODE_150124.zip")
+    assert bars
+    assert all(bar.trade_date == partition for bar in bars)
+    assert all(bar.venue == "BSE" for bar in bars)

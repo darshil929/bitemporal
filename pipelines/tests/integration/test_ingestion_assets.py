@@ -136,7 +136,9 @@ def test_the_legacy_format_is_read_for_a_day_before_the_cutover(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
     """The registry picks the parser by trade date, so an old day reads its own format."""
-    bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20240115_legacy.csv")})
+    bhavcopies = RecordedBhavcopies(
+        {"BSE": payload("bse_bhavcopy_equity", "20240115_legacy.csv.zip")}
+    )
 
     result = ingest(build_asset_context(partition_key="2024-01-15"), "BSE", database, bhavcopies)
 

@@ -121,3 +121,23 @@ def test_bse_answering_with_its_home_page_is_reported_as_unpublished(tmp_path: P
         adapter.fetch(date(2026, 8, 15))
 
     assert cache.read("bse_bhavcopy_equity", "2026-08-15", ".csv") is None
+
+
+@respx.mock
+def test_a_zipped_bse_day_is_cached_unzipped(tmp_path: Path) -> None:
+    """The cache holds what the parser reads, so a second fetch neither unzips nor requests."""
+    archive = (CASSETTES / "bse_bhavcopy_equity" / "20240115_legacy.csv.zip").read_bytes()
+    route = respx.get(url__startswith=BSE_BASE).mock(
+        return_value=httpx.Response(200, content=archive)
+    )
+    cache = DiskCache(tmp_path)
+    adapter = BseBhavcopy(build("bse"), cache, BSE_BASE)
+    partition = date(2024, 1, 15)
+
+    first = adapter.fetch(partition, "bse_legacy")
+    second = adapter.fetch(partition, "bse_legacy")
+
+    assert route.call_count == 1
+    assert first == second
+    assert first.startswith(b"SC_CODE")
+    assert cache.read("bse_bhavcopy_equity", partition.isoformat(), ".csv") == first

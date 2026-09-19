@@ -14,16 +14,19 @@ CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
 TRADE_DATE = date(2024, 1, 15)
 
 
+def _only_csv(archive: Path) -> bytes:
+    with zipfile.ZipFile(archive) as opened:
+        return opened.read(opened.namelist()[0])
+
+
 @pytest.fixture(scope="module")
 def bse_payload() -> bytes:
-    return (CASSETTES / "bse_bhavcopy_equity" / "20240115_legacy.csv").read_bytes()
+    return _only_csv(CASSETTES / "bse_bhavcopy_equity" / "20240115_legacy.csv.zip")
 
 
 @pytest.fixture(scope="module")
 def nse_payload() -> bytes:
-    archive = CASSETTES / "nse_bhavcopy_equity" / "20240115_legacy.csv.zip"
-    with zipfile.ZipFile(archive) as opened:
-        return opened.read(opened.namelist()[0])
+    return _only_csv(CASSETTES / "nse_bhavcopy_equity" / "20240115_legacy.csv.zip")
 
 
 def test_the_bse_legacy_format_dates_rows_with_a_two_digit_year(bse_payload: bytes) -> None:
