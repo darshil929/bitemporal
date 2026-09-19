@@ -10,7 +10,7 @@ from pipelines.identity import (
     derive_listings,
     derive_primary_venue,
     derive_successions,
-    require_resolvable,
+    resolvable,
 )
 from pipelines.models.market import PriceBar
 
@@ -46,10 +46,20 @@ def bar(
     )
 
 
-def test_an_identifier_that_is_not_an_isin_stops_the_ingestion() -> None:
-    """Dropping the row instead would quietly shrink the universe."""
+def test_a_row_naming_no_instrument_is_left_out() -> None:
+    """BSE publishes a blank or NA in the ISIN column, on a row that cannot be keyed."""
+    kept = [bar(isin=RELIANCE) for _ in range(200)]
+
+    resolved = resolvable([*kept, bar(isin="NA"), bar(isin="")])
+
+    assert len(resolved) == 200
+    assert all(item.isin == RELIANCE for item in resolved)
+
+
+def test_a_file_naming_no_instrument_on_most_rows_is_refused() -> None:
+    """Nearly every row failing means the file is not what the parser takes it for."""
     with pytest.raises(UnresolvedInstrument) as failure:
-        require_resolvable([bar(), bar(isin="RELIANCE")])
+        resolvable([bar(), bar(isin="RELIANCE")])
 
     assert "RELIANCE" in str(failure.value)
 
@@ -57,7 +67,7 @@ def test_an_identifier_that_is_not_an_isin_stops_the_ingestion() -> None:
 def test_resolvable_bars_pass_through_unchanged() -> None:
     bars = [bar(), bar(isin=INFOSYS, symbol="INFY")]
 
-    assert require_resolvable(bars) == tuple(bars)
+    assert resolvable(bars) == tuple(bars)
 
 
 def test_a_symbol_change_opens_a_second_listing() -> None:
