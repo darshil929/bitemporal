@@ -12,12 +12,16 @@ from pipelines.models.market import PriceBar
 from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone, validated
 from pipelines.sources.errors import SchemaDrift, WrongDay
 
-# BSE dates its legacy rows 15-Jan-24 and NSE dates its own 15-JAN-2024.
-BSE_DATE_FORMAT = "%d-%b-%y"
-NSE_DATE_FORMAT = "%d-%b-%Y"
+# BSE dates its legacy rows 15-Jan-24 and NSE dates its own 15-JAN-2024, except on
+# 13 July 2020, which NSE dated 13-Jul-20. Each venue's usual shape is tried first and the
+# other after. A two digit year is read only by the first and a four digit year only by the
+# second, so neither can be mistaken for the other.
+DATE_FORMATS = ("%d-%b-%y", "%d-%b-%Y")
+BSE_DATE_FORMATS = DATE_FORMATS
+NSE_DATE_FORMATS = tuple(reversed(DATE_FORMATS))
 
 
-def _parse_day(value: object, fmt: str) -> date:
+def _parse_day(value: object, formats: tuple[str, ...]) -> date:
     """A trade date names a calendar day at the venue and carries no time or offset.
 
     A line carrying fewer fields than the header leaves this one absent rather than wrong, and
@@ -28,7 +32,15 @@ def _parse_day(value: object, fmt: str) -> date:
         return value
     if value is None:
         raise ValueError("trade date is absent")
-    return datetime.strptime(str(value).strip(), fmt).date()  # noqa: DTZ007
+
+    written = str(value).strip()
+    for fmt in formats:
+        try:
+            return datetime.strptime(written, fmt).date()  # noqa: DTZ007
+        except ValueError:
+            continue
+
+    raise ValueError(f"trade date {written!r} is written in no shape the venue uses")
 
 
 class BseLegacyRow(BhavcopyRow):
@@ -60,7 +72,7 @@ class BseLegacyRow(BhavcopyRow):
     @field_validator("trade_date", mode="before")
     @classmethod
     def _parse_date(cls, value: object) -> date:
-        return _parse_day(value, BSE_DATE_FORMAT)
+        return _parse_day(value, BSE_DATE_FORMATS)
 
     @field_validator("group", "scrip_code", "isin", "name", mode="before")
     @classmethod
@@ -115,7 +127,7 @@ class NseLegacyRow(BhavcopyRow):
     @field_validator("trade_date", mode="before")
     @classmethod
     def _parse_date(cls, value: object) -> date:
-        return _parse_day(value, NSE_DATE_FORMAT)
+        return _parse_day(value, NSE_DATE_FORMATS)
 
     @property
     def series(self) -> str:
