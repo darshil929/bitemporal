@@ -64,6 +64,26 @@ services:
       api:
         condition: service_healthy
 
+  # Browsing the database is occasional, so this starts only when its profile is named.
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    profiles: [pgadmin]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-bitemporal@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-bitemporal}
+      # Desktop mode: the browser reaches it on localhost alone, so it asks for no login.
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - ./infra/docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Containers on macOS cannot reach the GPU. Services default to OLLAMA_BASE_URL on the host.
   ollama:
     image: ollama/ollama:latest
@@ -75,3 +95,4 @@ services:
 
 volumes:
   ollama-models:
+  pgadmin-data:

@@ -20,7 +20,7 @@ CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 SQL_SOURCES = $(shell find infra pipelines -name '*.sql' -not -path '*/target/*' 2>/dev/null)
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill
+.PHONY: setup lint test-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill pgadmin
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -82,6 +82,10 @@ up:
 
 down:
 	docker compose down
+
+# Serves pgAdmin on PGADMIN_PORT, defaulting to 5050, with this stack's Postgres registered.
+pgadmin:
+	docker compose --profile pgadmin up -d pgadmin --wait
 
 migrate:
 	uv run alembic -c pipelines/alembic.ini upgrade head
