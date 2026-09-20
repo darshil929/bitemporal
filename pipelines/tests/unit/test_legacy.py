@@ -185,3 +185,33 @@ def test_a_file_describing_another_day_is_refused() -> None:
 
     with pytest.raises(WrongDay):
         parse_bse_legacy(payload, date(2022, 2, 8))
+
+
+NSE_HEADER = (
+    "SYMBOL,SERIES,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,TOTTRDQTY,TOTTRDVAL,TIMESTAMP,"
+    "TOTALTRADES,ISIN"
+)
+
+
+def nse_line(written: str) -> str:
+    return (
+        "20MICRONS,EQ,32.85,33.85,31.85,33.45,33.85,32.3,187303,6187285.7,"
+        f"{written},1382,INE144J01027"
+    )
+
+
+@pytest.mark.parametrize("written", ["13-JUL-2020", "13-Jul-20"])
+def test_the_nse_trade_date_is_read_in_either_shape(written: str) -> None:
+    """NSE dated 13 July 2020 with a two digit year, and every other day with four."""
+    payload = f"{NSE_HEADER}\n{nse_line(written)}".encode()
+
+    rows = parse_nse_legacy(payload)
+
+    assert [row.trade_date for row in rows] == [date(2020, 7, 13)]
+
+
+def test_a_trade_date_in_no_shape_the_venue_uses_is_refused() -> None:
+    payload = f"{NSE_HEADER}\n{nse_line('2020/07/13')}".encode()
+
+    with pytest.raises(MalformedRow):
+        parse_nse_legacy(payload)
