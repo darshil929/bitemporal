@@ -18,7 +18,7 @@ from dagster import (
 )
 
 from pipelines.facts import persist_bars, record_ingestion
-from pipelines.identity import derive_instruments, persist_identity, require_resolvable
+from pipelines.identity import derive_instruments, persist_identity, resolvable
 from pipelines.resources import Bhavcopies, Database
 from pipelines.sources.bhavcopy import names_by_isin
 from pipelines.sources.errors import NotPublished, SourceError
@@ -66,6 +66,7 @@ def ingest(
 
             try:
                 rows = adapter.parse(adapter.fetch(day, version), version, day)
+                bars = resolvable(adapter.normalize(rows))
             except NotPublished as absence:
                 record_ingestion(
                     connection,
@@ -96,7 +97,6 @@ def ingest(
                 )
                 continue
 
-            bars = require_resolvable(adapter.normalize(rows))
             names = names_by_isin(rows, venue)
             introduced = derive_instruments(bars, names)
             unwritten = [item for item in introduced if named.get(item.isin) != item.name]
