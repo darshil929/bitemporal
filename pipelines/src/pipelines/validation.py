@@ -17,10 +17,14 @@ from pipelines.models.market import PriceBar
 
 logger = logging.getLogger(__name__)
 
-# Observed spreads on the committed dataset sit under 25 basis points at the ninety ninth
-# percentile and peak at 175 on a suspended instrument. An action handled at one venue and not the
-# other moves a price by half, which is five thousand.
+# An action handled at one venue and not the other moves a price by half, which is five thousand
+# basis points, far beyond anything two venues trading the same shares otherwise settle at.
 DIVERGENCE_LIMIT_BPS = Decimal(500)
+
+# Two venues' prices agree only where both trade enough for the difference to be bought at one and
+# sold at the other. A thinly traded instrument closes wherever its last trade put it, and some sit
+# pinned at a price floor that never moves, so a gap between them says nothing about the day.
+COMPARABLE_TURNOVER = Decimal(2_500_000)
 
 # A file that arrives truncated carries a fraction of the instruments the venue usually lists,
 # so the floor is relative to that rather than a count no subset of the market would meet.
@@ -43,20 +47,26 @@ class DayVerdict:
 
 
 def divergences(
-    bars: Sequence[PriceBar], limit_bps: Decimal = DIVERGENCE_LIMIT_BPS
+    bars: Sequence[PriceBar],
+    limit_bps: Decimal = DIVERGENCE_LIMIT_BPS,
+    turnover_floor: Decimal = COMPARABLE_TURNOVER,
 ) -> dict[str, Decimal]:
     """Instruments whose two venue closes disagree beyond tolerance, in basis points.
 
-    Blending the venues is forbidden, so the two series are only ever compared. A gap this wide
-    almost always means a corporate action handled at one venue and not the other.
+    Blending the venues is forbidden, so the two series are only ever compared, and only where
+    both traded enough for their prices to be held together.
     """
     closes: dict[str, dict[str, Decimal]] = defaultdict(dict)
+    turnovers: dict[str, dict[str, Decimal]] = defaultdict(dict)
     for bar in bars:
         closes[bar.isin][bar.venue] = bar.close
+        turnovers[bar.isin][bar.venue] = bar.turnover or Decimal(0)
 
     wide = {}
     for isin, venues in closes.items():
         if len(venues) < 2:
+            continue
+        if min(turnovers[isin].values()) < turnover_floor:
             continue
         values = list(venues.values())
         midpoint = sum(values, Decimal(0)) / len(values)
