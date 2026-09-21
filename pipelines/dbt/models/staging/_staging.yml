@@ -249,7 +249,9 @@ models:
                 to: ref('stg_instruments')
                 field: isin
       - name: changed_on
-        description: The first day the instrument traded under the successor.
+        description: >
+          The first day the instrument traded under the successor at either venue. The venues
+          often start it a trading day apart.
         data_tests: [not_null]
 
 unit_tests:
