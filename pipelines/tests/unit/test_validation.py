@@ -11,11 +11,16 @@ RELIANCE = "INE002A01018"
 INFOSYS = "INE009A01021"
 
 
+# Well past the turnover two venues need before their prices are compared.
+LIQUID = Decimal(100_000_000)
+
+
 def bar(
     isin: str = RELIANCE,
     venue: str = "NSE",
     close: str = "100",
     day: date = TRADE_DATE,
+    turnover: Decimal = LIQUID,
 ) -> PriceBar:
     return PriceBar(
         isin=isin,
@@ -30,7 +35,7 @@ def bar(
         close=Decimal(close),
         previous_close=None,
         volume=1,
-        turnover=Decimal(1),
+        turnover=turnover,
         trade_count=1,
     )
 
@@ -116,3 +121,33 @@ def test_a_verdict_is_knowable_on_the_day_it_describes() -> None:
     verdict = validate_day("NSE", TRADE_DATE, many(150), typical_bars=150)
 
     assert verdict.as_of_date == verdict.trade_date
+
+
+def test_a_gap_on_a_thinly_traded_instrument_is_not_reported() -> None:
+    """Sanwaria Consumer sat at 49 paise on BSE for months while NSE traded it at 19.
+
+    A price pinned at a floor, or set by a single trade, cannot be held to another venue's.
+    """
+    thin = Decimal(100_000)
+    pinned = [
+        bar(venue="BSE", close="0.49", turnover=thin),
+        bar(venue="NSE", close="0.19", turnover=thin),
+    ]
+
+    assert divergences(pinned) == {}
+
+
+def test_a_gap_is_ignored_when_either_venue_traded_thinly() -> None:
+    one_sided = [
+        bar(venue="BSE", close="100", turnover=LIQUID),
+        bar(venue="NSE", close="150", turnover=Decimal(1_000)),
+    ]
+
+    assert divergences(one_sided) == {}
+
+
+def test_a_gap_where_both_venues_traded_heavily_is_reported() -> None:
+    """Heavy trading at both venues holds the prices together, so a wide gap there is real."""
+    both_liquid = [bar(venue="BSE", close="100"), bar(venue="NSE", close="150")]
+
+    assert RELIANCE in divergences(both_liquid)
