@@ -34,7 +34,8 @@ def bar(venue: str, close: str, trade_date: str = "2026-07-31") -> PriceBar:
         close=Decimal(close),
         previous_close=None,
         volume=1000,
-        turnover=Decimal(1000000),
+        # Heavy enough at both venues for their prices to be compared.
+        turnover=Decimal(100_000_000),
         trade_count=100,
     )
 

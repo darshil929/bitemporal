@@ -24,6 +24,10 @@ models:
       - name: venue_spread_bps
         description: Absolute gap between the venue closes, in basis points of their midpoint.
         data_tests: [not_null]
+      - name: comparable_turnover
+        description: >
+          Turnover on the venue that traded less. A gap is read only where this is large enough
+          for the two prices to be held together; below it a close is wherever a trade put it.
 
   - name: int_delivery_participation
     description: >
