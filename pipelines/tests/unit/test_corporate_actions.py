@@ -138,3 +138,17 @@ def test_an_action_with_terms_keeps_no_text() -> None:
 
 def test_a_scrip_outside_the_mapping_is_skipped() -> None:
     assert normalize(parse_actions(payload("500325")), {}, REPORTED_ON) == ()
+
+
+@pytest.mark.parametrize(
+    "purpose",
+    ["Bonus issue 0:0", "Bonus issue 2:0", "Stock split From Rs.0/- to Rs.0/-"],
+    ids=["bonus with no terms", "bonus against nothing held", "split to no face value"],
+)
+def test_terms_that_name_no_ratio_are_unhandled(purpose: str) -> None:
+    """BSE published a bonus of 0:0. A ratio with a zero side scales a price to nothing."""
+    action_type, qualifier, ratio_from, ratio_to, amount = parse_purpose(purpose)
+
+    assert action_type == "unhandled"
+    assert qualifier == purpose.lower()
+    assert (ratio_from, ratio_to, amount) == (None, None, None)
