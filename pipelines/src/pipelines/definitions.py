@@ -9,7 +9,7 @@ from dagster_dbt import DbtCliResource
 
 from pipelines import assets, checks
 from pipelines.assets.transform.dbt import dbt_project, source_assets
-from pipelines.resources import Bhavcopies, Database
+from pipelines.resources import Bhavcopies, CorporateActions, Database
 
 defs = Definitions(
     assets=[*load_assets_from_package_module(assets), *source_assets()],
@@ -17,6 +17,7 @@ defs = Definitions(
     resources={
         "database": Database(),
         "bhavcopies": Bhavcopies(),
+        "actions": CorporateActions(),
         "dbt": DbtCliResource(project_dir=dbt_project),
     },
 )

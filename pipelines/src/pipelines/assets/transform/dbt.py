@@ -19,9 +19,10 @@ BSE = AssetKey("bse_bhavcopy")
 NSE = AssetKey("nse_bhavcopy")
 IDENTITY = AssetKey("instrument_identity")
 COMPLETENESS = AssetKey("trading_day_completeness")
+ACTIONS = AssetKey("corporate_actions")
 
-# Which asset fills each table the models read. Delivery and corporate actions are ingested by
-# scripts rather than assets so far, so they stand in the graph with nothing upstream of them.
+# Which asset fills each table the models read. Delivery is ingested by a script rather than an
+# asset, so it stands in the graph with nothing upstream of it.
 SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "price_daily": [BSE, NSE],
     "instrument_master": [BSE, NSE, IDENTITY],
@@ -29,7 +30,7 @@ SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "instrument_succession": [IDENTITY],
     "trading_day": [COMPLETENESS],
     "delivery_daily": [],
-    "corporate_action": [],
+    "corporate_action": [ACTIONS],
 }
 
 dbt_project = DbtProject(project_dir=DBT_DIR, profiles_dir=DBT_DIR)

@@ -9,6 +9,7 @@ from dagster import ConfigurableResource
 
 from pipelines.config.settings import DatabaseSettings, SourceSettings
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
+from pipelines.sources.bse.corporate_actions import BseCorporateActions
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
@@ -22,6 +23,7 @@ BROWSER_USER_AGENT = (
 )
 
 BHAVCOPY_SOURCES = {"BSE": "bse_bhavcopy_equity", "NSE": "nse_bhavcopy_equity"}
+ACTIONS_SOURCE = "bse_corporate_actions"
 
 
 class Database(ConfigurableResource[None]):
@@ -58,3 +60,22 @@ class Bhavcopies(ConfigurableResource[None]):
         if venue == "NSE":
             return NseBhavcopy(client, cache, definition.base_url)
         return BseBhavcopy(client, cache, definition.base_url)
+
+
+class CorporateActions(ConfigurableResource[None]):
+    """The BSE corporate action adapter, throttled at the rate its registry entry states."""
+
+    def definition(self) -> SourceDefinition:
+        return next(item for item in load_definitions() if item.source_id == ACTIONS_SOURCE)
+
+    def adapter(self) -> BseCorporateActions:
+        settings = SourceSettings()
+        definition = self.definition()
+        client = ThrottledClient(
+            definition.source_id,
+            httpx.Client(headers={"User-Agent": settings.source_user_agent}, follow_redirects=True),
+            Throttle(1 / definition.requests_per_second),
+        )
+        return BseCorporateActions(
+            client, DiskCache(settings.source_cache_dir), definition.base_url
+        )

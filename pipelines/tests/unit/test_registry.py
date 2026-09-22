@@ -17,12 +17,21 @@ def definitions() -> dict[str, SourceDefinition]:
     return {definition.source_id: definition for definition in load_definitions()}
 
 
-def test_every_definition_carries_a_tier_and_a_curation_reference(
+def test_every_definition_carries_a_tier_and_accounts_for_its_curation(
     definitions: dict[str, SourceDefinition],
 ) -> None:
+    """SEBI curates the exchanges' bulk reports, so an exchange file names the row that lists it.
+
+    A source outside that list is an exchange endpoint rather than a report, below the first tier,
+    and its notes say why no row names it.
+    """
     for definition in definitions.values():
         assert 1 <= definition.tier <= 4
-        assert definition.sebi_curation_ref
+        if definition.sebi_curation_ref is None:
+            assert definition.tier >= 2, f"{definition.source_id} is a report with no curation row"
+            assert definition.owner_notes and "curation" in definition.owner_notes, (
+                f"{definition.source_id} names no curation row and does not say why"
+            )
 
 
 @pytest.mark.parametrize("source_id", BHAVCOPY_SOURCES)
