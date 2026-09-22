@@ -77,9 +77,10 @@ Names an instrument by ticker and series, never by ISIN, so a row resolves throu
 force on its trade date. A series that settles no delivery reports a dash rather than a zero.
 """
 
+# First served on 30 September 2019; the weekdays before it answer with nothing.
 [[source.schema_version]]
 version = "sec_bhavdata_full"
-effective_from = 2020-01-01
+effective_from = 2019-09-30
 
 [[source]]
 source_id = "bse_delivery"
