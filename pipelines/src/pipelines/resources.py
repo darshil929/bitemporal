@@ -10,9 +10,11 @@ from dagster import ConfigurableResource
 from pipelines.config.settings import DatabaseSettings, SourceSettings
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.bse.corporate_actions import BseCorporateActions
+from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
+from pipelines.sources.nse.delivery import NseDelivery
 from pipelines.sources.registry import SourceDefinition, load_definitions
 
 # NSE's archive host drops a request that does not look like a browser, which the source registry
@@ -24,6 +26,7 @@ BROWSER_USER_AGENT = (
 
 BHAVCOPY_SOURCES = {"BSE": "bse_bhavcopy_equity", "NSE": "nse_bhavcopy_equity"}
 ACTIONS_SOURCE = "bse_corporate_actions"
+DELIVERY_SOURCES = {"BSE": "bse_delivery", "NSE": "nse_delivery"}
 
 
 class Database(ConfigurableResource[None]):
@@ -79,3 +82,26 @@ class CorporateActions(ConfigurableResource[None]):
         return BseCorporateActions(
             client, DiskCache(settings.source_cache_dir), definition.base_url
         )
+
+
+class Deliveries(ConfigurableResource[None]):
+    """The delivery adapter for each venue, throttled at the rate its registry entry states."""
+
+    def definition(self, venue: str) -> SourceDefinition:
+        wanted = DELIVERY_SOURCES[venue]
+        return next(item for item in load_definitions() if item.source_id == wanted)
+
+    def adapter(self, venue: str) -> BseDelivery | NseDelivery:
+        settings = SourceSettings()
+        definition = self.definition(venue)
+        cache = DiskCache(settings.source_cache_dir)
+        agent = BROWSER_USER_AGENT if venue == "NSE" else settings.source_user_agent
+        client = ThrottledClient(
+            definition.source_id,
+            httpx.Client(headers={"User-Agent": agent}, follow_redirects=True),
+            Throttle(1 / definition.requests_per_second),
+        )
+
+        if venue == "NSE":
+            return NseDelivery(client, cache, definition.base_url)
+        return BseDelivery(client, cache, definition.base_url)

@@ -20,16 +20,16 @@ NSE = AssetKey("nse_bhavcopy")
 IDENTITY = AssetKey("instrument_identity")
 COMPLETENESS = AssetKey("trading_day_completeness")
 ACTIONS = AssetKey("corporate_actions")
+DELIVERY = [AssetKey("bse_delivery"), AssetKey("nse_delivery")]
 
-# Which asset fills each table the models read. Delivery is ingested by a script rather than an
-# asset, so it stands in the graph with nothing upstream of it.
+# Which asset fills each table the models read.
 SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "price_daily": [BSE, NSE],
     "instrument_master": [BSE, NSE, IDENTITY],
     "listing": [IDENTITY],
     "instrument_succession": [IDENTITY],
     "trading_day": [COMPLETENESS],
-    "delivery_daily": [],
+    "delivery_daily": DELIVERY,
     "corporate_action": [ACTIONS],
 }
 
