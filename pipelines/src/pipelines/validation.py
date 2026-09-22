@@ -26,6 +26,11 @@ DIVERGENCE_LIMIT_BPS = Decimal(500)
 # pinned at a price floor that never moves, so a gap between them says nothing about the day.
 COMPARABLE_TURNOVER = Decimal(2_500_000)
 
+# Below this price a single step of the price grid is itself several percent of the price, so
+# two venues a tick or two apart read as disagreeing. The venues quoted in coarser steps in earlier
+# years, which is where the floor has to hold.
+COMPARABLE_PRICE = Decimal(10)
+
 # A file that arrives truncated carries a fraction of the instruments the venue usually lists,
 # so the floor is relative to that rather than a count no subset of the market would meet.
 TRUNCATION_FRACTION = Decimal("0.5")
@@ -50,11 +55,12 @@ def divergences(
     bars: Sequence[PriceBar],
     limit_bps: Decimal = DIVERGENCE_LIMIT_BPS,
     turnover_floor: Decimal = COMPARABLE_TURNOVER,
+    price_floor: Decimal = COMPARABLE_PRICE,
 ) -> dict[str, Decimal]:
     """Instruments whose two venue closes disagree beyond tolerance, in basis points.
 
     Blending the venues is forbidden, so the two series are only ever compared, and only where
-    both traded enough for their prices to be held together.
+    both traded enough, at a high enough price, for a gap to be more than the price grid.
     """
     closes: dict[str, dict[str, Decimal]] = defaultdict(dict)
     turnovers: dict[str, dict[str, Decimal]] = defaultdict(dict)
@@ -69,6 +75,8 @@ def divergences(
         if min(turnovers[isin].values()) < turnover_floor:
             continue
         values = list(venues.values())
+        if min(values) < price_floor:
+            continue
         midpoint = sum(values, Decimal(0)) / len(values)
         if midpoint <= 0:
             continue
