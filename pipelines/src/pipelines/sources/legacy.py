@@ -11,6 +11,7 @@ from pydantic import ConfigDict, Field, field_validator
 from pipelines.models.market import PriceBar
 from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone, validated
 from pipelines.sources.errors import SchemaDrift, WrongDay
+from pipelines.sources.payload import decoded
 
 # BSE dates its legacy rows 15-Jan-24 and NSE dates its own 15-JAN-2024, except on
 # 13 July 2020, which NSE dated 13-Jul-20. Each venue's usual shape is tried first and the
@@ -171,7 +172,7 @@ NSE_LEGACY_COLUMNS = frozenset(
 
 
 def _read(payload: bytes, required: frozenset[str], label: str) -> csv.DictReader[str]:
-    reader = csv.DictReader(io.StringIO(payload.decode("utf-8-sig")))
+    reader = csv.DictReader(io.StringIO(decoded(payload, label)))
     present = {name.strip() for name in reader.fieldnames or ()}
     missing = required - present
     if missing:

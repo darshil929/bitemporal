@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from pipelines.models.market import DeliveryRecord
 from pipelines.sources.errors import SchemaDrift, SourceUnavailable
+from pipelines.sources.payload import decoded
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def _parse_day(value: str, fmt: str) -> date:
 
 def parse_nse_delivery(payload: bytes) -> tuple[DeliveryRow, ...]:
     """Read the NSE security-wise file, whose header pads every name with a space."""
-    reader = csv.DictReader(io.StringIO(payload.decode("utf-8-sig")))
+    reader = csv.DictReader(io.StringIO(decoded(payload, "nse delivery")))
     present = {name.strip() for name in reader.fieldnames or ()}
     missing = NSE_COLUMNS - present
     if missing:
@@ -98,7 +99,7 @@ def _extract(archive: bytes) -> str:
             names = opened.namelist()
             if len(names) != 1:
                 raise SourceUnavailable(f"archive holds {len(names)} entries, expected one")
-            return opened.read(names[0]).decode("utf-8")
+            return decoded(opened.read(names[0]), "bse delivery")
     except zipfile.BadZipFile as error:
         raise SourceUnavailable("archive is not a zip file") from error
 
