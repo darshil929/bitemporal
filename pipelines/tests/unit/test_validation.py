@@ -151,3 +151,10 @@ def test_a_gap_where_both_venues_traded_heavily_is_reported() -> None:
     both_liquid = [bar(venue="BSE", close="100"), bar(venue="NSE", close="150")]
 
     assert RELIANCE in divergences(both_liquid)
+
+
+def test_a_gap_of_a_tick_or_two_on_a_low_priced_instrument_is_not_reported() -> None:
+    """Reliance Power traded crores a day at under two rupees, where one step is several percent."""
+    low_priced = [bar(venue="BSE", close="1.50"), bar(venue="NSE", close="1.60")]
+
+    assert divergences(low_priced) == {}
