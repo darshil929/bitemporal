@@ -56,16 +56,16 @@ def parse_purpose(
     bonus = BONUS.match(text)
     if bonus:
         received, held = Decimal(bonus.group(1)), Decimal(bonus.group(2))
-        return "bonus", DEFAULT_QUALIFIER, held, held + received, None
+        if received > 0 and held > 0:
+            return "bonus", DEFAULT_QUALIFIER, held, held + received, None
 
     split = SPLIT.match(text)
     if split:
         old_face, new_face = Decimal(split.group(1)), Decimal(split.group(2))
-        if new_face <= 0:
-            raise SchemaDrift(f"split names a face value of {new_face}: {text}")
-        if new_face > old_face:
-            return "consolidation", DEFAULT_QUALIFIER, new_face / old_face, Decimal(1), None
-        return "split", DEFAULT_QUALIFIER, Decimal(1), old_face / new_face, None
+        if old_face > 0 and new_face > 0:
+            if new_face > old_face:
+                return "consolidation", DEFAULT_QUALIFIER, new_face / old_face, Decimal(1), None
+            return "split", DEFAULT_QUALIFIER, Decimal(1), old_face / new_face, None
 
     dividend = DIVIDEND.search(text)
     if dividend:
