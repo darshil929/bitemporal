@@ -11,6 +11,7 @@ from pydantic import ConfigDict, Field
 from pipelines.models.market import PriceBar
 from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone, validated
 from pipelines.sources.errors import SchemaDrift
+from pipelines.sources.payload import decoded
 
 
 class UdiffRow(BhavcopyRow):
@@ -67,7 +68,7 @@ REQUIRED_COLUMNS = frozenset(field.alias for field in UdiffRow.model_fields.valu
 
 def parse_udiff(payload: bytes) -> tuple[UdiffRow, ...]:
     """Read a bhavcopy into validated rows, performing no input or output."""
-    reader = csv.DictReader(io.StringIO(payload.decode("utf-8-sig")))
+    reader = csv.DictReader(io.StringIO(decoded(payload, "udiff")))
     missing = REQUIRED_COLUMNS - set(reader.fieldnames or ())
     if missing:
         raise SchemaDrift(f"udiff bhavcopy is missing {sorted(missing)}")

@@ -11,6 +11,7 @@ from pipelines.models.corporate_action import CorporateActionRecord
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import ThrottledClient
 from pipelines.sources.errors import SchemaDrift
+from pipelines.sources.payload import decoded
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ def parse_purpose(
 def parse_actions(payload: bytes) -> tuple[dict[str, str], ...]:
     """Read the response into raw records, performing no interpretation."""
     try:
-        document = json.loads(payload.decode("utf-8"))
+        document = json.loads(decoded(payload, "corporate actions"))
     except json.JSONDecodeError as error:
         raise SchemaDrift("corporate actions response is not json") from error
     if not isinstance(document, list):
