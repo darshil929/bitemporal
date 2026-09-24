@@ -1,6 +1,6 @@
 """Source definitions load from configuration and select a parser by partition date."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -43,6 +43,18 @@ def test_both_venues_switch_to_udiff_on_the_same_day(
 
     assert definition.version_for(FIRST_UDIFF_DAY) == "udiff"
     assert definition.version_for(LAST_LEGACY_DAY).endswith("legacy")
+
+
+@pytest.mark.parametrize("source_id", BHAVCOPY_SOURCES)
+def test_every_calendar_day_from_the_first_format_has_a_parser(
+    definitions: dict[str, SourceDefinition], source_id: str
+) -> None:
+    """A partition is a calendar day, so the weekend before the cutover belongs to a format too."""
+    definition = definitions[source_id]
+    first = min(version.effective_from for version in definition.schema_version)
+
+    for offset in range((FIRST_UDIFF_DAY - first).days + 1):
+        definition.version_for(first + timedelta(days=offset))
 
 
 def test_a_date_before_any_registered_version_is_an_error(

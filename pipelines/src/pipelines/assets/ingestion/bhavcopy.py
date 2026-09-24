@@ -1,7 +1,8 @@
 """One venue's published prices, stored as they were published.
 
-A partition is a weekday, since neither venue publishes at a weekend. A weekday the venue did not
-publish is a holiday: the attempt is recorded and the day stores no bars, rather than failing.
+A partition is a calendar day, since both venues trade on the occasional weekend: a Diwali
+Muhurat, a Budget day or a special session. A day the venue did not publish stores no bars: the
+attempt is recorded rather than failing.
 
 A run covers a range of days, reading them through one throttled client and one venue session.
 """
@@ -25,24 +26,23 @@ from pipelines.sources.errors import NotPublished, SourceError
 
 GROUP = "ingestion"
 
-# Neither venue publishes at a weekend, so a Saturday partition would report a holiday every week.
-WEEKDAYS = "0 0 * * 1-5"
+# Every day, since a session is not confined to the weekdays.
+EVERY_DAY = "0 0 * * *"
 
 
 def trading_days(venue: str) -> TimeWindowPartitionsDefinition:
-    """Weekday partitions from the first day the registry has a parser for."""
+    """Daily partitions from the first day the registry has a parser for."""
     covered = Bhavcopies().definition(venue).schema_version
     first = min(version.effective_from for version in covered)
     return TimeWindowPartitionsDefinition(
-        cron_schedule=WEEKDAYS, start=f"{first:%Y-%m-%d}", fmt="%Y-%m-%d"
+        cron_schedule=EVERY_DAY, start=f"{first:%Y-%m-%d}", fmt="%Y-%m-%d"
     )
 
 
-def weekdays(first: date, last: date) -> Iterator[date]:
+def calendar_days(first: date, last: date) -> Iterator[date]:
     day = first
     while day <= last:
-        if day.weekday() < 5:
-            yield day
+        yield day
         day += timedelta(days=1)
 
 
@@ -60,7 +60,7 @@ def ingest(
     named: dict[str, str] = {}
 
     with database.connect() as connection:
-        for day in weekdays(date.fromisoformat(window.start), date.fromisoformat(window.end)):
+        for day in calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)):
             partition = day.isoformat()
             version = definition.version_for(day)
 

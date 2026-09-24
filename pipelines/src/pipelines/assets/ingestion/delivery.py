@@ -17,7 +17,7 @@ from dagster import (
     asset,
 )
 
-from pipelines.assets.ingestion.bhavcopy import WEEKDAYS, weekdays
+from pipelines.assets.ingestion.bhavcopy import EVERY_DAY, calendar_days
 from pipelines.facts import persist_delivery, record_ingestion
 from pipelines.resources import Bhavcopies, Database, Deliveries
 from pipelines.sources.errors import NotPublished, SourceError
@@ -36,7 +36,7 @@ where exchange = %s
 
 
 def delivery_days(venue: str) -> TimeWindowPartitionsDefinition:
-    """Weekdays from the later of the day delivery is served and the day prices begin.
+    """Days from the later of the day delivery is served and the day prices begin.
 
     A delivery figure resolves through a listing, and a listing exists only where prices do.
     """
@@ -47,7 +47,7 @@ def delivery_days(venue: str) -> TimeWindowPartitionsDefinition:
         min(version.effective_from for version in priced),
     )
     return TimeWindowPartitionsDefinition(
-        cron_schedule=WEEKDAYS, start=f"{first:%Y-%m-%d}", fmt="%Y-%m-%d"
+        cron_schedule=EVERY_DAY, start=f"{first:%Y-%m-%d}", fmt="%Y-%m-%d"
     )
 
 
@@ -65,7 +65,7 @@ def ingest_delivery(
     published = unpublished = failed = written = 0
 
     with database.connect() as connection:
-        for day in weekdays(date.fromisoformat(window.start), date.fromisoformat(window.end)):
+        for day in calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)):
             partition = day.isoformat()
             version = definition.version_for(day)
 
