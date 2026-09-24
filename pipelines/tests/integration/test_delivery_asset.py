@@ -11,6 +11,7 @@ from dagster import PartitionKeyRange, build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.delivery import ingest_delivery
+from pipelines.facts import record_ingestion
 from pipelines.resources import Deliveries
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.errors import NotPublished
@@ -157,3 +158,52 @@ def test_a_day_the_venue_published_no_delivery_for_is_recorded(
     logged = rows(postgres_dsn, "select outcome from ingestion_log")
     assert result.metadata["unpublished"] == 1
     assert logged == [("not_published",)]
+
+
+def test_a_day_without_a_session_answered_with_another_days_file_stores_nothing(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """NSE answers some days it held no session on with the delivery file of another day."""
+    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        record_ingestion(open_, "nse_bhavcopy_equity", "2026-08-15", "udiff", "not_published")
+        open_.commit()
+    deliveries = RecordedDeliveries({"NSE": {date(2026, 8, 15): nse_day("14-Aug-2026", 109_556)}})
+
+    result = ingest_delivery(
+        build_asset_context(partition_key="2026-08-15"), "NSE", database, deliveries
+    )
+
+    logged = rows(
+        postgres_dsn, "select outcome from ingestion_log where source_id = 'nse_delivery'"
+    )
+    assert result.metadata["unpublished"] == 1
+    assert logged == [("not_published",)]
+    assert rows(postgres_dsn, "select count(*) from delivery_daily")[0][0] == 0
+
+
+def test_a_trading_day_answered_with_another_days_file_fails_that_day_alone(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """NSE answered a request for 2021-07-08 with the file for 2019-06-27."""
+    deliveries = RecordedDeliveries(
+        {
+            "NSE": {
+                date(2026, 8, 13): nse_day("13-Aug-2026", 100_000),
+                date(2026, 8, 14): nse_day("13-Aug-2026", 100_000),
+            }
+        }
+    )
+    window = PartitionKeyRange(start="2026-08-13", end=TRADE_DATE)
+
+    result = ingest_delivery(
+        build_asset_context(partition_key_range=window), "NSE", database, deliveries
+    )
+
+    stored = rows(postgres_dsn, "select trade_date::text from delivery_daily")
+    logged = rows(
+        postgres_dsn,
+        "select partition_key, outcome from ingestion_log order by partition_key",
+    )
+    assert result.metadata["failed"] == 1
+    assert stored == [("2026-08-13",)]
+    assert logged == [("2026-08-13", "succeeded"), ("2026-08-14", "failed")]
