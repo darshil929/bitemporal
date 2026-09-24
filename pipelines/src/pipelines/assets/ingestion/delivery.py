@@ -3,8 +3,12 @@
 Neither venue's delivery file names an instrument by ISIN. BSE names it by scrip code and NSE by
 ticker, and both change ISIN when a face value changes, so a row resolves through the listing in
 force on its own trade date rather than through whichever ISIN the identifier carries today.
+
+NSE answers some days it held no session on with the file of another day, so a file is held to
+the day it was asked for.
 """
 
+from collections.abc import Sequence
 from datetime import date
 
 import psycopg
@@ -20,7 +24,8 @@ from dagster import (
 from pipelines.assets.ingestion.bhavcopy import EVERY_DAY, calendar_days
 from pipelines.facts import persist_delivery, record_ingestion
 from pipelines.resources import Bhavcopies, Database, Deliveries
-from pipelines.sources.errors import NotPublished, SourceError
+from pipelines.sources.delivery import DeliveryRow
+from pipelines.sources.errors import NotPublished, SourceError, WrongDay
 
 GROUP = "ingestion"
 
@@ -51,6 +56,28 @@ def delivery_days(venue: str) -> TimeWindowPartitionsDefinition:
     )
 
 
+# The price log's latest outcome for a day. A day with no prices published held no session.
+LAST_PRICE_OUTCOME = """
+select outcome
+from ingestion_log
+where source_id = %s and partition_key = %s
+order by fetched_at desc
+limit 1
+"""
+
+
+def held_to(rows: Sequence[DeliveryRow], day: date, venue: str) -> Sequence[DeliveryRow]:
+    served = {row.trade_date for row in rows}
+    if served and served != {day}:
+        raise WrongDay(f"{venue} delivery for {day} describes {sorted(served)[:3]}")
+    return rows
+
+
+def held_no_session(connection: psycopg.Connection, price_source: str, day: date) -> bool:
+    found = connection.execute(LAST_PRICE_OUTCOME, (price_source, day.isoformat())).fetchone()
+    return found is not None and found[0] == "not_published"
+
+
 def resolver(connection: psycopg.Connection, venue: str, day: date) -> dict[str, str]:
     return {key: isin for key, isin in connection.execute(IN_FORCE, (venue, day, day))}
 
@@ -61,6 +88,7 @@ def ingest_delivery(
     window = context.partition_key_range
     definition = deliveries.definition(venue)
     adapter = deliveries.adapter(venue)
+    price_source = Bhavcopies().definition(venue).source_id
 
     published = unpublished = failed = written = 0
 
@@ -70,7 +98,7 @@ def ingest_delivery(
             version = definition.version_for(day)
 
             try:
-                rows = adapter.parse(adapter.fetch(day))
+                rows = held_to(adapter.parse(adapter.fetch(day)), day, venue)
             except NotPublished as absence:
                 record_ingestion(
                     connection,
@@ -84,6 +112,18 @@ def ingest_delivery(
                 unpublished += 1
                 continue
             except SourceError as failure:
+                if isinstance(failure, WrongDay) and held_no_session(connection, price_source, day):
+                    record_ingestion(
+                        connection,
+                        definition.source_id,
+                        partition,
+                        version,
+                        "not_published",
+                        detail=str(failure),
+                    )
+                    connection.commit()
+                    unpublished += 1
+                    continue
                 record_ingestion(
                     connection,
                     definition.source_id,
