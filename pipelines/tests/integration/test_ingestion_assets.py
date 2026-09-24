@@ -127,10 +127,7 @@ def test_reading_the_same_day_twice_stores_it_once(
 def test_a_day_the_venue_never_published_stores_no_bars(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """A holiday is an outcome the log carries, not a failure and not a gap.
-
-    The day is a weekday, since the partitions are weekdays and a weekend is never one.
-    """
+    """A holiday is an outcome the log carries, not a failure and not a gap."""
     bhavcopies = RecordedBhavcopies({"BSE": None})
 
     result = ingest(build_asset_context(partition_key="2026-08-17"), "BSE", database, bhavcopies)
@@ -155,6 +152,20 @@ def test_the_legacy_format_is_read_for_a_day_before_the_cutover(
     logged = rows(postgres_dsn, "select schema_version from ingestion_log")
     assert logged == [("bse_legacy",)]
     assert result.metadata["bars"] > 0
+
+
+def test_a_session_held_at_a_weekend_is_read(database: PointedDatabase, postgres_dsn: str) -> None:
+    """NSE traded on Saturday 20 January 2024, and the day is stored like any other."""
+    bhavcopies = RecordedBhavcopies(
+        {"NSE": payload("nse_bhavcopy_equity", "20240120_legacy.csv.zip")}
+    )
+
+    result = ingest(build_asset_context(partition_key="2024-01-20"), "NSE", database, bhavcopies)
+
+    stored = rows(postgres_dsn, "select distinct trade_date::text from price_daily")
+    assert result.metadata["published"] == 1
+    assert result.metadata["bars"] == 5
+    assert stored == [("2024-01-20",)]
 
 
 def test_a_run_covering_several_days_reads_each_of_them(

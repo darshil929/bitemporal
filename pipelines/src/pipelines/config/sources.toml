@@ -15,11 +15,12 @@ nothing for is answered with the BSE home page under HTTP 200.
 
 # EQ_ISINCODE is served back to 8 December 2016, but the files for 8 and 9 December both carry
 # the prices of 28 November, so the first day read is 12 December. TRADING_DATE appears on 23 June
-# 2017, and a file without it is dated from the day it was asked for.
+# 2017, and a file without it is dated from the day it was asked for. The format runs to the
+# Sunday before the UDiFF cutover, so every calendar day has a parser.
 [[source.schema_version]]
 version = "bse_legacy"
 effective_from = 2016-12-12
-effective_to = 2024-07-05
+effective_to = 2024-07-07
 
 [[source.schema_version]]
 version = "udiff"
@@ -38,11 +39,12 @@ nseindia.com is required, and the published ceiling is 3 requests per second.
 """
 
 # Files run back to the 1990s, and ISIN and TOTALTRADES appear on 22 June 2011. A row before
-# that names its instrument by ticker alone and cannot be keyed.
+# that names its instrument by ticker alone and cannot be keyed. The format runs to the Sunday
+# before the UDiFF cutover, so every calendar day has a parser.
 [[source.schema_version]]
 version = "nse_legacy"
 effective_from = 2011-06-22
-effective_to = 2024-07-05
+effective_to = 2024-07-07
 
 [[source.schema_version]]
 version = "udiff"

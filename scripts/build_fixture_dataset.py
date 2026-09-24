@@ -175,13 +175,8 @@ def _adapters(cache: DiskCache) -> dict[str, tuple[object, SourceDefinition]]:
     }
 
 
-def _weekdays(start: date, end: date) -> list[date]:
-    days, current = [], start
-    while current <= end:
-        if current.weekday() < 5:
-            days.append(current)
-        current += timedelta(days=1)
-    return days
+def _calendar_days(start: date, end: date) -> list[date]:
+    return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
 
 
 def read_day(adapter: object, definition: SourceDefinition, day: date) -> tuple[PriceBar, ...]:
@@ -195,7 +190,7 @@ def download(start: date, end: date, cache: DiskCache) -> None:
     adapters = _adapters(cache)
     for venue, (adapter, definition) in adapters.items():
         published = missing = uncovered = failed = 0
-        for day in _weekdays(start, end):
+        for day in _calendar_days(start, end):
             try:
                 read_day(adapter, definition, day)
                 published += 1
@@ -228,7 +223,7 @@ def survey(start: date, end: date, cache: DiskCache) -> dict[str, dict[str, Trac
     for venue, (adapter, definition) in adapters.items():
         trading_days = []
         days_bars: list[tuple[date, tuple[PriceBar, ...]]] = []
-        for day in _weekdays(start, end):
+        for day in _calendar_days(start, end):
             try:
                 bars = read_day(adapter, definition, day)
             except SourceError:
@@ -413,7 +408,7 @@ def emit(
     last_trading_day: dict[str, date] = {}
 
     for venue, (adapter, definition) in adapters.items():
-        for day in _weekdays(start, end):
+        for day in _calendar_days(start, end):
             try:
                 version = definition.version_for(day)
                 payload = adapter.fetch(day, version)  # type: ignore[attr-defined]
@@ -566,7 +561,7 @@ def collect_delivery(start: date, end: date, cache: DiskCache) -> tuple[Delivery
     records: list[DeliveryRecord] = []
     for venue, (adapter, resolver) in adapters.items():
         published = missing = 0
-        for day in _weekdays(start, end):
+        for day in _calendar_days(start, end):
             try:
                 payload = adapter.fetch(day)
             except NotPublished:
