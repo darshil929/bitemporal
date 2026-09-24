@@ -1,7 +1,8 @@
 -- One series per instrument that survives a change of face value, keyed on the ISIN the
 -- instrument trades under now. A split issues a new ISIN carrying no earlier bars, so the
 -- predecessor's bars are drawn in through the lineage and scaled by the actions that followed
--- them. Read this rather than stg_price_daily wherever a series must span a split.
+-- them. Read this rather than stg_price_daily wherever a series must span a split. Delivery is
+-- a count of shares like volume, so it is divided by the same factor.
 with lineage as (
     select
         isin,
@@ -58,14 +59,20 @@ bars as (
         prices.isin,
         prices.venue,
         prices.trade_date,
-        prices.as_of_date,
         prices.open,
         prices.high,
         prices.low,
         prices.close,
-        prices.volume
+        prices.volume,
+        delivery.delivery_quantity,
+        greatest(prices.as_of_date, delivery.as_of_date) as as_of_date
     from {{ ref('stg_price_daily') }} as prices
     inner join lineage on prices.isin = lineage.isin
+    left join {{ ref('stg_delivery_daily') }} as delivery
+        on
+            prices.isin = delivery.isin
+            and prices.venue = delivery.venue
+            and prices.trade_date = delivery.trade_date
 )
 
 select
@@ -80,7 +87,8 @@ select
     round(bars.high * coalesce(applicable.factor, 1), 4) as high,
     round(bars.low * coalesce(applicable.factor, 1), 4) as low,
     round(bars.close * coalesce(applicable.factor, 1), 4) as close,
-    round(bars.volume / coalesce(applicable.factor, 1)) as volume
+    round(bars.volume / coalesce(applicable.factor, 1)) as volume,
+    round(bars.delivery_quantity / coalesce(applicable.factor, 1)) as delivery_quantity
 from bars
 left join lateral (
     select steps.factor
