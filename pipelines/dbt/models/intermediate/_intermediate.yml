@@ -104,6 +104,10 @@ models:
       - name: volume
         description: Shares traded, divided by the factor, since a bonus multiplies the count.
         data_tests: [not_null]
+      - name: delivery_quantity
+        description: >
+          Shares that settled, divided by the same factor as volume. Null on a day the venue
+          published no delivery figure for the instrument.
 
 unit_tests:
   - name: the_spread_is_measured_against_the_midpoint
@@ -224,14 +228,19 @@ unit_tests:
           - {isin: INE721A01047, venue: NSE, trade_date: "2025-01-10",
              as_of_date: "2025-01-10", open: 560, high: 565, low: 530, close: 532,
              volume: 5000}
+      - input: ref('stg_delivery_daily')
+        rows:
+          - {isin: INE721A01013, venue: NSE, trade_date: "2025-01-09",
+             as_of_date: "2025-01-09", delivery_quantity: 400}
     expect:
       rows:
         - {isin: INE721A01047, source_isin: INE721A01013, venue: NSE,
            trade_date: "2025-01-09", adjustment_factor: "0.2000000000",
-           close_as_traded: "2809.85", close: "561.9700", volume: "5000"}
+           close_as_traded: "2809.85", close: "561.9700", volume: "5000",
+           delivery_quantity: "2000"}
         - {isin: INE721A01047, source_isin: INE721A01047, venue: NSE,
            trade_date: "2025-01-10", adjustment_factor: "1", close_as_traded: "532",
-           close: "532.0000", volume: "5000"}
+           close: "532.0000", volume: "5000", delivery_quantity: null}
 
   - name: two_actions_sharing_an_ex_date_scale_a_bar_together
     description: Bajaj Finance split one for two and issued a four for one bonus on one day.
@@ -252,6 +261,8 @@ unit_tests:
           - {isin: INE296A01024, venue: NSE, trade_date: "2025-06-13",
              as_of_date: "2025-06-13", open: 9300, high: 9400, low: 9300, close: 9331,
              volume: 1000}
+      - input: ref('stg_delivery_daily')
+        rows: []
     expect:
       rows:
         - {isin: INE296A01032, source_isin: INE296A01024, venue: NSE,
