@@ -6,7 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from pipelines.sources.bse.corporate_actions import normalize, parse_actions, parse_purpose
+from pipelines.sources.bse.corporate_actions import (
+    FIRST_YEAR,
+    BseCorporateActions,
+    normalize,
+    parse_actions,
+    parse_purpose,
+    range_key,
+    years,
+)
 from pipelines.sources.errors import SchemaDrift
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
@@ -152,3 +160,34 @@ def test_terms_that_name_no_ratio_are_unhandled(purpose: str) -> None:
     assert action_type == "unhandled"
     assert qualifier == purpose.lower()
     assert (ratio_from, ratio_to, amount) == (None, None, None)
+
+
+def test_a_closed_range_is_held_under_its_dates_alone() -> None:
+    """An answer for a year already over does not change, so one file serves every later run."""
+    key = range_key(date(2024, 1, 1), date(2024, 12, 31), REPORTED_ON)
+
+    assert key == "exdate-20240101-20241231"
+
+
+def test_a_range_still_open_is_held_under_the_day_it_was_read() -> None:
+    """Actions are announced through the year, so an open year read tomorrow is a different answer."""
+    key = range_key(date(2026, 1, 1), date(2026, 12, 31), REPORTED_ON)
+
+    assert key == "exdate-20260101-20261231-as-of-20260816"
+
+
+def test_a_range_is_asked_for_across_every_scrip_code() -> None:
+    adapter = BseCorporateActions(None, None, "https://api.bseindia.com/BseIndiaAPI/api/")  # type: ignore[arg-type]
+
+    url = adapter.url_for(date(2024, 10, 1), date(2024, 10, 31))
+
+    assert url.endswith("&Fdate=20241001&TDate=20241031&Purposecode=&scripcode=")
+    assert "strSearch=D" in url
+
+
+def test_the_years_run_from_the_first_the_venue_records_to_the_one_after_collection() -> None:
+    """An action announced late in a year can go ex early in the next."""
+    walked = years(REPORTED_ON)
+
+    assert walked[0] == (date(FIRST_YEAR, 1, 1), date(FIRST_YEAR, 12, 31))
+    assert walked[-1] == (date(2027, 1, 1), date(2027, 12, 31))

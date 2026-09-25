@@ -159,12 +159,17 @@ def test_the_nse_delivery_file_still_carries_its_columns(
 def test_the_corporate_action_endpoint_still_answers_with_its_fields(
     cache: DiskCache, plain: httpx.Client
 ) -> None:
-    """The purpose text is free form, so a known scrip is read for terms the parser recognises."""
+    """The purpose text is free form, so a month holding a known bonus is read for its terms.
+
+    Reliance went ex its one for one bonus on 28 October 2024.
+    """
     adapter = BseCorporateActions(
         client("bse_corporate_actions", plain), cache, "https://api.bseindia.com/BseIndiaAPI/api"
     )
 
-    records = adapter.parse(adapter.fetch(RELIANCE_SCRIP))
+    records = adapter.parse(
+        adapter.fetch(date(2024, 10, 1), date(2024, 10, 31), date.today())  # noqa: DTZ011
+    )
     actions = adapter.normalize(records, {RELIANCE_SCRIP: "INE002A01018"}, date.today())  # noqa: DTZ011
 
     assert records, "the endpoint answered with no records"
