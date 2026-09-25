@@ -4,12 +4,14 @@ Neither venue's delivery file names an instrument by ISIN. BSE names it by scrip
 ticker, and both change ISIN when a face value changes, so a row resolves through the listing in
 force on its own trade date rather than through whichever ISIN the identifier carries today.
 
-NSE answers some days it held no session on with the file of another day, so a file is held to
-the day it was asked for.
+NSE answers some days with the file of another day, so a file is held to the day it was asked
+for. On a day the venue traded, a file that does not answer is followed by the other file NSE
+publishes the same figures in.
 """
 
 from collections.abc import Sequence
 from datetime import date
+from typing import Protocol
 
 import psycopg
 from dagster import (
@@ -24,7 +26,7 @@ from dagster import (
 from pipelines.assets.ingestion.bhavcopy import EVERY_DAY, calendar_days
 from pipelines.facts import persist_delivery, record_ingestion
 from pipelines.resources import Bhavcopies, Database, Deliveries
-from pipelines.sources.delivery import DeliveryRow
+from pipelines.sources.delivery import DeliveryRow, held_to
 from pipelines.sources.errors import NotPublished, SourceError, WrongDay
 
 GROUP = "ingestion"
@@ -66,11 +68,25 @@ limit 1
 """
 
 
-def held_to(rows: Sequence[DeliveryRow], day: date, venue: str) -> Sequence[DeliveryRow]:
-    served = {row.trade_date for row in rows}
-    if served and served != {day}:
-        raise WrongDay(f"{venue} delivery for {day} describes {sorted(served)[:3]}")
-    return rows
+class DayReader(Protocol):
+    def fetch(self, partition: date, schema_version: str) -> bytes: ...
+
+    def parse(self, payload: bytes, schema_version: str) -> Sequence[DeliveryRow]: ...
+
+    def fallback_for(self, schema_version: str) -> str | None: ...
+
+
+def read_day(adapter: DayReader, day: date, version: str, venue: str) -> Sequence[DeliveryRow]:
+    return held_to(adapter.parse(adapter.fetch(day, version), version), day, venue)
+
+
+def outcome_for(failures: Sequence[SourceError], session: bool) -> str:
+    """A day no file answered for is unpublished, unless a venue that traded served a wrong one."""
+    if all(isinstance(failure, NotPublished) for failure in failures):
+        return "not_published"
+    if not session and all(isinstance(failure, NotPublished | WrongDay) for failure in failures):
+        return "not_published"
+    return "failed"
 
 
 def held_no_session(connection: psycopg.Connection, price_source: str, day: date) -> bool:
@@ -97,46 +113,38 @@ def ingest_delivery(
             partition = day.isoformat()
             version = definition.version_for(day)
 
+            failures: list[SourceError] = []
+            rows: Sequence[DeliveryRow] = ()
             try:
-                rows = held_to(adapter.parse(adapter.fetch(day)), day, venue)
-            except NotPublished as absence:
+                rows = read_day(adapter, day, version, venue)
+            except SourceError as first:
+                failures.append(first)
+
+            session = True
+            if failures:
+                session = not held_no_session(connection, price_source, day)
+                alternative = adapter.fallback_for(version) if session else None
+                if alternative is not None:
+                    try:
+                        rows = read_day(adapter, day, alternative, venue)
+                        version, failures = alternative, []
+                    except SourceError as second:
+                        failures.append(second)
+
+            if failures:
+                outcome = outcome_for(failures, session)
+                detail = "; ".join(str(failure) for failure in failures)
                 record_ingestion(
-                    connection,
-                    definition.source_id,
-                    partition,
-                    version,
-                    "not_published",
-                    detail=str(absence),
+                    connection, definition.source_id, partition, version, outcome, detail=detail
                 )
                 connection.commit()
-                unpublished += 1
-                continue
-            except SourceError as failure:
-                if isinstance(failure, WrongDay) and held_no_session(connection, price_source, day):
-                    record_ingestion(
-                        connection,
-                        definition.source_id,
-                        partition,
-                        version,
-                        "not_published",
-                        detail=str(failure),
-                    )
-                    connection.commit()
+                if outcome == "not_published":
                     unpublished += 1
                     continue
-                record_ingestion(
-                    connection,
-                    definition.source_id,
-                    partition,
-                    version,
-                    "failed",
-                    detail=str(failure),
-                )
-                connection.commit()
                 failed += 1
                 context.log.warning(
                     "delivery could not be read",
-                    extra={"venue": venue, "trade_date": partition, "detail": str(failure)},
+                    extra={"venue": venue, "trade_date": partition, "detail": detail},
                 )
                 continue
 

@@ -79,12 +79,22 @@ cache_policy = "permanent"
 owner_notes = """
 Names an instrument by ticker and series, never by ISIN, so a row resolves through the listing in
 force on its trade date. A series that settles no delivery reports a dash rather than a zero.
+The figures are published twice: in the full bhavdata file and in the security-wise delivery
+position file, which reaches further back. Some days are answered with another day's file,
+and one with a spreadsheet, so a day the venue traded that one file does not answer is read
+from the other.
 """
 
-# First served on 30 September 2019; the weekdays before it answer with nothing.
+# The position file is read from 22 June 2011, the first day NSE prices can be keyed. The full
+# file's first day is 1 October 2019: the address for 30 September answers with 27 June.
+[[source.schema_version]]
+version = "mto"
+effective_from = 2011-06-22
+effective_to = 2019-09-30
+
 [[source.schema_version]]
 version = "sec_bhavdata_full"
-effective_from = 2019-09-30
+effective_from = 2019-10-01
 
 [[source]]
 source_id = "bse_delivery"

@@ -7,6 +7,7 @@ row carries the venue-local identifier and is resolved through the listing in fo
 import csv
 import io
 import logging
+import re
 import zipfile
 from collections.abc import Sequence
 from datetime import date, datetime
@@ -14,7 +15,7 @@ from datetime import date, datetime
 from pydantic import BaseModel
 
 from pipelines.models.market import DeliveryRecord
-from pipelines.sources.errors import SchemaDrift, SourceUnavailable
+from pipelines.sources.errors import MalformedRow, SchemaDrift, SourceUnavailable, WrongDay
 from pipelines.sources.payload import decoded
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,12 @@ BSE_COLUMNS = frozenset({"DATE", "SCRIP CODE", "DELIVERY QTY"})
 
 NSE_DATE_FORMAT = "%d-%b-%Y"
 BSE_DATE_FORMAT = "%d%m%Y"
+
+# The position file states its day once, above the rows, as Trade Date <14-AUG-2026>, and marks
+# each security's row with the record type 20.
+POSITION_TRADE_DATE = re.compile(r"Trade Date <(\d{2}-[A-Za-z]{3}-\d{4})>")
+POSITION_RECORD = "20"
+POSITION_FIELDS = 7
 
 # A series that settles no delivery reports a dash rather than a zero.
 NOT_DELIVERABLE = "-"
@@ -63,6 +70,46 @@ def parse_nse_delivery(payload: bytes) -> tuple[DeliveryRow, ...]:
             )
         )
     return tuple(rows)
+
+
+def parse_nse_position(payload: bytes) -> tuple[DeliveryRow, ...]:
+    """Read the NSE security-wise delivery position file, which carries the full file's figures."""
+    text = decoded(payload, "nse delivery position")
+    stated = POSITION_TRADE_DATE.search(text)
+    if stated is None:
+        raise SchemaDrift("nse delivery position file states no trade date")
+    trade_date = _parse_day(stated.group(1), NSE_DATE_FORMAT)
+
+    rows = []
+    for line in text.splitlines():
+        fields = [field.strip() for field in line.split(",")]
+        if fields[0] != POSITION_RECORD:
+            continue
+        if len(fields) != POSITION_FIELDS:
+            raise MalformedRow(f"nse delivery position row has {len(fields)} fields: {line[:80]}")
+        quantity = fields[5]
+        if quantity == NOT_DELIVERABLE:
+            continue
+        if not quantity.isdigit():
+            raise MalformedRow(f"nse delivery position quantity is not a count: {line[:80]}")
+        rows.append(
+            DeliveryRow(venue_key=fields[2], trade_date=trade_date, delivery_quantity=int(quantity))
+        )
+
+    if not rows:
+        raise SchemaDrift("nse delivery position file holds no rows")
+    return tuple(rows)
+
+
+def held_to(rows: Sequence[DeliveryRow], day: date, venue: str) -> Sequence[DeliveryRow]:
+    """The rows of a file describing the day it was asked for.
+
+    NSE answers some days it held no session on, and some it did, with the file of another day.
+    """
+    served = {row.trade_date for row in rows}
+    if served and served != {day}:
+        raise WrongDay(f"{venue} delivery for {day} describes {sorted(served)[:3]}")
+    return rows
 
 
 def parse_bse_delivery(payload: bytes) -> tuple[DeliveryRow, ...]:
