@@ -1,8 +1,8 @@
 {{ config(severity = 'warn') }}
 
 -- A count-changing action one venue reports and the other does not, for an instrument listed at
--- both that day. The series is scaled by BSE's alone, so a day NSE reports and BSE does not is one
--- the series does not cover.
+-- both that day. A day NSE reports alone scales the series only where the prices confirm it, which
+-- int_capital_action_factors records.
 select
     isin,
     ex_date,

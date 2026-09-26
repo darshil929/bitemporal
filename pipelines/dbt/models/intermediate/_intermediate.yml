@@ -70,7 +70,7 @@ models:
   - name: int_continuous_prices
     description: >
       A price series that spans a change of face value, keyed on the ISIN the instrument trades
-      under now and scaled by every action that followed each bar. A split issues a new ISIN
+      under now and scaled by every factor int_capital_action_factors applies after each bar. A split issues a new ISIN
       holding no earlier bars, so a series read from stg_price_daily alone stops at the split.
     columns:
       - name: isin
@@ -96,7 +96,7 @@ models:
         description: The close the venue published, carrying no adjustment.
         data_tests: [not_null]
       - name: adjustment_factor
-        description: Product of every count-changing action after this bar.
+        description: Product of every factor applied after this bar.
         data_tests: [not_null]
       - name: close
         description: The close scaled by that factor, which is what a series is drawn from.
@@ -109,11 +109,50 @@ models:
           Shares that settled, divided by the same factor as volume. Null on a day the venue
           published no delivery figure for the instrument.
 
+  - name: int_capital_action_factors
+    description: >
+      Each day either venue reports a split, bonus or consolidation, with the factor each venue's
+      actions apply and the factor the continuous series applies. BSE's actions stand; a day NSE
+      alone reports is applied where the close moved by its factor at every venue that traded
+      either side of the ex-date.
+    columns:
+      - name: isin
+        description: The ISIN the instrument trades under now.
+        data_tests: [not_null]
+      - name: ex_date
+        description: The day the actions take effect.
+        data_tests: [not_null]
+      - name: bse_factor
+        description: The product of the factors of BSE's actions that day, null when it reports none.
+      - name: nse_factor
+        description: The product of the factors of NSE's actions that day, null when it reports none.
+      - name: venues_traded
+        description: >
+          Venues that traded within the window either side of a day NSE alone reports, whose move
+          is measured. Zero on a day BSE reports, which is not measured.
+        data_tests: [not_null]
+      - name: venues_confirming
+        description: Venues among those whose move lies within tolerance of NSE's factor.
+        data_tests: [not_null]
+      - name: basis
+        description: >
+          Why the factor is or is not applied: BSE reports the day; NSE alone reports it and every
+          venue that traded confirms it; a venue that traded moved otherwise; or none traded.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [bse, nse_confirmed, nse_contradicted, nse_untraded]
+      - name: applied_factor
+        description: The factor the continuous series applies that day, null where none is applied.
+      - name: as_of_date
+        description: The latest day on which the report and the prices deciding it were knowable.
+        data_tests: [not_null]
+
   - name: int_corporate_action_agreement
     description: >
       Each day BSE or NSE reports a split, bonus or consolidation for an instrument listed at both
-      venues, with the factor each venue's actions apply that day. BSE's scale the price series and
-      NSE's check them.
+      venues, with the factor each venue's actions apply that day.
     columns:
       - name: isin
         description: The ISIN the instrument trades under now.
@@ -243,10 +282,9 @@ unit_tests:
         rows:
           - {isin: INE721A01013, current_isin: INE721A01047}
           - {isin: INE721A01047, current_isin: INE721A01047}
-      - input: ref('stg_corporate_actions')
+      - input: ref('int_capital_action_factors')
         rows:
-          - {isin: INE721A01047, action_type: split, ex_date: "2025-01-10", qualifier: split,
-             source_id: bse_corporate_actions, adjustment_factor: 0.2}
+          - {isin: INE721A01047, ex_date: "2025-01-10", applied_factor: 0.2}
       - input: ref('stg_price_daily')
         rows:
           - {isin: INE721A01013, venue: NSE, trade_date: "2025-01-09",
@@ -269,53 +307,196 @@ unit_tests:
            trade_date: "2025-01-10", adjustment_factor: "1", close_as_traded: "532",
            close: "532.0000", volume: "5000", delivery_quantity: null}
 
-  - name: two_actions_sharing_an_ex_date_scale_a_bar_together
-    description: Bajaj Finance split one for two and issued a four for one bonus on one day.
+  - name: a_bar_carries_the_product_of_the_actions_still_ahead_of_it
+    description: >
+      HDFC Bank split one for two on 2019-09-19 and issued a one for one bonus on 2025-08-26. A
+      bar before both carries a quarter, one between them a half, and one after both nothing.
     model: int_continuous_prices
     given:
       - input: ref('int_instrument_lineage')
         rows:
-          - {isin: INE296A01024, current_isin: INE296A01032}
+          - {isin: INE040A01026, current_isin: INE040A01034}
+          - {isin: INE040A01034, current_isin: INE040A01034}
+      - input: ref('int_capital_action_factors')
+        rows:
+          - {isin: INE040A01034, ex_date: "2019-09-19", applied_factor: 0.5}
+          - {isin: INE040A01034, ex_date: "2025-08-26", applied_factor: 0.5}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE040A01026, venue: NSE, trade_date: "2019-09-18", as_of_date: "2019-09-18",
+             close: 2187.75, volume: 100}
+          - {isin: INE040A01034, venue: NSE, trade_date: "2025-08-25", as_of_date: "2025-08-25",
+             close: 1964.10, volume: 100}
+          - {isin: INE040A01034, venue: NSE, trade_date: "2025-08-26", as_of_date: "2025-08-26",
+             close: 973.40, volume: 100}
+      - input: ref('stg_delivery_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE040A01034, trade_date: "2019-09-18", adjustment_factor: "0.2500000000",
+           close: "546.9375"}
+        - {isin: INE040A01034, trade_date: "2025-08-25", adjustment_factor: "0.5000000000",
+           close: "982.0500"}
+        - {isin: INE040A01034, trade_date: "2025-08-26", adjustment_factor: "1", close: "973.4000"}
+
+  - name: a_day_with_no_applied_factor_leaves_the_series_unscaled
+    description: >
+      NSE's bonus for IGARASHI on 2018-09-27 is one the prices contradict, so it scales nothing.
+    model: int_continuous_prices
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE188B01013, current_isin: INE188B01013}
+      - input: ref('int_capital_action_factors')
+        rows:
+          - {isin: INE188B01013, ex_date: "2018-09-27", applied_factor: null}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE188B01013, venue: NSE, trade_date: "2018-09-26", as_of_date: "2018-09-26",
+             open: 710, high: 712, low: 700, close: 703.15, volume: 100}
+      - input: ref('stg_delivery_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE188B01013, trade_date: "2018-09-26", adjustment_factor: "1",
+           close: "703.1500"}
+
+  - name: a_day_bse_reports_applies_its_factor_whatever_nse_files
+    description: >
+      Bajaj Finance split one for two and issued a four for one bonus on 2025-06-16. BSE files
+      both and NSE the bonus alone, and BSE's actions stand.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
           - {isin: INE296A01032, current_isin: INE296A01032}
       - input: ref('stg_corporate_actions')
         rows:
-          - {isin: INE296A01032, action_type: split, ex_date: "2025-06-16", qualifier: split,
-             source_id: bse_corporate_actions, adjustment_factor: 0.5}
-          - {isin: INE296A01032, action_type: bonus, ex_date: "2025-06-16", qualifier: bonus,
-             source_id: bse_corporate_actions, adjustment_factor: 0.2}
+          - {isin: INE296A01032, source_id: bse_corporate_actions, action_type: split,
+             ex_date: "2025-06-16", qualifier: ordinary, adjustment_factor: 0.5,
+             as_of_date: "2026-09-26"}
+          - {isin: INE296A01032, source_id: bse_corporate_actions, action_type: bonus,
+             ex_date: "2025-06-16", qualifier: ordinary, adjustment_factor: 0.2,
+             as_of_date: "2026-09-26"}
+          - {isin: INE296A01032, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2025-06-16", qualifier: ordinary, adjustment_factor: 0.2,
+             as_of_date: "2026-09-26"}
       - input: ref('stg_price_daily')
-        rows:
-          - {isin: INE296A01024, venue: NSE, trade_date: "2025-06-13",
-             as_of_date: "2025-06-13", open: 9300, high: 9400, low: 9300, close: 9331,
-             volume: 1000}
-      - input: ref('stg_delivery_daily')
         rows: []
     expect:
       rows:
-        - {isin: INE296A01032, source_isin: INE296A01024, venue: NSE,
-           trade_date: "2025-06-13", adjustment_factor: "0.1000000000",
-           close_as_traded: "9331", close: "933.1000", volume: "10000"}
+        - {isin: INE296A01032, ex_date: "2025-06-16", bse_factor: "0.1000000000",
+           nse_factor: "0.2000000000", basis: bse, applied_factor: "0.1000000000"}
 
-  - name: an_action_nse_reports_alone_leaves_the_series_unscaled
-    description: NSE's actions check BSE's, so one BSE does not report scales nothing.
-    model: int_continuous_prices
+  - name: an_nse_only_bonus_is_applied_where_both_venues_confirm_it
+    description: >
+      GRUH Finance issued a one for one bonus on 2018-06-06 that BSE never recorded. The close
+      halved at both venues.
+    model: int_capital_action_factors
     given:
       - input: ref('int_instrument_lineage')
         rows:
-          - {isin: INE063E01053, current_isin: INE063E01053}
+          - {isin: INE580B01029, current_isin: INE580B01029}
       - input: ref('stg_corporate_actions')
         rows:
-          - {isin: INE063E01053, action_type: split, ex_date: "2024-10-16", qualifier: ordinary,
-             source_id: nse_corporate_actions, adjustment_factor: 0.5}
+          - {isin: INE580B01029, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2018-06-06", qualifier: ordinary, adjustment_factor: 0.5,
+             as_of_date: "2026-09-26"}
       - input: ref('stg_price_daily')
         rows:
-          - {isin: INE063E01053, venue: NSE, trade_date: "2024-10-15", as_of_date: "2024-10-15",
-             open: 1000, high: 1010, low: 990, close: 1000, volume: 100}
-      - input: ref('stg_delivery_daily')
-        rows: []
+          - {isin: INE580B01029, venue: BSE, trade_date: "2018-06-05", as_of_date: "2018-06-05",
+             close: 681.35}
+          - {isin: INE580B01029, venue: BSE, trade_date: "2018-06-06", as_of_date: "2018-06-06",
+             close: 356.95}
+          - {isin: INE580B01029, venue: NSE, trade_date: "2018-06-05", as_of_date: "2018-06-05",
+             close: 681.80}
+          - {isin: INE580B01029, venue: NSE, trade_date: "2018-06-06", as_of_date: "2018-06-06",
+             close: 356.85}
     expect:
       rows:
-        - {isin: INE063E01053, trade_date: "2024-10-15", adjustment_factor: "1", close: "1000.0000"}
+        - {isin: INE580B01029, ex_date: "2018-06-06", venues_traded: 2, venues_confirming: 2,
+           basis: nse_confirmed, applied_factor: "0.5000000000", as_of_date: "2026-09-26"}
+
+  - name: a_bonus_the_prices_contradict_is_not_applied
+    description: >
+      NSE's terms for IGARASHI's 2018-09-27 bonus scale the price by 0.89. The close moved by
+      under three percent at both venues.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE188B01013, current_isin: INE188B01013}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE188B01013, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2018-09-27", qualifier: ordinary, adjustment_factor: 0.889868,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE188B01013, venue: BSE, trade_date: "2018-09-26", as_of_date: "2018-09-26",
+             close: 700.90}
+          - {isin: INE188B01013, venue: BSE, trade_date: "2018-09-27", as_of_date: "2018-09-27",
+             close: 682.60}
+          - {isin: INE188B01013, venue: NSE, trade_date: "2018-09-26", as_of_date: "2018-09-26",
+             close: 703.15}
+          - {isin: INE188B01013, venue: NSE, trade_date: "2018-09-27", as_of_date: "2018-09-27",
+             close: 688.45}
+    expect:
+      rows:
+        - {isin: INE188B01013, ex_date: "2018-09-27", venues_traded: 2, venues_confirming: 0,
+           basis: nse_contradicted, applied_factor: null}
+
+  - name: a_small_bonus_is_confirmed_by_a_move_past_half_its_step
+    description: >
+      Infinite Computer Solutions issued one share for every 26 on 2017-11-01, a step of under
+      four percent, and closed three percent lower at BSE and two and a half at NSE.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE486J01014, current_isin: INE486J01014}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE486J01014, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2017-11-01", qualifier: ordinary, adjustment_factor: 0.962963,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE486J01014, venue: BSE, trade_date: "2017-10-31", as_of_date: "2017-10-31",
+             close: 231.05}
+          - {isin: INE486J01014, venue: BSE, trade_date: "2017-11-01", as_of_date: "2017-11-01",
+             close: 223.40}
+          - {isin: INE486J01014, venue: NSE, trade_date: "2017-10-31", as_of_date: "2017-10-31",
+             close: 230.70}
+          - {isin: INE486J01014, venue: NSE, trade_date: "2017-11-01", as_of_date: "2017-11-01",
+             close: 224.90}
+    expect:
+      rows:
+        - {isin: INE486J01014, ex_date: "2017-11-01", venues_confirming: 2,
+           basis: nse_confirmed, applied_factor: "0.9629630000"}
+
+  - name: a_bonus_no_venue_traded_across_is_not_applied
+    description: >
+      Mohota Industries last traded on 2014-02-04 before its bonus of 2014-02-06, so no move
+      measures it.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE313D01013, current_isin: INE313D01013}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE313D01013, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2014-02-06", qualifier: ordinary, adjustment_factor: 0.333333,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE313D01013, venue: NSE, trade_date: "2014-02-04", as_of_date: "2014-02-04",
+             close: 100.00}
+    expect:
+      rows:
+        - {isin: INE313D01013, ex_date: "2014-02-06", venues_traded: 0, basis: nse_untraded,
+           applied_factor: null}
 
   - name: both_venues_reporting_a_split_are_compared_by_its_factor
     description: >
