@@ -21,7 +21,7 @@ from dagster import (
 from pipelines.facts import persist_bars, record_ingestion
 from pipelines.identity import derive_instruments, persist_identity, resolvable
 from pipelines.resources import Bhavcopies, Database
-from pipelines.sources.bhavcopy import names_by_isin
+from pipelines.sources.bhavcopy import names_by_isin, ordinary_lines
 from pipelines.sources.errors import NotPublished, SourceError
 
 GROUP = "ingestion"
@@ -54,7 +54,7 @@ def ingest(
     adapter = bhavcopies.adapter(venue)
 
     published = unpublished = failed = written = 0
-    bars_read = 0
+    bars_read = secondary_lines = 0
     # The same instruments appear on every day of a run, under the same names. A name already
     # stored stands until the venue publishes a different one.
     named: dict[str, str] = {}
@@ -66,7 +66,8 @@ def ingest(
 
             try:
                 rows = adapter.parse(adapter.fetch(day, version), version, day)
-                bars = resolvable(adapter.normalize(rows))
+                lines = resolvable(adapter.normalize(rows))
+                bars = ordinary_lines(lines)
             except NotPublished as absence:
                 record_ingestion(
                     connection,
@@ -115,6 +116,7 @@ def ingest(
 
             published += 1
             bars_read += len(bars)
+            secondary_lines += len(lines) - len(bars)
 
     if failed and not published:
         raise SourceError(
@@ -131,6 +133,7 @@ def ingest(
             "unpublished": unpublished,
             "failed": failed,
             "bars": bars_read,
+            "secondary_lines": secondary_lines,
         },
     )
     return MaterializeResult(
@@ -142,6 +145,7 @@ def ingest(
             "unpublished": unpublished,
             "failed": failed,
             "bars": bars_read,
+            "secondary_lines": secondary_lines,
             "written": written,
             "instruments": len(named),
         }

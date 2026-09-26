@@ -1,8 +1,10 @@
 """Shared handling for the bhavcopy formats both venues have published."""
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, BeforeValidator, ValidationError
@@ -69,16 +71,54 @@ class BhavcopyRow(BaseModel):
         raise NotImplementedError
 
 
+# BSE numbers a second line for an ISIN by replacing the first digit of its ordinary scrip code: 1
+# for the T+0 line (100112 beside 500112 in 2024, 130343 beside 530343 since 2025) and 6 for the
+# deal windows of 2016 to 2018 (600180 beside 500180), whose prints can outweigh the ordinary line
+# by value and by trades.
+SECONDARY_LINE_CODE_PREFIXES = ("1", "6")
+
+
+def ordinary_lines(bars: Iterable[PriceBar]) -> tuple[PriceBar, ...]:
+    """The bar of each ISIN's ordinary line, one per ISIN, venue and day.
+
+    One ISIN can trade on more than one line at a venue, each publishing a bar, and the ordinary
+    line need not come first in the file. A line numbered as a second line gives way to any other,
+    and among the rest the line with the most trades stands: a deal window under a code of its
+    own, as BSE ran in 2023, trades a handful of times against hundreds on the ordinary line.
+    """
+    lines: dict[tuple[str, str, date], list[PriceBar]] = defaultdict(list)
+    for bar in bars:
+        lines[(bar.isin, bar.venue, bar.trade_date)].append(bar)
+    return tuple(_ordinary_line(candidates) for candidates in lines.values())
+
+
+def _ordinary_line(lines: Sequence[PriceBar]) -> PriceBar:
+    candidates = [bar for bar in lines if not _numbered_as_second_line(bar)] or list(lines)
+    return max(candidates, key=_trading_activity)
+
+
+def _numbered_as_second_line(bar: PriceBar) -> bool:
+    return bar.scrip_code is not None and bar.scrip_code.startswith(SECONDARY_LINE_CODE_PREFIXES)
+
+
+def _trading_activity(bar: PriceBar) -> tuple[int, Decimal, int]:
+    return bar.trade_count or 0, bar.turnover or Decimal(0), bar.volume
+
+
+def _line(bar: PriceBar) -> tuple[str, str, date, str | None, str]:
+    return bar.isin, bar.venue, bar.trade_date, bar.scrip_code, bar.local_symbol
+
+
 def names_by_isin(rows: Sequence[BhavcopyRow], venue: str) -> dict[str, str]:
-    """The name each equity row carries, keyed on ISIN.
+    """The name each ISIN's ordinary line carries.
 
     A venue names an instrument in every file it publishes, so the master takes its name from the
     day being read rather than from a separate source.
     """
     equity_series = EQUITY_SERIES[venue]
-    return {
-        row.to_bar(venue).isin: row.security_name for row in rows if row.series in equity_series
-    }
+    named = [(row.to_bar(venue), row.security_name) for row in rows if row.series in equity_series]
+    kept = {_line(bar) for bar in ordinary_lines(bar for bar, _ in named)}
+    return {bar.isin: name for bar, name in named if _line(bar) in kept}
 
 
 def normalize(rows: Sequence[BhavcopyRow], venue: str) -> tuple[PriceBar, ...]:

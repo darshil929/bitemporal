@@ -124,6 +124,21 @@ def test_reading_the_same_day_twice_stores_it_once(
     assert second.metadata["bars"] == first.metadata["bars"]
 
 
+def test_an_isin_on_two_lines_is_stored_from_its_ordinary_line(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """BSE lists Genus Power's T+0 line first on 16 June 2025, and it traded 24 shares."""
+    bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20250616.csv")})
+
+    result = ingest(build_asset_context(partition_key="2025-06-16"), "BSE", database, bhavcopies)
+
+    stored = rows(postgres_dsn, "select scrip_code, local_symbol, volume from price_daily")
+    named = rows(postgres_dsn, "select name from instrument_master")
+    assert stored == [("530343", "GENUSPOWER", 112_827)]
+    assert named == [("GENUS POWER INFRASTRUCTURES LT",)]
+    assert result.metadata["secondary_lines"] == 1
+
+
 def test_a_day_the_venue_never_published_stores_no_bars(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
