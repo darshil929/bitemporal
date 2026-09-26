@@ -16,9 +16,9 @@ from pipelines.sources.bse.corporate_actions import BseCorporateActions
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
-from pipelines.sources.errors import NotPublished, SourceError
+from pipelines.sources.errors import NotPublished, SourceError, WrongDay
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
-from pipelines.sources.nse.delivery import NseDelivery
+from pipelines.sources.nse.delivery import POSITION, NseDelivery
 from pipelines.sources.registry import load_definitions
 
 pytestmark = pytest.mark.contract
@@ -86,7 +86,7 @@ def first_published(adapter: object, versioned: bool) -> tuple[bytes, date, str]
                 if versioned
                 else adapter.fetch(day)  # type: ignore[attr-defined]
             )
-        except NotPublished:
+        except (NotPublished, WrongDay):
             continue
         except SourceError as error:
             pytest.fail(f"{adapter.source_id} unreachable: {error}")  # type: ignore[attr-defined]
@@ -154,6 +154,29 @@ def test_the_nse_delivery_file_still_carries_its_columns(
     payload, day, _ = first_published(adapter, versioned=False)
 
     assert adapter.parse(payload), f"nse published delivery for {day} with no rows"
+
+
+def test_the_nse_delivery_position_file_still_carries_its_layout(
+    cache: DiskCache, browser: httpx.Client
+) -> None:
+    """The position file is read for a trading day the full file does not answer."""
+    adapter = NseDelivery(
+        client("nse_delivery", browser),
+        cache,
+        definitions()["nse_delivery"].base_url,  # type: ignore[attr-defined]
+    )
+    for day in recent_days():
+        try:
+            payload = adapter.fetch(day, POSITION)
+        except (NotPublished, WrongDay):
+            continue
+        except SourceError as error:
+            pytest.fail(f"nse_delivery position file unreachable: {error}")
+        assert adapter.parse(payload, POSITION), (
+            f"nse published a position file for {day} with no rows"
+        )
+        return
+    pytest.fail(f"nse published no position file in the last {CANDIDATES} weekdays")
 
 
 def test_the_corporate_action_endpoint_still_answers_with_its_fields(

@@ -57,6 +57,19 @@ def test_every_calendar_day_from_the_first_format_has_a_parser(
         definition.version_for(first + timedelta(days=offset))
 
 
+def test_nse_delivery_reads_the_position_file_until_the_full_file_begins(
+    definitions: dict[str, SourceDefinition],
+) -> None:
+    """The address of the full file for 30 September 2019 answers with the file for 27 June."""
+    definition = definitions["nse_delivery"]
+    first = min(version.effective_from for version in definition.schema_version)
+
+    for offset in range((date(2019, 10, 1) - first).days + 1):
+        definition.version_for(first + timedelta(days=offset))
+    assert definition.version_for(date(2019, 9, 30)) == "mto"
+    assert definition.version_for(date(2019, 10, 1)) == "sec_bhavdata_full"
+
+
 def test_a_date_before_any_registered_version_is_an_error(
     definitions: dict[str, SourceDefinition],
 ) -> None:

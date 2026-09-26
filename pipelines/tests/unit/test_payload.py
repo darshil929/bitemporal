@@ -10,7 +10,7 @@ from collections.abc import Callable
 import pytest
 
 from pipelines.sources.bse.corporate_actions import parse_actions
-from pipelines.sources.delivery import parse_bse_delivery, parse_nse_delivery
+from pipelines.sources.delivery import parse_bse_delivery, parse_nse_delivery, parse_nse_position
 from pipelines.sources.errors import SchemaDrift, SourceError
 from pipelines.sources.legacy import parse_bse_legacy, parse_nse_legacy
 from pipelines.sources.payload import decoded
@@ -34,6 +34,7 @@ PARSERS: dict[str, Callable[[bytes], object]] = {
     "nse legacy": parse_nse_legacy,
     "udiff": parse_udiff,
     "nse delivery": parse_nse_delivery,
+    "nse delivery position": parse_nse_position,
     "bse delivery": parse_bse_delivery,
     "corporate actions": parse_actions,
 }

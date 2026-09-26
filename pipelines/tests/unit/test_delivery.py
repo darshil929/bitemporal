@@ -10,9 +10,14 @@ import respx
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
-from pipelines.sources.delivery import normalize, parse_bse_delivery, parse_nse_delivery
-from pipelines.sources.errors import NotPublished, SchemaDrift
-from pipelines.sources.nse.delivery import NseDelivery
+from pipelines.sources.delivery import (
+    normalize,
+    parse_bse_delivery,
+    parse_nse_delivery,
+    parse_nse_position,
+)
+from pipelines.sources.errors import NotPublished, SchemaDrift, WrongDay
+from pipelines.sources.nse.delivery import POSITION, NseDelivery
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
 PARTITION = date(2026, 8, 14)
@@ -126,3 +131,51 @@ def test_a_bse_day_with_no_file_is_reported_as_unpublished(tmp_path: Path) -> No
         adapter.fetch(date(2026, 8, 15))
 
     assert cache.read("bse_delivery", "2026-08-15", ".zip") is None
+
+
+def position_bytes(day: str) -> bytes:
+    return (CASSETTES / "nse_delivery" / f"MTO_{day}.DAT").read_bytes()
+
+
+def test_the_position_file_dates_every_row_from_its_header() -> None:
+    """The file states its day once, above the rows, rather than on each of them."""
+    rows = parse_nse_position(position_bytes("14082026"))
+
+    assert {row.trade_date for row in rows} == {PARTITION}
+    assert [row.venue_key for row in rows] == ["20MICRONS", "RELIANCE", "TCS"]
+
+
+def test_the_position_file_carries_the_full_files_figures() -> None:
+    """20MICRONS settled the same 109,556 shares on 14 August 2026 in both files NSE publishes."""
+    position = {
+        row.venue_key: row.delivery_quantity
+        for row in parse_nse_position(position_bytes("14082026"))
+    }
+    full = {row.venue_key: row.delivery_quantity for row in parse_nse_delivery(nse_bytes())}
+
+    assert position["20MICRONS"] == full["20MICRONS"] == 109_556
+
+
+def test_the_position_url_matches_the_published_naming() -> None:
+    adapter = NseDelivery(client("nse"), DiskCache(Path()), NSE_BASE)
+
+    assert adapter.url_for(PARTITION, POSITION).endswith("archives/equities/mto/MTO_14082026.DAT")
+
+
+@respx.mock
+def test_a_file_describing_another_day_is_never_cached(tmp_path: Path) -> None:
+    """NSE answers the address for 30 September 2019 with the file for 27 June.
+
+    Held in the cache, that answer would be read back on every later run, and the day it was asked
+    for could never be read again.
+    """
+    answered = (CASSETTES / "nse_delivery" / "20190930_describing_20190627.csv").read_bytes()
+    respx.get(url__startswith="https://www.nseindia.com").mock(return_value=httpx.Response(200))
+    respx.get(url__startswith=NSE_BASE).mock(return_value=httpx.Response(200, content=answered))
+    cache = DiskCache(tmp_path)
+    adapter = NseDelivery(client("nse"), cache, NSE_BASE)
+
+    with pytest.raises(WrongDay):
+        adapter.fetch(date(2019, 9, 30))
+
+    assert cache.read("nse_delivery", "2019-09-30", ".csv") is None

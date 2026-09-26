@@ -15,7 +15,7 @@ from pipelines.facts import record_ingestion
 from pipelines.resources import Deliveries
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.errors import NotPublished
-from pipelines.sources.nse.delivery import NseDelivery
+from pipelines.sources.nse.delivery import FULL, POSITION, NseDelivery
 from pipelines.sources.registry import SourceDefinition
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
@@ -31,12 +31,19 @@ class RecordedDeliveries:
     """The real adapters and registry entries, reading a recorded response rather than the venue.
 
     A venue maps to one response for every day, or to a response per day. None, or a day it does
-    not name, is a day the venue published nothing for.
+    not name, is a day the venue published nothing for. The position file is served only for the
+    days named in `positions`.
     """
 
-    def __init__(self, payloads: dict[str, bytes | dict[date, bytes] | None]) -> None:
+    def __init__(
+        self,
+        payloads: dict[str, bytes | dict[date, bytes] | None],
+        positions: dict[date, bytes] | None = None,
+    ) -> None:
         self._payloads = payloads
+        self._positions = positions or {}
         self._real = Deliveries()
+        self.asked: list[tuple[date, str]] = []
 
     def definition(self, venue: str) -> SourceDefinition:
         return self._real.definition(venue)
@@ -45,10 +52,14 @@ class RecordedDeliveries:
         adapter = self._real.adapter(venue)
         payload = self._payloads[venue]
 
-        def fetch(partition: date) -> bytes:
-            served = payload.get(partition) if isinstance(payload, dict) else payload
+        def fetch(partition: date, schema_version: str = FULL) -> bytes:
+            self.asked.append((partition, schema_version))
+            if schema_version == POSITION:
+                served = self._positions.get(partition)
+            else:
+                served = payload.get(partition) if isinstance(payload, dict) else payload
             if served is None:
-                raise NotPublished(f"{venue} published no delivery for {partition}")
+                raise NotPublished(f"{venue} published no {schema_version} for {partition}")
             return served
 
         adapter.fetch = fetch  # type: ignore[method-assign]
@@ -179,12 +190,13 @@ def test_a_day_without_a_session_answered_with_another_days_file_stores_nothing(
     assert result.metadata["unpublished"] == 1
     assert logged == [("not_published",)]
     assert rows(postgres_dsn, "select count(*) from delivery_daily")[0][0] == 0
+    assert deliveries.asked == [(date(2026, 8, 15), FULL)]
 
 
 def test_a_trading_day_answered_with_another_days_file_fails_that_day_alone(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """NSE answered a request for 2021-07-08 with the file for 2019-06-27."""
+    """NSE answered a request for 2019-09-30 with the file for 2019-06-27."""
     deliveries = RecordedDeliveries(
         {
             "NSE": {
@@ -207,3 +219,31 @@ def test_a_trading_day_answered_with_another_days_file_fails_that_day_alone(
     assert result.metadata["failed"] == 1
     assert stored == [("2026-08-13",)]
     assert logged == [("2026-08-13", "succeeded"), ("2026-08-14", "failed")]
+
+
+def test_a_trading_day_the_full_file_does_not_answer_is_read_from_the_position_file(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """NSE publishes the same figures in its security-wise delivery position file."""
+    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        record_ingestion(open_, "nse_bhavcopy_equity", TRADE_DATE, "udiff", "succeeded", 1)
+        open_.commit()
+    deliveries = RecordedDeliveries(
+        {"NSE": {date(2026, 8, 14): nse_day("13-Aug-2026", 100_000)}},
+        positions={date(2026, 8, 14): recorded("nse_delivery", "MTO_14082026.DAT")},
+    )
+
+    result = ingest_delivery(
+        build_asset_context(partition_key=TRADE_DATE), "NSE", database, deliveries
+    )
+
+    stored = rows(
+        postgres_dsn, "select trade_date::text, isin, delivery_quantity from delivery_daily"
+    )
+    logged = rows(
+        postgres_dsn,
+        "select schema_version, outcome from ingestion_log where source_id = 'nse_delivery'",
+    )
+    assert result.metadata["published"] == 1
+    assert stored == [(TRADE_DATE, CURRENT_ISIN, 109_556)]
+    assert logged == [("mto", "succeeded")]
