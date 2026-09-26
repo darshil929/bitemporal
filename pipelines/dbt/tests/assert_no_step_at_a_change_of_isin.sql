@@ -2,6 +2,11 @@
 -- eighty percent. Adjustment exists to remove that step, so on the continuous series the day
 -- either side of a succession must move no more than an ordinary day does. A step surviving
 -- here means a momentum factor reads a split as a crash.
+
+-- The largest move, in log terms, an ordinary day makes. Price bands hold a smaller company to 20
+-- percent a day, and trading after a split often carries it to the band's edge, 0.18 in log terms.
+-- A missed split of one for two or larger moves 0.69.
+{% set ordinary_move = 0.25 %}
 with boundaries as (
     select
         successions.successor_isin,
@@ -43,4 +48,4 @@ select
     close_before,
     close_on
 from either_side
-where abs(close_before / close_on - 1) > 0.10
+where abs(ln(close_on / close_before)) > {{ ordinary_move }}
