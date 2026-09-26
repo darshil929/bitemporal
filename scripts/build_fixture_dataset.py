@@ -34,7 +34,7 @@ from pipelines.models.identity import ListingRecord, SuccessionRecord
 from pipelines.models.market import DeliveryRecord, PriceBar
 from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
-from pipelines.sources.bse.corporate_actions import BseCorporateActions, years
+from pipelines.sources.bse.corporate_actions import BseCorporateActions, ScripResolver, years
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
@@ -462,11 +462,13 @@ def collect_actions(
         ThrottledClient("bse_corporate_actions", client, Throttle(2.0)), cache, ACTIONS_BASE_URL
     )
 
-    isin_for_scrip = {
-        listing.scrip_code: listing.isin
-        for listing in listings
-        if listing.exchange == "BSE" and listing.scrip_code
-    }
+    resolver = ScripResolver.throughout(
+        {
+            listing.scrip_code: listing.isin
+            for listing in listings
+            if listing.exchange == "BSE" and listing.scrip_code
+        }
+    )
 
     actions: list[CorporateActionRecord] = []
     for first, last in years(reported_on):
@@ -477,7 +479,7 @@ def collect_actions(
         except SourceError:
             logger.warning("actions unavailable", extra={"from": first, "to": last})
             continue
-        actions.extend(adapter.normalize(adapter.parse(payload), isin_for_scrip, reported_on))
+        actions.extend(adapter.normalize(adapter.parse(payload), resolver, reported_on))
 
     # The endpoint publishes no announcement date, so every action carries the day it was
     # collected. One with a later ex-date would then claim to have been knowable before it was

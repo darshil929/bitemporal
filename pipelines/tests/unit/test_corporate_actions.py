@@ -9,6 +9,7 @@ import pytest
 from pipelines.sources.bse.corporate_actions import (
     FIRST_YEAR,
     BseCorporateActions,
+    ScripResolver,
     normalize,
     parse_actions,
     parse_purpose,
@@ -24,7 +25,9 @@ RELIANCE = "INE002A01018"
 SHRIRAM = "INE721A01047"
 TATA_MOTORS_PV = "INE155A01022"
 
-SCRIP_TO_ISIN = {"500325": RELIANCE, "511218": SHRIRAM, "500570": TATA_MOTORS_PV}
+SCRIP_TO_ISIN = ScripResolver.throughout(
+    {"500325": RELIANCE, "511218": SHRIRAM, "500570": TATA_MOTORS_PV}
+)
 REPORTED_ON = date(2026, 8, 16)
 
 
@@ -145,7 +148,7 @@ def test_an_action_with_terms_keeps_no_text() -> None:
 
 
 def test_a_scrip_outside_the_mapping_is_skipped() -> None:
-    assert normalize(parse_actions(payload("500325")), {}, REPORTED_ON) == ()
+    assert normalize(parse_actions(payload("500325")), ScripResolver({}), REPORTED_ON) == ()
 
 
 @pytest.mark.parametrize(
@@ -191,3 +194,49 @@ def test_the_years_run_from_the_first_the_venue_records_to_the_one_after_collect
 
     assert walked[0] == (date(FIRST_YEAR, 1, 1), date(FIRST_YEAR, 12, 31))
     assert walked[-1] == (date(2027, 1, 1), date(2027, 12, 31))
+
+
+SUMEET_CODE = "514211"
+SUMEET_BEFORE, SUMEET_AFTER = "INE235C01010", "INE235C01036"
+SUMEET = ScripResolver(
+    {
+        SUMEET_CODE: (
+            (date(2016, 12, 12), date(2024, 10, 17), SUMEET_BEFORE),
+            (date(2025, 9, 1), None, SUMEET_AFTER),
+        )
+    }
+)
+
+
+def test_an_action_belongs_to_the_isin_its_code_was_listed_under_on_the_ex_date() -> None:
+    """Sumeet Industries went ex a bonus on 2018-08-02, years before its code carried a new ISIN."""
+    assert SUMEET.resolve(SUMEET_CODE, date(2018, 8, 2)) == SUMEET_BEFORE
+    assert SUMEET.resolve(SUMEET_CODE, date(2025, 10, 3)) == SUMEET_AFTER
+
+
+def test_an_ex_date_outside_every_stretch_belongs_to_the_next_to_open() -> None:
+    assert SUMEET.resolve(SUMEET_CODE, date(2010, 5, 1)) == SUMEET_BEFORE
+    assert SUMEET.resolve(SUMEET_CODE, date(2025, 1, 15)) == SUMEET_AFTER
+
+
+def test_an_ex_date_after_the_last_stretch_closed_belongs_to_it() -> None:
+    closed = ScripResolver(
+        {SUMEET_CODE: ((date(2016, 12, 12), date(2024, 10, 17), SUMEET_BEFORE),)}
+    )
+
+    assert closed.resolve(SUMEET_CODE, date(2025, 3, 3)) == SUMEET_BEFORE
+
+
+def test_the_isin_listed_on_the_ex_date_is_followed_onto_its_successor() -> None:
+    """Shriram Finance's dividends before its 2025 split belong to the ISIN it trades under now."""
+    shriram = ScripResolver(
+        {
+            "511218": (
+                (date(2016, 12, 12), date(2025, 1, 9), "INE721A01013"),
+                (date(2025, 1, 10), None, SHRIRAM),
+            )
+        },
+        {"INE721A01013": SHRIRAM},
+    )
+
+    assert shriram.resolve("511218", date(2024, 2, 6)) == SHRIRAM

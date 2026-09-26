@@ -6,6 +6,7 @@ hold every action already stored for that year: a range the venue cut short read
 year with fewer actions in it.
 """
 
+from collections import defaultdict
 from collections.abc import Callable
 from datetime import date, datetime
 from decimal import Decimal
@@ -18,7 +19,7 @@ from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
 from pipelines.facts import persist_actions, record_ingestion
 from pipelines.models.corporate_action import CorporateActionRecord
 from pipelines.resources import CorporateActions, Database
-from pipelines.sources.bse.corporate_actions import years
+from pipelines.sources.bse.corporate_actions import ScripResolver, Stretch, years
 from pipelines.sources.errors import SchemaDrift, SourceError
 from pipelines.sources.registry import SourceDefinition
 
@@ -27,9 +28,7 @@ GROUP = "ingestion"
 # Both venues name their trading days in Indian time, and a collection date is one of those days.
 VENUE_TIME = ZoneInfo("Asia/Kolkata")
 
-# Each BSE scrip code with the ISIN it trades under now. A code that changed face value has carried
-# more than one ISIN, and its actions belong to the current one, which the lineage maps every
-# earlier ISIN onto.
+# Each BSE scrip code with the ISIN it was last listed under.
 SCRIP_CODES = """
 select distinct on (scrip_code) scrip_code, isin
 from listing
@@ -44,6 +43,21 @@ from listing
 where exchange = 'BSE' and scrip_code is not null
 """
 
+# Each BSE scrip code with the ISINs it has been listed under and when.
+STRETCHES = """
+select scrip_code, listing_date, delisting_date, isin
+from listing
+where exchange = 'BSE' and scrip_code is not null
+order by scrip_code, listing_date
+"""
+
+# Successions at NSE first, since the venue's own records name its ISINs, then at BSE.
+SUCCESSIONS = """
+select predecessor_isin, successor_isin
+from instrument_succession
+order by case exchange when 'NSE' then 0 else 1 end
+"""
+
 # The latest version of every action already stored for a range.
 HELD = """
 select distinct on (isin, action_type, ex_date, qualifier)
@@ -53,14 +67,39 @@ where source_id = %s and ex_date between %s and %s
 order by isin, action_type, ex_date, qualifier, as_of_date desc
 """
 
+UNHANDLED = "unhandled"
+
 type ActionKey = tuple[str, str, date, str]
 type Terms = tuple[Decimal | None, Decimal | None, Decimal | None, str | None]
+
+
+def isins_now(connection: psycopg.Connection) -> dict[str, str]:
+    """Every ISIN held, mapped onto the one it trades under now, itself where it never changed."""
+    successor: dict[str, str] = {}
+    for predecessor, following in connection.execute(SUCCESSIONS):
+        successor.setdefault(predecessor, following)
+
+    mapping = {}
+    for (isin,) in connection.execute("select isin from instrument_master"):
+        now, seen = isin, {isin}
+        while now in successor and successor[now] not in seen:
+            now = successor[now]
+            seen.add(now)
+        mapping[isin] = now
+    return mapping
+
+
+def bse_listings(connection: psycopg.Connection) -> dict[str, tuple[Stretch, ...]]:
+    listed: dict[str, list[Stretch]] = defaultdict(list)
+    for code, first, last, isin in connection.execute(STRETCHES):
+        listed[code].append((first, last, isin))
+    return {code: tuple(stretches) for code, stretches in listed.items()}
 
 
 def held_actions(
     connection: psycopg.Connection, source_id: str, first: date, last: date, current: dict[str, str]
 ) -> dict[ActionKey, Terms]:
-    """Actions already stored for the range, each under the ISIN its scrip code carries now."""
+    """Actions already stored for the range, each under the ISIN its instrument trades under now."""
     rows = connection.execute(HELD, (source_id, first, last)).fetchall()
     return {
         (str(current.get(isin, isin)), kind, ex_date, qualifier): (
@@ -75,6 +114,35 @@ def held_actions(
 
 def key_of(item: CorporateActionRecord) -> ActionKey:
     return (item.isin, item.action_type, item.ex_date, item.qualifier)
+
+
+def unanswered(
+    held: dict[ActionKey, Terms],
+    records: tuple[CorporateActionRecord, ...],
+    listed_as: dict[str, str],
+) -> list[ActionKey]:
+    """Actions already stored that an answer does not account for.
+
+    `listed_as` maps each ISIN onto one standing for the venue-local identifier it was listed
+    under, so an action placed under another ISIN since it was stored is still recognised.
+
+    An action held as unhandled is the venue's text with no terms read from it. A parser that has
+    since learned to read that text answers it with the terms instead, so any action the answer
+    holds for the same instrument on the same ex-date accounts for it.
+    """
+
+    def listing(key: ActionKey) -> ActionKey:
+        isin, kind, ex_date, qualifier = key
+        return (listed_as.get(isin, isin), kind, ex_date, qualifier)
+
+    answered = {listing(key_of(item)) for item in records}
+    days = {(key[0], key[2]) for key in answered}
+    return sorted(
+        key
+        for key in held
+        if listing(key) not in answered
+        and not (key[1] == UNHANDLED and (listing(key)[0], key[2]) in days)
+    )
 
 
 def terms_of(item: CorporateActionRecord) -> Terms:
@@ -99,11 +167,13 @@ def collect_ranges(
     collected_on: date,
     normalize: Normalize,
     current: dict[str, str],
+    listed_as: dict[str, str],
 ) -> MaterializeResult[None]:
     """Read each range of ex-dates, committing each as it is read.
 
-    `normalize` turns a venue's response into actions under the ISINs they belong to, and `current`
-    maps every ISIN already stored onto the one it has since become.
+    `normalize` turns a venue's response into actions under the ISINs they belong to, `current`
+    maps every ISIN already stored onto the one it has since become, and `listed_as` onto one
+    standing for the venue-local identifier it was listed under.
     """
     version = definition.version_for(collected_on)
     read = failed = written = 0
@@ -118,11 +188,11 @@ def collect_ranges(
             if outside:
                 raise SchemaDrift(f"answer for {partition} holds ex-dates {outside[:3]} outside it")
             held = held_actions(connection, definition.source_id, first, last, current)
-            missing = held.keys() - {key_of(item) for item in records}
+            missing = unanswered(held, records, listed_as)
             if missing:
                 raise SchemaDrift(
                     f"answer for {partition} lacks {len(missing)} actions already stored,"
-                    f" such as {sorted(missing)[:3]}"
+                    f" such as {missing[:3]}"
                 )
         except SourceError as failure:
             record_ingestion(
@@ -177,8 +247,10 @@ def ingest_actions(
     collected_on: date,
 ) -> MaterializeResult[None]:
     with database.connect() as connection:
-        isin_for_scrip = dict(connection.execute(SCRIP_CODES).fetchall())
-        current = {isin: isin_for_scrip[code] for isin, code in connection.execute(LISTED)}
+        current = isins_now(connection)
+        resolver = ScripResolver(bse_listings(connection), current)
+        last_listed = dict(connection.execute(SCRIP_CODES).fetchall())
+        listed_as = {isin: last_listed[code] for isin, code in connection.execute(LISTED)}
         adapter = actions.adapter()
         return collect_ranges(
             context,
@@ -187,8 +259,9 @@ def ingest_actions(
             adapter,
             ranges,
             collected_on,
-            lambda rows: adapter.normalize(rows, isin_for_scrip, collected_on),
+            lambda rows: adapter.normalize(rows, resolver, collected_on),
             current,
+            listed_as,
         )
 
 
