@@ -18,6 +18,8 @@ RELIANCE = "INE002A01018"
 INFOSYS = "INE009A01021"
 SHRIRAM_OLD = "INE721A01013"
 SHRIRAM_NEW = "INE721A01047"
+PONDY_OLD = "INE063E01053"
+PONDY_NEW = "INE063E01061"
 
 
 def bar(
@@ -266,3 +268,37 @@ def test_a_listing_still_trading_has_no_successor() -> None:
     bars = [bar(day="2025-01-02"), bar(day="2025-12-01")]
 
     assert derive_successions(derive_listings(bars, {"NSE": date(2025, 12, 1)})) == ()
+
+
+def test_a_change_of_isin_near_the_end_of_the_history_is_superseded_at_once() -> None:
+    """Pondy Oxides traded as INE063E01053 to 20 July 2026 and as INE063E01061 from the next day.
+
+    The venue's last stored day came two months later, too soon for the stretch to have settled
+    as ended, but the new ISIN under the same ticker is what ended it.
+    """
+    bars = [
+        bar(isin=PONDY_OLD, symbol="POCL", day="2026-01-02"),
+        bar(isin=PONDY_OLD, symbol="POCL", day="2026-07-20"),
+        bar(isin=PONDY_NEW, symbol="POCL", day="2026-07-21"),
+        bar(isin=PONDY_NEW, symbol="POCL", day="2026-09-17"),
+    ]
+
+    listings = derive_listings(bars, {"NSE": date(2026, 9, 17)})
+    successions = derive_successions(listings)
+
+    assert [(item.isin, item.closure_reason, item.delisting_date) for item in listings] == [
+        (PONDY_OLD, "superseded", date(2026, 7, 20)),
+        (PONDY_NEW, None, None),
+    ]
+    assert [
+        (item.predecessor_isin, item.successor_isin, item.changed_on) for item in successions
+    ] == [(PONDY_OLD, PONDY_NEW, date(2026, 7, 21))]
+
+
+def test_a_listing_quiet_for_a_few_weeks_with_nothing_in_its_place_stays_open() -> None:
+    """A pause short of settling is not an ending when no other ISIN takes the identifier."""
+    bars = [bar(day="2026-01-02"), bar(day="2026-08-20")]
+
+    listings = derive_listings(bars, {"NSE": date(2026, 9, 17)})
+
+    assert listings[0].delisting_date is None
