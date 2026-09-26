@@ -35,11 +35,14 @@ from pipelines.models.market import DeliveryRecord, PriceBar
 from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.bse.corporate_actions import BseCorporateActions, ScripResolver, years
+from pipelines.sources.bse.corporate_actions import Stretch as ListedStretch
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import NotPublished, SourceError, UnknownSchemaVersion
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
+from pipelines.sources.nse.corporate_actions import IsinResolver, NseCorporateActions
+from pipelines.sources.nse.corporate_actions import years as nse_years
 from pipelines.sources.nse.delivery import NseDelivery
 from pipelines.sources.registry import SourceDefinition, load_definitions
 from pipelines.validation import DayVerdict, validate_day
@@ -76,6 +79,7 @@ SUCCESSION_WINDOW = timedelta(days=7)
 UDIFF = "udiff"
 
 ACTIONS_BASE_URL = "https://api.bseindia.com/BseIndiaAPI/api"
+NSE_ACTIONS_BASE_URL = "https://www.nseindia.com/api"
 
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -432,9 +436,8 @@ def emit(
     kept = [bar for key in dominant for bar in collected[key]]
 
     listings = derive_listings(kept, last_trading_day)
-    actions = collect_actions(listings, cache, end)
-
     successions = derive_successions(listings)
+    actions = collect_actions(listings, successions, cache, end)
 
     _write_instruments(seed_dir, chosen, names)
     _write_listings(seed_dir, listings)
@@ -449,37 +452,82 @@ def emit(
     }
 
 
+def _isins_now(
+    listings: Sequence[ListingRecord], successions: Sequence[SuccessionRecord]
+) -> dict[str, str]:
+    """Every ISIN in the dataset, mapped onto the one it trades under now."""
+    successor = {item.predecessor_isin: item.successor_isin for item in successions}
+    mapping = {}
+    for isin in {listing.isin for listing in listings}:
+        now, seen = isin, {isin}
+        while now in successor and successor[now] not in seen:
+            now = successor[now]
+            seen.add(now)
+        mapping[isin] = now
+    return mapping
+
+
+def _stretches(
+    listings: Sequence[ListingRecord], venue: str
+) -> dict[str, tuple[ListedStretch, ...]]:
+    """Each venue-local identifier with the ISINs it was listed under and when."""
+    listed: dict[str, list[ListedStretch]] = defaultdict(list)
+    for listing in listings:
+        if listing.exchange != venue:
+            continue
+        key = listing.scrip_code if venue == "BSE" else listing.local_symbol
+        if key:
+            listed[key].append((listing.listing_date, listing.delisting_date, listing.isin))
+    return {key: tuple(sorted(stretches)) for key, stretches in listed.items()}
+
+
 def collect_actions(
-    listings: Sequence[ListingRecord], cache: DiskCache, reported_on: date
+    listings: Sequence[ListingRecord],
+    successions: Sequence[SuccessionRecord],
+    cache: DiskCache,
+    reported_on: date,
 ) -> tuple[CorporateActionRecord, ...]:
-    """Read the actions of every BSE scrip in the dataset, a year of ex-dates at a time."""
+    """Read both venues' actions for every instrument in the dataset, a year of ex-dates at a time.
+
+    A year closed before the builder runs is read from the answer cached for it, and every action
+    carries the end of the range as the day it became knowable.
+    """
     settings = SourceSettings()
-    client = httpx.Client(
-        headers={"User-Agent": settings.source_user_agent},
+    plain = httpx.Client(headers={"User-Agent": settings.source_user_agent}, follow_redirects=True)
+    browser = httpx.Client(
+        headers={"User-Agent": BROWSER_USER_AGENT, "Accept-Language": "en-US,en;q=0.9"},
         follow_redirects=True,
     )
-    adapter = BseCorporateActions(
-        ThrottledClient("bse_corporate_actions", client, Throttle(2.0)), cache, ACTIONS_BASE_URL
+    bse = BseCorporateActions(
+        ThrottledClient("bse_corporate_actions", plain, Throttle(2.0)), cache, ACTIONS_BASE_URL
+    )
+    nse = NseCorporateActions(
+        ThrottledClient("nse_corporate_actions", browser, Throttle(2.0)),
+        cache,
+        NSE_ACTIONS_BASE_URL,
     )
 
-    resolver = ScripResolver.throughout(
-        {
-            listing.scrip_code: listing.isin
-            for listing in listings
-            if listing.exchange == "BSE" and listing.scrip_code
-        }
-    )
+    current = _isins_now(listings, successions)
+    bse_resolver = ScripResolver(_stretches(listings, "BSE"), current)
+    nse_resolver = IsinResolver(current, _stretches(listings, "NSE"))
+    collected_on = date.today()  # noqa: DTZ011
 
     actions: list[CorporateActionRecord] = []
-    for first, last in years(reported_on):
-        if first > reported_on:
-            continue
-        try:
-            payload = adapter.fetch(first, last, reported_on)
-        except SourceError:
-            logger.warning("actions unavailable", extra={"from": first, "to": last})
-            continue
-        actions.extend(adapter.normalize(adapter.parse(payload), resolver, reported_on))
+    for venue, ranges in (("BSE", years(reported_on)), ("NSE", nse_years(reported_on))):
+        for first, last in ranges:
+            if first > reported_on:
+                continue
+            try:
+                if venue == "BSE":
+                    records = bse.parse(bse.fetch(first, last, collected_on))
+                    actions.extend(bse.normalize(records, bse_resolver, reported_on))
+                else:
+                    records = nse.parse(nse.fetch(first, last, collected_on))
+                    actions.extend(nse.normalize(records, nse_resolver, reported_on))
+            except SourceError:
+                logger.warning(
+                    "actions unavailable", extra={"venue": venue, "from": first, "to": last}
+                )
 
     # The endpoint publishes no announcement date, so every action carries the day it was
     # collected. One with a later ex-date would then claim to have been knowable before it was
@@ -582,6 +630,12 @@ def collect_delivery(start: date, end: date, cache: DiskCache) -> tuple[Delivery
         )
 
     return tuple(records)
+
+
+def _committed_instruments() -> dict[str, str]:
+    """The instruments the committed dataset holds, so a rebuild keeps the same set."""
+    with seed_reader(SEED_DIR / "instrument_master.csv.gz") as handle:
+        return {row["isin"]: "committed" for row in csv.DictReader(handle)}
 
 
 def _committed_listings() -> dict[tuple[str, str], str]:
@@ -805,6 +859,11 @@ def main() -> int:
     parser.add_argument("--start", type=date.fromisoformat, required=True)
     parser.add_argument("--end", type=date.fromisoformat, required=True)
     parser.add_argument("--survey-file", type=Path, default=SURVEY_FILE)
+    parser.add_argument(
+        "--keep-instruments",
+        action="store_true",
+        help="emit the instruments the committed dataset holds instead of choosing from a survey",
+    )
     arguments = parser.parse_args()
 
     cache = DiskCache(SourceSettings().source_cache_dir)
@@ -834,8 +893,11 @@ def main() -> int:
         logger.info("delivery written", extra={"rows": written})
         return 0
 
-    survey_data = json.loads(arguments.survey_file.read_text(encoding="utf-8"))
-    chosen = choose(survey_data, arguments.end)
+    if arguments.keep_instruments:
+        chosen = _committed_instruments()
+    else:
+        survey_data = json.loads(arguments.survey_file.read_text(encoding="utf-8"))
+        chosen = choose(survey_data, arguments.end)
     counts = emit(chosen, arguments.start, arguments.end, cache, SEED_DIR)
     logger.info("seed written", extra=counts)
     for requirement, isin in sorted((value, key) for key, value in chosen.items()):
