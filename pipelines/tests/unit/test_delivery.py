@@ -7,6 +7,7 @@ import httpx
 import pytest
 import respx
 
+from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
@@ -49,11 +50,35 @@ def test_the_nse_header_pads_every_name_with_a_space() -> None:
 def test_a_series_that_settles_nothing_is_left_out() -> None:
     """A non-deliverable series reports a dash, which is not a quantity of zero."""
     raw = nse_bytes().decode("utf-8")
-    dashes = sum(1 for line in raw.splitlines()[1:] if line.split(",")[13].strip() == "-")
+    records = [[field.strip() for field in line.split(",")] for line in raw.splitlines()[1:]]
+    equity = [fields for fields in records if fields[1] in EQUITY_SERIES["NSE"]]
+    dashes = sum(1 for fields in equity if fields[13] == "-")
     rows = parse_nse_delivery(nse_bytes())
 
-    assert dashes > 0, "the recorded day should carry a non-deliverable series"
-    assert len(rows) == len(raw.splitlines()) - 1 - dashes
+    assert dashes > 0, "the recorded day should carry a non-deliverable equity series"
+    assert len(rows) == len(equity) - dashes
+
+
+def test_nse_delivery_is_read_from_the_equity_series_alone() -> None:
+    """Government securities, gold bonds, trust units and debentures share the file with equity."""
+    keys = {row.venue_key for row in parse_nse_delivery(nse_bytes())}
+
+    assert {"20MICRONS", "AAKAAR", "ABSMARINE"} <= keys
+    assert not keys & {"1018GS2026", "SGBAUG27", "EMBASSY", "CAPINVIT", "ATLPP"}
+
+
+def test_a_ticker_listed_under_other_series_keeps_its_equity_figure() -> None:
+    """On 15 June 2023 Emami's block deal and Indiabulls Housing's bonds came before their equity.
+
+    Each settled delivery under the ticker its shares trade under, so the first row in the file is
+    not the one the bar describes.
+    """
+    rows = parse_nse_delivery((CASSETTES / "nse_delivery" / "20230615.csv").read_bytes())
+
+    assert {row.venue_key: row.delivery_quantity for row in rows} == {
+        "EMAMILTD": 2_324_360,
+        "IBULHSGFIN": 1_608_464,
+    }
 
 
 def test_the_bse_file_strips_the_padding_from_its_scrip_codes() -> None:
@@ -154,6 +179,16 @@ def test_the_position_file_carries_the_full_files_figures() -> None:
     full = {row.venue_key: row.delivery_quantity for row in parse_nse_delivery(nse_bytes())}
 
     assert position["20MICRONS"] == full["20MICRONS"] == 109_556
+
+
+def test_the_position_file_keeps_the_equity_figure_beside_a_block_deal() -> None:
+    """Torrent Pharma's block deal window settled 8,858,864 shares on 29 March 2017.
+
+    Its ordinary shares traded 175,937 that day and settled 90,772, the figure the bar describes.
+    """
+    rows = parse_nse_position(position_bytes("29032017"))
+
+    assert [(row.venue_key, row.delivery_quantity) for row in rows] == [("TORNTPHARM", 90_772)]
 
 
 def test_the_position_url_matches_the_published_naming() -> None:
