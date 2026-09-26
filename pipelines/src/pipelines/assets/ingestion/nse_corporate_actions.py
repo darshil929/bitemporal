@@ -11,35 +11,11 @@ from datetime import date, datetime
 import psycopg
 from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
 
-from pipelines.assets.ingestion.corporate_actions import VENUE_TIME, collect_ranges
+from pipelines.assets.ingestion.corporate_actions import VENUE_TIME, collect_ranges, isins_now
 from pipelines.resources import Database, NseActions
 from pipelines.sources.nse.corporate_actions import IsinResolver, years
 
 GROUP = "ingestion"
-
-# Successions at NSE first, since the venue's own records name its ISINs, then at BSE.
-SUCCESSIONS = """
-select predecessor_isin, successor_isin
-from instrument_succession
-order by case exchange when 'NSE' then 0 else 1 end
-"""
-
-
-def isins_now(connection: psycopg.Connection) -> dict[str, str]:
-    """Every ISIN held, mapped onto the one it trades under now, itself where it never changed."""
-    successor: dict[str, str] = {}
-    for predecessor, following in connection.execute(SUCCESSIONS):
-        successor.setdefault(predecessor, following)
-
-    mapping = {}
-    for (isin,) in connection.execute("select isin from instrument_master"):
-        now, seen = isin, {isin}
-        while now in successor and successor[now] not in seen:
-            now = successor[now]
-            seen.add(now)
-        mapping[isin] = now
-    return mapping
-
 
 # Each NSE ticker with the ISINs it has been listed under and when.
 LISTED = """
@@ -78,6 +54,7 @@ def ingest_nse_actions(
             ranges,
             collected_on,
             lambda rows: adapter.normalize(rows, resolver, collected_on),
+            mapping,
             mapping,
         )
 

@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
-from pipelines.sources.bse.corporate_actions import BseCorporateActions
+from pipelines.sources.bse.corporate_actions import BseCorporateActions, ScripResolver
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
@@ -194,7 +194,8 @@ def test_the_corporate_action_endpoint_still_answers_with_its_fields(
     records = adapter.parse(
         adapter.fetch(date(2024, 10, 1), date(2024, 10, 31), date.today())  # noqa: DTZ011
     )
-    actions = adapter.normalize(records, {RELIANCE_SCRIP: "INE002A01018"}, date.today())  # noqa: DTZ011
+    resolver = ScripResolver.throughout({RELIANCE_SCRIP: "INE002A01018"})
+    actions = adapter.normalize(records, resolver, date.today())  # noqa: DTZ011
 
     assert records, "the endpoint answered with no records"
     assert any(item.action_type == "bonus" for item in actions), "no bonus was recognised"

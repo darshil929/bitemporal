@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -99,8 +100,46 @@ def parse_actions(payload: bytes) -> tuple[dict[str, str], ...]:
     return tuple(document)
 
 
+type Stretch = tuple[date, date | None, str]
+
+
+@dataclass(frozen=True)
+class ScripResolver:
+    """Finds the ISIN a BSE row belongs to now.
+
+    A scrip code runs unchanged through a change of face value while the ISIN it carries changes,
+    so a row is placed under the ISIN the code was listed under on its ex-date, followed onto the
+    one that ISIN has since become. An ex-date outside every stretch belongs to the first stretch
+    opening after it, or to the last where none does.
+    """
+
+    listed: dict[str, tuple[Stretch, ...]]
+    isin_now: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def throughout(cls, isin_for_scrip: dict[str, str]) -> "ScripResolver":
+        """Each code listed under one ISIN on every day."""
+        return cls({code: ((date.min, None, isin),) for code, isin in isin_for_scrip.items()})
+
+    def resolve(self, scrip_code: str, on: date) -> str | None:
+        stretches = self.listed.get(scrip_code)
+        if not stretches:
+            return None
+        held = next(
+            (
+                isin
+                for first, last, isin in stretches
+                if first <= on and (last is None or on <= last)
+            ),
+            None,
+        )
+        if held is None:
+            held = next((isin for first, _, isin in stretches if on < first), stretches[-1][2])
+        return self.isin_now.get(held, held)
+
+
 def normalize(
-    records: Sequence[dict[str, str]], isin_for_scrip: dict[str, str], as_of_date: date
+    records: Sequence[dict[str, str]], resolver: ScripResolver, as_of_date: date
 ) -> tuple[CorporateActionRecord, ...]:
     """Map raw records onto canonical actions.
 
@@ -118,7 +157,8 @@ def normalize(
 
     for record in records:
         scrip_code = str(record["scrip_code"])
-        isin = isin_for_scrip.get(scrip_code)
+        ex_date = datetime.strptime(record["exdate"], "%Y%m%d").date()  # noqa: DTZ007
+        isin = resolver.resolve(scrip_code, ex_date)
         if isin is None:
             outside.add(scrip_code)
             continue
@@ -141,7 +181,7 @@ def normalize(
             CorporateActionRecord(
                 isin=isin,
                 action_type=action_type,
-                ex_date=datetime.strptime(record["exdate"], "%Y%m%d").date(),  # noqa: DTZ007
+                ex_date=ex_date,
                 source_id=SOURCE_ID,
                 as_of_date=as_of_date,
                 qualifier=qualifier,
@@ -219,6 +259,6 @@ class BseCorporateActions:
         return parse_actions(payload)
 
     def normalize(
-        self, records: Sequence[dict[str, str]], isin_for_scrip: dict[str, str], as_of_date: date
+        self, records: Sequence[dict[str, str]], resolver: ScripResolver, as_of_date: date
     ) -> tuple[CorporateActionRecord, ...]:
-        return normalize(records, isin_for_scrip, as_of_date)
+        return normalize(records, resolver, as_of_date)
