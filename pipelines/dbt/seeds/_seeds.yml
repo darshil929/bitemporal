@@ -1,0 +1,23 @@
+version: 2
+
+seeds:
+  - name: unadjusted_changes_of_isin
+    description: >
+      Changes of ISIN across which the continuous series keeps a step, each reviewed against both
+      venues' records: a split or bonus neither venue records, or a move the market made that day.
+      The step check passes over each, and a chart of the series marks it as unadjusted there.
+    config:
+      column_types:
+        successor_isin: varchar(12)
+        changed_on: date
+        reason: text
+    columns:
+      - name: successor_isin
+        description: The ISIN the instrument took at the change.
+        data_tests: [not_null]
+      - name: changed_on
+        description: The first day the successor traded, as stg_successions dates the change.
+        data_tests: [not_null]
+      - name: reason
+        description: What the prices did across the change and what the venues record of it.
+        data_tests: [not_null]
