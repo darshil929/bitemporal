@@ -1,7 +1,7 @@
 -- Each day on which BSE or NSE reports a count-changing action for an instrument listed at both
--- venues, with the factor each venue's actions apply that day. BSE's actions scale the price series
--- and NSE's check them, so they are compared by the factor they apply together rather than one
--- action at a time, which a bonus and a split announced as one or as two would otherwise split.
+-- venues, with the factor each venue's actions apply that day. The venues are compared by the
+-- factor their actions apply together rather than one action at a time, which a bonus and a split
+-- announced as one or as two would otherwise split.
 with lineage as (
     select
         isin,

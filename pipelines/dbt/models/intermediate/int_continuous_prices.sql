@@ -10,38 +10,24 @@ with lineage as (
     from {{ ref('int_instrument_lineage') }}
 ),
 
-capital_actions as (
-    select distinct
-        lineage.current_isin,
-        actions.action_type,
-        actions.ex_date,
-        actions.qualifier,
-        actions.adjustment_factor
-    from {{ ref('stg_corporate_actions') }} as actions
-    inner join lineage on actions.isin = lineage.isin
-    where
-        actions.action_type in ('split', 'bonus', 'consolidation')
-        and actions.adjustment_factor is not null
-        -- BSE's actions scale the series; NSE's check them in int_corporate_action_agreement.
-        and actions.source_id = 'bse_corporate_actions'
-),
-
--- Two actions can share an ex-date, a bonus beside a split, and both scale the same bars.
+-- Each ex-date's factor, BSE's where it reports one and NSE's where the prices confirm it.
 by_ex_date as (
     select
-        current_isin,
+        isin as current_isin,
         ex_date,
-        exp(sum(ln(adjustment_factor))) as day_factor
-    from capital_actions
-    group by current_isin, ex_date
+        applied_factor as day_factor
+    from {{ ref('int_capital_action_factors') }}
+    where applied_factor is not null
 ),
 
 -- The factor a bar carries is the product of every action still ahead of it, so the running
--- product is accumulated backwards from the most recent action.
+-- product is accumulated backwards from the most recent action. It holds from the previous
+-- ex-date up to the day before this one, which a bar is joined on as a range.
 steps as (
     select
         current_isin,
         ex_date,
+        lag(ex_date) over (partition by current_isin order by ex_date) as previous_ex_date,
         round(
             exp(
                 sum(ln(day_factor)) over (
@@ -92,12 +78,8 @@ select
     round(bars.volume / coalesce(applicable.factor, 1)) as volume,
     round(bars.delivery_quantity / coalesce(applicable.factor, 1)) as delivery_quantity
 from bars
-left join lateral (
-    select steps.factor
-    from steps
-    where
-        steps.current_isin = bars.current_isin
-        and steps.ex_date > bars.trade_date
-    order by steps.ex_date asc
-    limit 1
-) as applicable on true
+left join steps as applicable
+    on
+        bars.current_isin = applicable.current_isin
+        and bars.trade_date < applicable.ex_date
+        and (applicable.previous_ex_date is null or bars.trade_date >= applicable.previous_ex_date)
