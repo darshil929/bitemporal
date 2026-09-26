@@ -3,6 +3,11 @@
 -- wrong company, so neither is taken alone: BSE's actions stand, and a day NSE alone reports is
 -- applied only where the close moved by its factor at every venue that traded either side of the
 -- ex-date.
+--
+-- Neither venue records a split of a fund's units, which issues the units a new ISIN. A fund's
+-- price follows the value of what it holds, so across that change of ISIN its close falls by the
+-- split's ratio, and a fund's change of ISIN no venue reports an action for is applied where every
+-- venue that traded across it moved by the same ratio.
 
 -- A venue's closes within this many days either side of the ex-date measure its move there. A
 -- venue that did not trade on both sides within it is not counted.
@@ -12,6 +17,14 @@
 -- than to no action at all. A company held at a 20 percent circuit limit on its ex-date moves 0.18
 -- from its factor.
 {% set tolerance = 0.25 %}
+
+-- A face value steps through 1, 2 and 5 and their multiples of ten, so a split divides it by one
+-- of these ratios. A ratio of 1 is a change of ISIN that split nothing. Neighbouring ratios lie at
+-- least twice the tolerance apart, so a move reads as one ratio at most.
+{% set face_value_ratios = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000] %}
+
+-- An ISIN issued to a mutual fund's units begins with this prefix.
+{% set fund_isin_prefix = 'INF' %}
 
 with lineage as (
     select
@@ -133,6 +146,95 @@ evidence as (
     group by moves.current_isin, moves.ex_date
 ),
 
+-- Each change of ISIN of a fund's units, measured at each venue from the last close of the
+-- retired ISIN to the first close of its successor, and read as the nearest face value ratio.
+fund_moves as (
+    select
+        lineage.current_isin,
+        successions.changed_on as ex_date,
+        venues.venue,
+        ln(before.close / after.close) as log_ratio,
+        greatest(before.as_of_date, after.as_of_date) as as_of_date
+    from {{ ref('stg_successions') }} as successions
+    inner join lineage on successions.successor_isin = lineage.isin
+    cross join (values ('BSE'), ('NSE')) as venues (venue)
+    inner join lateral (
+        select
+            prices.close,
+            prices.as_of_date
+        from {{ ref('stg_price_daily') }} as prices
+        where
+            prices.isin = successions.predecessor_isin
+            and prices.venue = venues.venue
+            and prices.trade_date < successions.changed_on
+            and prices.trade_date >= successions.changed_on - {{ window_days }}
+        order by prices.trade_date desc
+        limit 1
+    ) as before on true
+    inner join lateral (
+        select
+            prices.close,
+            prices.as_of_date
+        from {{ ref('stg_price_daily') }} as prices
+        where
+            prices.isin = successions.successor_isin
+            and prices.venue = venues.venue
+            and prices.trade_date >= successions.changed_on
+            and prices.trade_date < successions.changed_on + {{ window_days }}
+        order by prices.trade_date asc
+        limit 1
+    ) as after on true
+    where successions.successor_isin like '{{ fund_isin_prefix }}%'
+),
+
+fund_ratios as (
+    select
+        fund_moves.current_isin,
+        fund_moves.ex_date,
+        fund_moves.as_of_date,
+        nearest.ratio
+    from fund_moves
+    left join lateral (
+        select candidates.ratio
+        from (
+            values
+            {% for ratio in face_value_ratios -%}
+                ({{ ratio }}){{ "," if not loop.last }}
+            {% endfor %}
+        ) as candidates (ratio)
+        where abs(fund_moves.log_ratio - ln(candidates.ratio)) <= {{ tolerance }}
+    ) as nearest on true
+),
+
+-- A split every venue that traded across the change reads alike, on a day no venue reports an
+-- action within the window.
+fund_splits as (
+    select
+        current_isin,
+        ex_date,
+        count(*) as venues_traded,
+        count(ratio) as venues_confirming,
+        min(ratio) as ratio,
+        max(as_of_date) as as_of_date
+    from fund_ratios
+    group by current_isin, ex_date
+    having
+        count(ratio) = count(*)
+        and min(ratio) = max(ratio)
+        and min(ratio) > 1
+),
+
+unreported_fund_splits as (
+    select fund_splits.*
+    from fund_splits
+    where not exists (
+        select 1 from reported
+        where
+            reported.current_isin = fund_splits.current_isin
+            and abs(reported.ex_date - fund_splits.ex_date) < {{ window_days }}
+    )
+),
+
 judged as (
     select
         reported.current_isin,
@@ -150,12 +252,27 @@ judged as (
         case
             when reported.bse_factor is not null then reported.bse_as_of_date
             else greatest(reported.nse_as_of_date, evidence.as_of_date)
-        end as as_of_date
+        end as as_of_date,
+        null::numeric as fund_factor
     from reported
     left join evidence
         on
             reported.current_isin = evidence.current_isin
             and reported.ex_date = evidence.ex_date
+
+    union all
+
+    select
+        current_isin,
+        ex_date,
+        null as bse_factor,
+        null as nse_factor,
+        venues_traded,
+        venues_confirming,
+        'fund_unit_split' as basis,
+        as_of_date,
+        round(1.0 / ratio, 10) as fund_factor
+    from unreported_fund_splits
 )
 
 select
@@ -170,5 +287,6 @@ select
     case basis
         when 'bse' then bse_factor
         when 'nse_confirmed' then nse_factor
+        when 'fund_unit_split' then fund_factor
     end as applied_factor
 from judged

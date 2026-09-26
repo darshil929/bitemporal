@@ -111,10 +111,11 @@ models:
 
   - name: int_capital_action_factors
     description: >
-      Each day either venue reports a split, bonus or consolidation, with the factor each venue's
-      actions apply and the factor the continuous series applies. BSE's actions stand; a day NSE
-      alone reports is applied where the close moved by its factor at every venue that traded
-      either side of the ex-date.
+      Each day either venue reports a split, bonus or consolidation, or a fund's units change ISIN,
+      with the factor each venue's actions apply and the factor the continuous series applies.
+      BSE's actions stand; a day NSE alone reports is applied where the close moved by its factor at
+      every venue that traded either side of the ex-date; a fund's change of ISIN no venue reports
+      is applied where every venue that traded across it moved by the same face value ratio.
     columns:
       - name: isin
         description: The ISIN the instrument trades under now.
@@ -128,21 +129,24 @@ models:
         description: The product of the factors of NSE's actions that day, null when it reports none.
       - name: venues_traded
         description: >
-          Venues that traded within the window either side of a day NSE alone reports, whose move
-          is measured. Zero on a day BSE reports, which is not measured.
+          Venues that traded within the window either side of a day NSE alone reports, or across a
+          fund's change of ISIN, whose move is measured. Zero on a day BSE reports.
         data_tests: [not_null]
       - name: venues_confirming
-        description: Venues among those whose move lies within tolerance of NSE's factor.
+        description: >
+          Venues among those whose move lies within tolerance of NSE's factor, or of a face value
+          ratio for a fund.
         data_tests: [not_null]
       - name: basis
         description: >
           Why the factor is or is not applied: BSE reports the day; NSE alone reports it and every
-          venue that traded confirms it; a venue that traded moved otherwise; or none traded.
+          venue that traded confirms it; a venue that traded moved otherwise; none traded; or a
+          fund's units were split across a change of ISIN no venue reports.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [bse, nse_confirmed, nse_contradicted, nse_untraded]
+                values: [bse, nse_confirmed, nse_contradicted, nse_untraded, fund_unit_split]
       - name: applied_factor
         description: The factor the continuous series applies that day, null where none is applied.
       - name: as_of_date
@@ -381,6 +385,8 @@ unit_tests:
           - {isin: INE296A01032, source_id: nse_corporate_actions, action_type: bonus,
              ex_date: "2025-06-16", qualifier: ordinary, adjustment_factor: 0.2,
              as_of_date: "2026-09-26"}
+      - input: ref('stg_successions')
+        rows: []
       - input: ref('stg_price_daily')
         rows: []
     expect:
@@ -402,6 +408,8 @@ unit_tests:
           - {isin: INE580B01029, source_id: nse_corporate_actions, action_type: bonus,
              ex_date: "2018-06-06", qualifier: ordinary, adjustment_factor: 0.5,
              as_of_date: "2026-09-26"}
+      - input: ref('stg_successions')
+        rows: []
       - input: ref('stg_price_daily')
         rows:
           - {isin: INE580B01029, venue: BSE, trade_date: "2018-06-05", as_of_date: "2018-06-05",
@@ -431,6 +439,8 @@ unit_tests:
           - {isin: INE188B01013, source_id: nse_corporate_actions, action_type: bonus,
              ex_date: "2018-09-27", qualifier: ordinary, adjustment_factor: 0.889868,
              as_of_date: "2026-09-26"}
+      - input: ref('stg_successions')
+        rows: []
       - input: ref('stg_price_daily')
         rows:
           - {isin: INE188B01013, venue: BSE, trade_date: "2018-09-26", as_of_date: "2018-09-26",
@@ -460,6 +470,8 @@ unit_tests:
           - {isin: INE486J01014, source_id: nse_corporate_actions, action_type: bonus,
              ex_date: "2017-11-01", qualifier: ordinary, adjustment_factor: 0.962963,
              as_of_date: "2026-09-26"}
+      - input: ref('stg_successions')
+        rows: []
       - input: ref('stg_price_daily')
         rows:
           - {isin: INE486J01014, venue: BSE, trade_date: "2017-10-31", as_of_date: "2017-10-31",
@@ -489,6 +501,8 @@ unit_tests:
           - {isin: INE313D01013, source_id: nse_corporate_actions, action_type: bonus,
              ex_date: "2014-02-06", qualifier: ordinary, adjustment_factor: 0.333333,
              as_of_date: "2026-09-26"}
+      - input: ref('stg_successions')
+        rows: []
       - input: ref('stg_price_daily')
         rows:
           - {isin: INE313D01013, venue: NSE, trade_date: "2014-02-04", as_of_date: "2014-02-04",
@@ -497,6 +511,85 @@ unit_tests:
       rows:
         - {isin: INE313D01013, ex_date: "2014-02-06", venues_traded: 0, basis: nse_untraded,
            applied_factor: null}
+
+  - name: a_fund_split_is_read_from_the_close_across_its_change_of_isin
+    description: >
+      A gold exchange traded fund split each unit into ten on 2026-08-28 under a new ISIN, which
+      neither venue records as an action. Its close fell from 152.85 to 15.38 at BSE and from
+      152.98 to 15.36 at NSE.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INF740KA1SW3, current_isin: INF740KA1ZP2}
+          - {isin: INF740KA1ZP2, current_isin: INF740KA1ZP2}
+      - input: ref('stg_corporate_actions')
+        rows: []
+      - input: ref('stg_successions')
+        rows:
+          - {predecessor_isin: INF740KA1SW3, successor_isin: INF740KA1ZP2, changed_on: "2026-08-28"}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INF740KA1SW3, venue: BSE, trade_date: "2026-08-27", as_of_date: "2026-08-27",
+             close: 152.85}
+          - {isin: INF740KA1ZP2, venue: BSE, trade_date: "2026-08-28", as_of_date: "2026-08-28",
+             close: 15.38}
+          - {isin: INF740KA1SW3, venue: NSE, trade_date: "2026-08-27", as_of_date: "2026-08-27",
+             close: 152.98}
+          - {isin: INF740KA1ZP2, venue: NSE, trade_date: "2026-08-28", as_of_date: "2026-08-28",
+             close: 15.36}
+    expect:
+      rows:
+        - {isin: INF740KA1ZP2, ex_date: "2026-08-28", venues_traded: 2, venues_confirming: 2,
+           basis: fund_unit_split, applied_factor: "0.1000000000", as_of_date: "2026-08-28"}
+
+  - name: a_fund_change_of_isin_that_split_nothing_applies_no_factor
+    description: >
+      A liquid exchange traded fund took a new ISIN on 2025-02-28 and closed at 1,000.34 against
+      999.99 the day before.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INF179KC1HE2, current_isin: INF179KC1JG3}
+          - {isin: INF179KC1JG3, current_isin: INF179KC1JG3}
+      - input: ref('stg_corporate_actions')
+        rows: []
+      - input: ref('stg_successions')
+        rows:
+          - {predecessor_isin: INF179KC1HE2, successor_isin: INF179KC1JG3, changed_on: "2025-02-28"}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INF179KC1HE2, venue: NSE, trade_date: "2025-02-27", as_of_date: "2025-02-27",
+             close: 999.99}
+          - {isin: INF179KC1JG3, venue: NSE, trade_date: "2025-02-28", as_of_date: "2025-02-28",
+             close: 1000.34}
+    expect:
+      rows: []
+
+  - name: a_company_change_of_isin_is_never_read_as_a_fund_split
+    description: >
+      ORIANA took a new ISIN at its one for five split of 2026-09-18. A company's split is applied
+      only from a venue's record of it, never from its price.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE0OUT01019, current_isin: INE0OUT01027}
+          - {isin: INE0OUT01027, current_isin: INE0OUT01027}
+      - input: ref('stg_corporate_actions')
+        rows: []
+      - input: ref('stg_successions')
+        rows:
+          - {predecessor_isin: INE0OUT01019, successor_isin: INE0OUT01027, changed_on: "2026-09-18"}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE0OUT01019, venue: NSE, trade_date: "2026-09-17", as_of_date: "2026-09-17",
+             close: 1348.85}
+          - {isin: INE0OUT01027, venue: NSE, trade_date: "2026-09-18", as_of_date: "2026-09-18",
+             close: 271.75}
+    expect:
+      rows: []
 
   - name: both_venues_reporting_a_split_are_compared_by_its_factor
     description: >
