@@ -134,6 +134,28 @@ where p.as_of_date <= %(as_of)s
 order by p.trade_date
 """
 
+# A day whose bars no longer number what its latest verdict was drawn from. Bars read into the
+# history after a verdict carry the day they describe as their as-of date, so their number is what
+# shows the day has changed.
+DAYS_WHOSE_BARS_CHANGED = """
+select held.trade_date
+from (
+    select venue, trade_date, count(distinct isin) as bars
+    from price_daily
+    where as_of_date <= %(as_of)s
+    group by venue, trade_date
+) as held
+inner join (
+    select distinct on (venue, trade_date) venue, trade_date, bars
+    from trading_day
+    order by venue, trade_date, as_of_date desc
+) as judged
+    on judged.venue = held.venue and judged.trade_date = held.trade_date
+where judged.bars <> held.bars
+group by held.trade_date
+order by held.trade_date
+"""
+
 # How many instruments a venue usually lists, against which a truncated file is recognised.
 TYPICAL_BARS = """
 select venue, percentile_disc(0.5) within group (order by bars) as typical
@@ -157,6 +179,12 @@ def days_awaiting_a_verdict(
     connection: psycopg.Connection, as_of: date = FAR_FUTURE
 ) -> tuple[date, ...]:
     return tuple(row[0] for row in connection.execute(DAYS_AWAITING_A_VERDICT, {"as_of": as_of}))
+
+
+def days_whose_bars_changed(
+    connection: psycopg.Connection, as_of: date = FAR_FUTURE
+) -> tuple[date, ...]:
+    return tuple(row[0] for row in connection.execute(DAYS_WHOSE_BARS_CHANGED, {"as_of": as_of}))
 
 
 def typical_bars(connection: psycopg.Connection, as_of: date = FAR_FUTURE) -> dict[str, int]:

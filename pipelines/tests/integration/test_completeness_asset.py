@@ -1,7 +1,7 @@
 """Validating stored days, against the dataset and against a day built to fail."""
 
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import psycopg
@@ -11,6 +11,7 @@ from dagster import build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.completeness import trading_day_completeness
+from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
 from pipelines.checks.completeness import every_stored_day_has_a_verdict
 from pipelines.facts import persist_bars
 from pipelines.models.market import PriceBar
@@ -18,11 +19,12 @@ from pipelines.models.market import PriceBar
 FIXTURE_SCHEMA = "fixture"
 
 HDFC_BANK = "INE040A01034"
+LIC_GOLD_ETF = "INF397L01554"
 
 
-def bar(venue: str, close: str, trade_date: str = "2026-07-31") -> PriceBar:
+def bar(venue: str, close: str, trade_date: str = "2026-07-31", isin: str = HDFC_BANK) -> PriceBar:
     return PriceBar(
-        isin=HDFC_BANK,
+        isin=isin,
         venue=venue,
         trade_date=date.fromisoformat(trade_date),
         as_of_date=date.fromisoformat(trade_date),
@@ -47,6 +49,11 @@ def database(migrated: Config, postgres_dsn: str) -> Iterator[PointedDatabase]:
             "insert into instrument_master (isin, name, country, instrument_type)"
             " values (%s, 'HDFC Bank Ltd', 'IN', 'equity') on conflict (isin) do nothing",
             (HDFC_BANK,),
+        )
+        open_.execute(
+            "insert into instrument_master (isin, name, country, instrument_type)"
+            " values (%s, 'LIC Gold ETF', 'IN', 'etf') on conflict (isin) do nothing",
+            (LIC_GOLD_ETF,),
         )
         open_.commit()
 
@@ -118,3 +125,35 @@ def test_the_check_fails_while_a_day_carries_no_verdict(database: PointedDatabas
     assert not before.passed
     assert before.metadata["venue_days_without_a_verdict"].value == 1
     assert after.passed
+
+
+def test_a_day_whose_bars_grew_after_its_verdict_is_judged_again_on_that_day(
+    database: PointedDatabase,
+) -> None:
+    """BSE's gold ETFs were read into the history after their days had been judged complete.
+
+    LIC Gold ETF closed at 5,711.48 at BSE and 5,332.15 at NSE on 3 August 2020. A bar read later
+    carries the day it describes as its as-of date, so the verdict drawn without it is restated,
+    dated the day it was judged again, and the first stands for the dates before.
+    """
+    store(database, [bar("BSE", "1900.00"), bar("NSE", "1900.40")])
+    trading_day_completeness(build_asset_context(), database)
+
+    store(
+        database,
+        [bar("BSE", "5711.48", isin=LIC_GOLD_ETF), bar("NSE", "5332.15", isin=LIC_GOLD_ETF)],
+    )
+    result = trading_day_completeness(build_asset_context(), database)
+
+    with database.connect() as connection:
+        stored = connection.execute(
+            "select venue, as_of_date, is_complete, bars from trading_day order by venue, as_of_date"
+        ).fetchall()
+    judged_on = datetime.now(VENUE_TIME).date()
+    assert result.metadata["days_judged_again"] == 1
+    assert stored == [
+        ("BSE", date(2026, 7, 31), True, 1),
+        ("BSE", judged_on, False, 2),
+        ("NSE", date(2026, 7, 31), True, 1),
+        ("NSE", judged_on, False, 2),
+    ]

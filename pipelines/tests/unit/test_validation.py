@@ -177,3 +177,11 @@ def test_a_gap_of_a_tick_or_two_on_a_low_priced_instrument_is_not_reported() -> 
     low_priced = [bar(venue="BSE", close="1.50"), bar(venue="NSE", close="1.60")]
 
     assert divergences(low_priced) == {}
+
+
+def test_a_verdict_drawn_again_is_knowable_on_the_day_it_was_drawn() -> None:
+    verdict = validate_day(
+        "NSE", TRADE_DATE, many(150), typical_bars=150, judged_on=date(2026, 9, 26)
+    )
+
+    assert verdict.as_of_date == date(2026, 9, 26)
