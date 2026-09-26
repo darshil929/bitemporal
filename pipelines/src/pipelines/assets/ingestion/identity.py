@@ -13,6 +13,7 @@ from pipelines.identity import (
     derive_primary_venue,
     derive_successions,
     persist_identity,
+    retire_listings,
 )
 from pipelines.resources import Database
 
@@ -36,6 +37,7 @@ def instrument_identity(
         successions = derive_successions(listings)
 
         persist_identity(connection, (), listings, venues, successions)
+        retired = retire_listings(connection, listings)
         connection.commit()
 
     closed = sum(1 for listing in listings if listing.closure_reason)
@@ -46,6 +48,7 @@ def instrument_identity(
             "closed": closed,
             "designations": len(venues),
             "successions": len(successions),
+            "retired": retired,
         },
     )
     return MaterializeResult(
@@ -56,5 +59,6 @@ def instrument_identity(
             "successions": len(successions),
             "designations": len(venues),
             "instruments": len({listing.isin for listing in listings}),
+            "retired": retired,
         }
     )
