@@ -225,3 +225,58 @@ def test_an_action_read_again_with_the_same_terms_is_not_stored_again(
 
     assert first["written"] == 7
     assert later.metadata["written"] == 0
+
+
+def unlink_shriram(dsn: str) -> None:
+    """Leaves the code carrying two ISINs with nothing linking the first to the second."""
+    with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        open_.execute("delete from instrument_succession")
+        open_.commit()
+
+
+def test_an_action_stays_with_the_isin_listed_on_its_ex_date_where_no_succession_follows(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A code that took another ISIN with no succession recorded carries two instruments."""
+    unlink_shriram(postgres_dsn)
+
+    run(database, RecordedActions(), YEAR_2024)
+
+    shriram = rows(
+        postgres_dsn,
+        "select distinct isin from corporate_action where isin in (%s, %s)",
+        (SHRIRAM_OLD, SHRIRAM_NEW),
+    )
+    assert shriram == [(SHRIRAM_OLD,)]
+
+
+def test_an_action_stored_under_the_code_s_later_isin_is_still_recognised(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """An action placed differently than when it was stored is the same record, not a lost one."""
+    unlink_shriram(postgres_dsn)
+    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        persist_actions(
+            open_,
+            [
+                CorporateActionRecord(
+                    isin=SHRIRAM_NEW,
+                    action_type="dividend",
+                    ex_date=date(2024, 2, 6),
+                    source_id="bse_corporate_actions",
+                    as_of_date=date(2026, 9, 22),
+                    qualifier="interim",
+                    dividend_amount=Decimal(10),
+                )
+            ],
+        )
+        open_.commit()
+
+    metadata = run(database, RecordedActions(), YEAR_2024)
+
+    placed = rows(
+        postgres_dsn,
+        "select isin from corporate_action where ex_date = '2024-02-06' order by isin",
+    )
+    assert metadata["failed"] == 0
+    assert placed == [(SHRIRAM_OLD,), (SHRIRAM_NEW,)]
