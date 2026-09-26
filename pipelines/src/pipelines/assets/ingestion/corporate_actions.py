@@ -1,19 +1,23 @@
-"""Every corporate action BSE has recorded against the instruments it lists.
+"""Every corporate action BSE has recorded, read a calendar year of ex-dates at a time.
 
-The venue answers per scrip code with that code's whole history, so a run walks scrip codes rather
-than days. A code whose instrument changed face value is read first, since a series cannot be drawn
-across a split until the split is known, and each code is committed as it is read, so a run that
-stops part way keeps what it reached.
+The venue answers a range of ex-dates with the actions of every scrip code inside it, so a run
+walks years rather than scrip codes, and each year is committed as it is read. A year's answer must
+hold every action already stored for that year: a range the venue cut short reads the same as a
+year with fewer actions in it.
 """
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+import psycopg
 from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
 
 from pipelines.facts import persist_actions, record_ingestion
+from pipelines.models.corporate_action import CorporateActionRecord
 from pipelines.resources import CorporateActions, Database
-from pipelines.sources.errors import SourceError
+from pipelines.sources.bse.corporate_actions import years
+from pipelines.sources.errors import SchemaDrift, SourceError
 
 GROUP = "ingestion"
 
@@ -24,52 +28,100 @@ VENUE_TIME = ZoneInfo("Asia/Kolkata")
 # more than one ISIN, and its actions belong to the current one, which the lineage maps every
 # earlier ISIN onto.
 SCRIP_CODES = """
-select
-    current_listing.scrip_code,
-    current_listing.isin,
-    exists (
-        select 1 from instrument_succession succession
-        where succession.exchange = 'BSE'
-          and succession.successor_isin = current_listing.isin
-    ) as changed_face_value
-from (
-    select distinct on (scrip_code) scrip_code, isin
-    from listing
-    where exchange = 'BSE' and scrip_code is not null
-    order by scrip_code, listing_date desc
-) as current_listing
-order by changed_face_value desc, current_listing.scrip_code
+select distinct on (scrip_code) scrip_code, isin
+from listing
+where exchange = 'BSE' and scrip_code is not null
+order by scrip_code, listing_date desc
 """
 
+# Every ISIN a BSE scrip code has carried.
+LISTED = """
+select distinct isin, scrip_code
+from listing
+where exchange = 'BSE' and scrip_code is not null
+"""
 
-@asset(
-    deps=[AssetKey("instrument_identity")],
-    group_name=GROUP,
-    description="Corporate actions for every BSE scrip code, those that changed face value first.",
-)
-def corporate_actions(
-    context: AssetExecutionContext, database: Database, actions: CorporateActions
+# The latest version of every action already stored for a range.
+HELD = """
+select distinct on (isin, action_type, ex_date, qualifier)
+    isin, action_type, ex_date, qualifier, ratio_from, ratio_to, dividend_amount, purpose
+from corporate_action
+where source_id = %s and ex_date between %s and %s
+order by isin, action_type, ex_date, qualifier, as_of_date desc
+"""
+
+type ActionKey = tuple[str, str, date, str]
+type Terms = tuple[Decimal | None, Decimal | None, Decimal | None, str | None]
+
+
+def held_actions(
+    connection: psycopg.Connection, source_id: str, first: date, last: date, current: dict[str, str]
+) -> dict[ActionKey, Terms]:
+    """Actions already stored for the range, each under the ISIN its scrip code carries now."""
+    rows = connection.execute(HELD, (source_id, first, last)).fetchall()
+    return {
+        (str(current.get(isin, isin)), kind, ex_date, qualifier): (
+            ratio_from,
+            ratio_to,
+            amount,
+            purpose,
+        )
+        for isin, kind, ex_date, qualifier, ratio_from, ratio_to, amount, purpose in rows
+    }
+
+
+def key_of(item: CorporateActionRecord) -> ActionKey:
+    return (item.isin, item.action_type, item.ex_date, item.qualifier)
+
+
+def terms_of(item: CorporateActionRecord) -> Terms:
+    return (item.ratio_from, item.ratio_to, item.dividend_amount, item.purpose)
+
+
+def ingest_actions(
+    context: AssetExecutionContext,
+    database: Database,
+    actions: CorporateActions,
+    ranges: list[tuple[date, date]],
+    collected_on: date,
 ) -> MaterializeResult[None]:
     definition = actions.definition()
     adapter = actions.adapter()
-    collected_on = datetime.now(VENUE_TIME).date()
     version = definition.version_for(collected_on)
 
-    read = failed = written = changed_face_value = 0
+    read = failed = written = 0
 
     with database.connect() as connection:
-        codes = connection.execute(SCRIP_CODES).fetchall()
+        isin_for_scrip = dict(connection.execute(SCRIP_CODES).fetchall())
+        current = {isin: isin_for_scrip[code] for isin, code in connection.execute(LISTED)}
 
-        for scrip_code, isin, has_changed in codes:
+        for first, last in ranges:
+            partition = f"{first:%Y%m%d}-{last:%Y%m%d}"
             try:
                 records = adapter.normalize(
-                    adapter.parse(adapter.fetch(scrip_code)), {scrip_code: isin}, collected_on
+                    adapter.parse(adapter.fetch(first, last, collected_on)),
+                    isin_for_scrip,
+                    collected_on,
                 )
+                outside = sorted(
+                    {item.ex_date for item in records if not first <= item.ex_date <= last}
+                )
+                if outside:
+                    raise SchemaDrift(
+                        f"answer for {partition} holds ex-dates {outside[:3]} outside it"
+                    )
+                held = held_actions(connection, definition.source_id, first, last, current)
+                missing = held.keys() - {key_of(item) for item in records}
+                if missing:
+                    raise SchemaDrift(
+                        f"answer for {partition} lacks {len(missing)} actions already stored,"
+                        f" such as {sorted(missing)[:3]}"
+                    )
             except SourceError as failure:
                 record_ingestion(
                     connection,
                     definition.source_id,
-                    scrip_code,
+                    partition,
                     version,
                     "failed",
                     detail=str(failure),
@@ -78,29 +130,41 @@ def corporate_actions(
                 failed += 1
                 context.log.warning(
                     "corporate actions could not be read",
-                    extra={"scrip_code": scrip_code, "detail": str(failure)},
+                    extra={"range": partition, "detail": str(failure)},
                 )
                 continue
 
-            written += persist_actions(connection, records)
+            # An action stored with the same terms is not new information, so only an action the
+            # venue reports for the first time, or restates, becomes a further version.
+            fresh = tuple(item for item in records if held.get(key_of(item)) != terms_of(item))
+            written += persist_actions(connection, fresh)
             record_ingestion(
-                connection, definition.source_id, scrip_code, version, "succeeded", len(records)
+                connection, definition.source_id, partition, version, "succeeded", len(records)
             )
             connection.commit()
-
             read += 1
-            changed_face_value += int(has_changed)
 
     context.log.info(
         "corporate actions ingested",
-        extra={"scrip_codes": read, "failed": failed, "written": written},
+        extra={"ranges": read, "failed": failed, "written": written},
     )
     return MaterializeResult(
         metadata={
-            "scrip_codes": read,
-            "changed_face_value": changed_face_value,
+            "ranges": read,
             "failed": failed,
             "written": written,
             "collected_on": collected_on.isoformat(),
         }
     )
+
+
+@asset(
+    deps=[AssetKey("instrument_identity")],
+    group_name=GROUP,
+    description="Corporate actions for every BSE scrip code, a calendar year of ex-dates at a time.",
+)
+def corporate_actions(
+    context: AssetExecutionContext, database: Database, actions: CorporateActions
+) -> MaterializeResult[None]:
+    collected_on = datetime.now(VENUE_TIME).date()
+    return ingest_actions(context, database, actions, years(collected_on), collected_on)
