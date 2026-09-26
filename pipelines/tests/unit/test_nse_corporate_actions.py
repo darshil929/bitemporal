@@ -286,3 +286,35 @@ def test_an_sme_row_is_placed_by_the_ticker_listed_on_its_ex_date() -> None:
         ("bonus", date(2025, 1, 3), Decimal(1), Decimal(2)),
         ("split", date(2025, 2, 7), Decimal(1), Decimal(5)),
     ]
+
+
+PRITIKA_BEFORE, PRITIKA_AFTER = "INE0MJQ01012", "INE0MJQ01020"
+PRITIKA_LISTED = {
+    "PRITIKA": (
+        (date(2022, 12, 8), date(2025, 2, 13), PRITIKA_BEFORE),
+        (date(2025, 2, 17), None, PRITIKA_AFTER),
+    )
+}
+
+
+def test_an_ex_date_while_trading_was_halted_belongs_to_the_listing_opening_after_it() -> None:
+    """PRITIKA last traded on 13 February 2025, went ex its split on the 14th, and reopened on the 17th."""
+    resolver = IsinResolver(
+        {PRITIKA_BEFORE: PRITIKA_AFTER, PRITIKA_AFTER: PRITIKA_AFTER}, PRITIKA_LISTED
+    )
+
+    actions = normalize(parse_actions(recorded_sme(2025)), resolver, COLLECTED_ON)
+
+    pritika = [
+        (item.isin, item.action_type, item.ex_date, item.ratio_from, item.ratio_to)
+        for item in actions
+        if item.isin == PRITIKA_AFTER
+    ]
+    assert pritika == [(PRITIKA_AFTER, "split", date(2025, 2, 14), Decimal(1), Decimal(2))]
+
+
+def test_an_ex_date_more_than_a_week_before_a_listing_opens_places_nothing() -> None:
+    """A ticker taken up by a later listing does not claim actions from before it."""
+    resolver = IsinResolver({}, PRITIKA_LISTED)
+
+    assert resolver.resolve("400100", "PRITIKA", date(2022, 11, 30)) is None
