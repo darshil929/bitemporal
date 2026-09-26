@@ -22,6 +22,8 @@ capital_actions as (
     where
         actions.action_type in ('split', 'bonus', 'consolidation')
         and actions.adjustment_factor is not null
+        -- BSE's actions scale the series; NSE's check them in int_corporate_action_agreement.
+        and actions.source_id = 'bse_corporate_actions'
 ),
 
 -- Two actions can share an ex-date, a bonus beside a split, and both scale the same bars.
