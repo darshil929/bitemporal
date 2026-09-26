@@ -1,8 +1,9 @@
 """NSE corporate actions, served as JSON for a range of ex-dates across every listed security.
 
-Read to check BSE's actions rather than to adjust prices. Each row names an ISIN, but for an
-instrument that has changed face value it can be one the instrument carried years earlier, so a
-row is recorded under the ISIN that ISIN has since become.
+The venue answers the main board and its SME platform separately, and a range's answer holds both.
+
+Each row names an ISIN, but for an instrument that has changed face value it can be one the
+instrument carried years earlier, so a row is recorded under the ISIN that ISIN has since become.
 """
 
 import json
@@ -29,6 +30,11 @@ EX_DATE_FORMAT = "%d-%b-%Y"
 
 # The venue records no action before 1995.
 FIRST_YEAR = 1995
+
+# Each market segment the endpoint answers for, and the first year it holds. The SME platform opened
+# in 2012.
+SEGMENTS = (("equities", FIRST_YEAR), ("sme", 2012))
+MAIN_BOARD = SEGMENTS[0][0]
 
 REQUIRED_FIELDS = frozenset({"symbol", "series", "isin", "exDate", "subject"})
 
@@ -218,19 +224,31 @@ class NseCorporateActions:
         self._base_url = base_url.rstrip("/")
         self._holds_cookie = False
 
-    def url_for(self, first: date, last: date) -> str:
+    def url_for(self, first: date, last: date, segment: str = MAIN_BOARD) -> str:
         return (
-            f"{self._base_url}/corporates-corporateActions?index=equities"
+            f"{self._base_url}/corporates-corporateActions?index={segment}"
             f"&from_date={first:%d-%m-%Y}&to_date={last:%d-%m-%Y}"
         )
 
     def fetch(self, first: date, last: date, collected_on: date) -> bytes:
+        """Every segment's actions for the range, each segment's answer cached as it was served."""
+        records = [
+            record
+            for segment, first_year in SEGMENTS
+            if last.year >= first_year
+            for record in parse_actions(self._segment(segment, first, last, collected_on))
+        ]
+        return json.dumps(records).encode()
+
+    def _segment(self, segment: str, first: date, last: date, collected_on: date) -> bytes:
         key = range_key(first, last, collected_on)
+        if segment != MAIN_BOARD:
+            key = f"{segment}-{key}"
         cached = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX)
         if cached is not None:
             return cached
 
-        payload = self._read(self.url_for(first, last))
+        payload = self._read(self.url_for(first, last, segment))
         # A response that is not the answer, such as a page served in its place, is never held.
         parse_actions(payload)
         self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)

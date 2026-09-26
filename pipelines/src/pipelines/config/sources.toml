@@ -79,11 +79,14 @@ requests_per_second = 0.5
 cache_policy = "permanent"
 owner_notes = """
 The exchange's own endpoint behind its corporate filings page, answering a range of ex-dates with
-every listed security's actions. Read to check BSE's actions, never to adjust prices. A request
-needs the session cookie the filings page sets and that page as referrer. A row's ISIN can be one
-the instrument carried before a change of face value. Corporate announcements sit outside the SEBI
-equity cash market curation, so no row there names it. caBroadcastDate is empty on every row, so an
-action carries the day it was collected.
+every listed security's actions. The main board and the SME platform are asked for separately, as
+index=equities and index=sme; the SME platform holds nothing before 2012, and an SME row's isin
+field holds a number rather than an ISIN, so it is placed by its ticker. A day NSE alone reports
+scales prices only where the prices confirm it. A request needs the session cookie the filings page
+sets and that page as referrer. A row's ISIN can be one the instrument carried before a change of
+face value. Corporate announcements sit outside the SEBI equity cash market curation, so no row
+there names it. caBroadcastDate is empty on every row, so an action carries the day it was
+collected.
 """
 
 # Nothing is served for 1994.
