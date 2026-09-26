@@ -109,6 +109,33 @@ models:
           Shares that settled, divided by the same factor as volume. Null on a day the venue
           published no delivery figure for the instrument.
 
+  - name: int_corporate_action_agreement
+    description: >
+      Each day BSE or NSE reports a split, bonus or consolidation for an instrument listed at both
+      venues, with the factor each venue's actions apply that day. BSE's scale the price series and
+      NSE's check them.
+    columns:
+      - name: isin
+        description: The ISIN the instrument trades under now.
+        data_tests: [not_null]
+      - name: ex_date
+        description: The day the actions take effect.
+        data_tests: [not_null]
+      - name: bse_factor
+        description: The product of the factors of BSE's actions that day, null when it reports none.
+      - name: nse_factor
+        description: The product of the factors of NSE's actions that day, null when it reports none.
+      - name: as_of_date
+        description: The latest day on which the actions compared became knowable.
+        data_tests: [not_null]
+      - name: agreement
+        description: Whether both venues report the day and apply the same factor.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [agree, differ, bse_only, nse_only]
+
 unit_tests:
   - name: the_spread_is_measured_against_the_midpoint
     description: A one rupee gap on a hundred rupee midpoint is a hundred basis points.
@@ -219,7 +246,7 @@ unit_tests:
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE721A01047, action_type: split, ex_date: "2025-01-10", qualifier: split,
-             adjustment_factor: 0.2}
+             source_id: bse_corporate_actions, adjustment_factor: 0.2}
       - input: ref('stg_price_daily')
         rows:
           - {isin: INE721A01013, venue: NSE, trade_date: "2025-01-09",
@@ -253,9 +280,9 @@ unit_tests:
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE296A01032, action_type: split, ex_date: "2025-06-16", qualifier: split,
-             adjustment_factor: 0.5}
+             source_id: bse_corporate_actions, adjustment_factor: 0.5}
           - {isin: INE296A01032, action_type: bonus, ex_date: "2025-06-16", qualifier: bonus,
-             adjustment_factor: 0.2}
+             source_id: bse_corporate_actions, adjustment_factor: 0.2}
       - input: ref('stg_price_daily')
         rows:
           - {isin: INE296A01024, venue: NSE, trade_date: "2025-06-13",
@@ -268,3 +295,119 @@ unit_tests:
         - {isin: INE296A01032, source_isin: INE296A01024, venue: NSE,
            trade_date: "2025-06-13", adjustment_factor: "0.1000000000",
            close_as_traded: "9331", close: "933.1000", volume: "10000"}
+
+  - name: an_action_nse_reports_alone_leaves_the_series_unscaled
+    description: NSE's actions check BSE's, so one BSE does not report scales nothing.
+    model: int_continuous_prices
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE063E01053, current_isin: INE063E01053}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE063E01053, action_type: split, ex_date: "2024-10-16", qualifier: ordinary,
+             source_id: nse_corporate_actions, adjustment_factor: 0.5}
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE063E01053, venue: NSE, trade_date: "2024-10-15", as_of_date: "2024-10-15",
+             open: 1000, high: 1010, low: 990, close: 1000, volume: 100}
+      - input: ref('stg_delivery_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE063E01053, trade_date: "2024-10-15", adjustment_factor: "1", close: "1000.0000"}
+
+  - name: both_venues_reporting_a_split_are_compared_by_its_factor
+    description: >
+      Shriram Finance split one for five on 2025-01-10, which BSE files under its new ISIN and NSE
+      under the one the split retired.
+    model: int_corporate_action_agreement
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE721A01013, current_isin: INE721A01047}
+          - {isin: INE721A01047, current_isin: INE721A01047}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE721A01047, source_id: bse_corporate_actions, action_type: split,
+             ex_date: "2025-01-10", qualifier: ordinary, adjustment_factor: 0.2,
+             as_of_date: "2026-09-26"}
+          - {isin: INE721A01013, source_id: nse_corporate_actions, action_type: split,
+             ex_date: "2025-01-10", qualifier: ordinary, adjustment_factor: 0.2,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_listings')
+        rows:
+          - {isin: INE721A01047, exchange: BSE, listing_date: "2025-01-10", delisting_date: null}
+          - {isin: INE721A01047, exchange: NSE, listing_date: "2025-01-10", delisting_date: null}
+    expect:
+      rows:
+        - {isin: INE721A01047, ex_date: "2025-01-10", agreement: agree}
+
+  - name: a_bonus_and_a_split_on_one_day_are_compared_together
+    description: >
+      Bajaj Finance's four for one bonus and split to one rupee on 2025-06-16 scale the price by a
+      tenth together, however each venue files them.
+    model: int_corporate_action_agreement
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE296A01032, current_isin: INE296A01032}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE296A01032, source_id: bse_corporate_actions, action_type: split,
+             ex_date: "2025-06-16", qualifier: ordinary, adjustment_factor: 0.5,
+             as_of_date: "2026-09-26"}
+          - {isin: INE296A01032, source_id: bse_corporate_actions, action_type: bonus,
+             ex_date: "2025-06-16", qualifier: ordinary, adjustment_factor: 0.2,
+             as_of_date: "2026-09-26"}
+          - {isin: INE296A01032, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2025-06-16", qualifier: ordinary, adjustment_factor: 0.2,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_listings')
+        rows:
+          - {isin: INE296A01032, exchange: BSE, listing_date: "2025-06-16", delisting_date: null}
+          - {isin: INE296A01032, exchange: NSE, listing_date: "2025-06-16", delisting_date: null}
+    expect:
+      rows:
+        - {isin: INE296A01032, ex_date: "2025-06-16", bse_factor: "0.1000000000",
+           nse_factor: "0.2000000000", agreement: differ}
+
+  - name: an_action_before_both_venues_listed_it_is_not_compared
+    description: >
+      Shilchar Technologies went ex a bonus on 2025-06-06 and listed at NSE that November, so NSE
+      had nothing to report.
+    model: int_corporate_action_agreement
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE024F01011, current_isin: INE024F01011}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE024F01011, source_id: bse_corporate_actions, action_type: bonus,
+             ex_date: "2025-06-06", qualifier: ordinary, adjustment_factor: 0.5,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_listings')
+        rows:
+          - {isin: INE024F01011, exchange: BSE, listing_date: "2016-12-12", delisting_date: null}
+          - {isin: INE024F01011, exchange: NSE, listing_date: "2025-11-24", delisting_date: null}
+    expect:
+      rows: []
+
+  - name: a_split_one_venue_reports_alone_is_named_by_that_venue
+    model: int_corporate_action_agreement
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE063E01053, current_isin: INE063E01053}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE063E01053, source_id: nse_corporate_actions, action_type: split,
+             ex_date: "2024-10-16", qualifier: ordinary, adjustment_factor: 0.5,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_listings')
+        rows:
+          - {isin: INE063E01053, exchange: BSE, listing_date: "2024-10-16", delisting_date: null}
+          - {isin: INE063E01053, exchange: NSE, listing_date: "2024-10-16", delisting_date: null}
+    expect:
+      rows:
+        - {isin: INE063E01053, ex_date: "2024-10-16", agreement: nse_only}
