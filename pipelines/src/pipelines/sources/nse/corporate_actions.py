@@ -9,6 +9,7 @@ import json
 import logging
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -41,10 +42,12 @@ QUALIFIER_LIMIT = 64
 
 # The subject is free text, worded one way since about 2019 and several ways before. A bonus and a
 # split can share one subject, and a dividend is sometimes stated as a percentage of face value,
-# which is left as text. A bonus of debentures issues no shares.
+# which is left as text. A bonus of debentures issues no shares. Subjects from about 2016 abbreviate a
+# face value split as "Fv Splt Frm Rs 2 To Re 1".
 BONUS = re.compile(r"\bbonus\b(?![^0-9]*debenture)\s*-?\s*(\d+)\s*:\s*(\d+)", re.IGNORECASE)
 FACE_VALUE_CHANGE = re.compile(
-    r"(split|sub-division|consolidation)[^0-9]*?from\s*r[es]\.?\s*([\d.]+)[^0-9]*?to\s*r[es]\.?\s*([\d.]+)",
+    r"(split|splt|sub-division|consolidation)[^0-9]*?(?:from|frm)\s*r[es]\.?\s*([\d.]+)"
+    r"[^0-9]*?to\s*r[es]\.?\s*([\d.]+)",
     re.IGNORECASE,
 )
 DIVIDEND = re.compile(
@@ -127,13 +130,34 @@ def parse_actions(payload: bytes) -> tuple[dict[str, str], ...]:
     return tuple(document)
 
 
+@dataclass(frozen=True)
+class IsinResolver:
+    """Finds the ISIN an NSE row belongs to now.
+
+    The row's own ISIN is followed onto the one it has become where it is one the history holds.
+    NSE sometimes names an ISIN from before the history begins, or another security's, and then the
+    row is placed by the ticker NSE listed on its ex-date. On a split's ex-date that is the listing
+    the new ISIN opened.
+    """
+
+    isin_now: dict[str, str]
+    listed: dict[str, tuple[tuple[date, date | None, str], ...]] = field(default_factory=dict)
+
+    def resolve(self, isin: str, symbol: str, on: date) -> str | None:
+        if isin in self.isin_now:
+            return self.isin_now[isin]
+        for first, last, held in self.listed.get(symbol, ()):
+            if first <= on and (last is None or on <= last):
+                return self.isin_now.get(held, held)
+        return None
+
+
 def normalize(
-    records: Sequence[dict[str, str]], isin_now: dict[str, str], as_of_date: date
+    records: Sequence[dict[str, str]], resolver: IsinResolver, as_of_date: date
 ) -> tuple[CorporateActionRecord, ...]:
     """Map raw equity records onto canonical actions, under the ISIN each instrument carries now.
 
-    `isin_now` maps every ISIN held to the one it has become, itself where it has not changed. A
-    record naming an ISIN outside it is left out and counted.
+    A record the resolver cannot place is left out and counted.
     """
     equity = EQUITY_SERIES["NSE"]
     actions: list[CorporateActionRecord] = []
@@ -143,11 +167,11 @@ def normalize(
     for record in records:
         if record["series"] not in equity:
             continue
-        isin = isin_now.get(record["isin"])
+        ex_date = datetime.strptime(record["exDate"], EX_DATE_FORMAT).date()  # noqa: DTZ007
+        isin = resolver.resolve(record["isin"], record["symbol"], ex_date)
         if isin is None:
             outside.add(record["isin"])
             continue
-        ex_date = datetime.strptime(record["exDate"], EX_DATE_FORMAT).date()  # noqa: DTZ007
         subject = " ".join(record["subject"].split())
 
         for action_type, qualifier, ratio_from, ratio_to, amount in parse_subject(subject):
@@ -216,9 +240,9 @@ class NseCorporateActions:
         return parse_actions(payload)
 
     def normalize(
-        self, records: Sequence[dict[str, str]], isin_now: dict[str, str], as_of_date: date
+        self, records: Sequence[dict[str, str]], resolver: IsinResolver, as_of_date: date
     ) -> tuple[CorporateActionRecord, ...]:
-        return normalize(records, isin_now, as_of_date)
+        return normalize(records, resolver, as_of_date)
 
     def _read(self, url: str) -> bytes:
         self._obtain_cookie()

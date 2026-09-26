@@ -18,7 +18,7 @@ from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import NotPublished, SourceError, WrongDay
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
-from pipelines.sources.nse.corporate_actions import NseCorporateActions
+from pipelines.sources.nse.corporate_actions import IsinResolver, NseCorporateActions
 from pipelines.sources.nse.delivery import POSITION, NseDelivery
 from pipelines.sources.registry import load_definitions
 
@@ -213,7 +213,8 @@ def test_the_nse_corporate_action_endpoint_still_answers_with_its_fields(
     records = adapter.parse(
         adapter.fetch(date(2024, 10, 1), date(2024, 10, 31), date.today())  # noqa: DTZ011
     )
-    actions = adapter.normalize(records, {"INE002A01018": "INE002A01018"}, date.today())  # noqa: DTZ011
+    resolver = IsinResolver({"INE002A01018": "INE002A01018"})
+    actions = adapter.normalize(records, resolver, date.today())  # noqa: DTZ011
 
     assert records, "the endpoint answered with no records"
     assert any(item.action_type == "bonus" for item in actions), "Reliance's bonus was not read"
