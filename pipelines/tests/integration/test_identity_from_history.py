@@ -1,6 +1,7 @@
 """Identity rebuilt from stored bars, against the dataset the builder derived from the same days."""
 
 from collections.abc import Iterator
+from datetime import timedelta
 
 import psycopg
 import pytest
@@ -14,12 +15,14 @@ from pipelines.checks.identity import (
     every_superseded_listing_names_its_successor,
 )
 from pipelines.history import read_stretches, venue_last_days
-from pipelines.identity import close_listings, derive_successions
+from pipelines.identity import StaleIdentity, close_listings, derive_successions, retire_listings
 
 FIXTURE_SCHEMA = "fixture"
 
 BAJAJ_OLD = "INE296A01024"
 ETERNAL = "INE758T01015"
+# NSDL listed in August 2025, so its first stored bar is the day its history begins.
+NSDL = "INE301O01023"
 
 
 @pytest.fixture(scope="module")
@@ -126,6 +129,94 @@ def test_the_asset_writes_what_it_derives(
         open_.execute("delete from listing")
         open_.execute("delete from instrument_primary_venue")
         open_.execute("delete from instrument_master")
+        open_.commit()
+
+
+def test_a_stretch_reaching_an_earlier_first_day_leaves_no_row_behind(
+    seeded_postgres: str, migrated: Config, postgres_dsn: str
+) -> None:
+    """A session held before an instrument's first stored day moves the day its stretch begins.
+
+    BSE held a Muhurat session on Sunday 27 October 2019, two days before two instruments' first
+    stored bar, and the stretch each began on the Tuesday stayed beside the one beginning Sunday.
+    """
+    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        _copy_fixture_into(open_)
+        instrument_identity(build_asset_context(), PointedDatabase(dsn=postgres_dsn))
+
+        symbol, began = open_.execute(
+            "select local_symbol, listing_date from listing where isin = %s and exchange = 'BSE'",
+            (NSDL,),
+        ).fetchone()
+        isin = NSDL
+        earlier = began - timedelta(days=2)
+        columns = [
+            row[0]
+            for row in open_.execute(
+                "select column_name from information_schema.columns"
+                " where table_schema = %s and table_name = 'price_daily' order by ordinal_position",
+                (MIGRATION_SCHEMA,),
+            )
+        ]
+        listed = ", ".join(columns)
+        shifted = ", ".join(
+            "%s" if name in ("trade_date", "as_of_date") else name for name in columns
+        )
+        open_.execute(
+            f"insert into price_daily ({listed}) select {shifted} from price_daily"
+            " where isin = %s and venue = 'BSE' and trade_date = %s",
+            (earlier, earlier, isin, began),
+        )
+        open_.commit()
+
+        result = instrument_identity(build_asset_context(), PointedDatabase(dsn=postgres_dsn))
+        check = every_bar_sits_inside_a_listing(
+            build_asset_context(), PointedDatabase(dsn=postgres_dsn)
+        )
+        stretches = open_.execute(
+            "select listing_date from listing"
+            " where isin = %s and exchange = 'BSE' and local_symbol = %s",
+            (isin, symbol),
+        ).fetchall()
+
+        assert result.metadata["retired"] == 1
+        assert stretches == [(earlier,)]
+        assert check.passed
+
+        for table in (
+            "price_daily",
+            "instrument_succession",
+            "listing",
+            "instrument_primary_venue",
+            "instrument_master",
+        ):
+            open_.execute(f"delete from {table}")
+        open_.commit()
+
+
+def test_a_derivation_that_loses_stretches_outright_is_refused(
+    seeded_postgres: str, migrated: Config, postgres_dsn: str
+) -> None:
+    """A fault reading the history derives nothing, which reads the same as every stretch ending."""
+    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        _copy_fixture_into(open_)
+        instrument_identity(build_asset_context(), PointedDatabase(dsn=postgres_dsn))
+
+        with pytest.raises(StaleIdentity):
+            retire_listings(open_, [])
+        open_.rollback()
+
+        stored = open_.execute("select count(*) from listing").fetchone()
+        assert stored is not None and stored[0] > 0
+
+        for table in (
+            "price_daily",
+            "instrument_succession",
+            "listing",
+            "instrument_primary_venue",
+            "instrument_master",
+        ):
+            open_.execute(f"delete from {table}")
         open_.commit()
 
 

@@ -40,9 +40,17 @@ SUCCESSION_WINDOW = timedelta(days=7)
 # quarter behind it.
 TURNOVER_WINDOW = timedelta(days=90)
 
+# A fault reading the history loses stretches outright, while history reaching further back only
+# moves the day a stretch begins.
+VANISHED_SHARE = 0.01
+
 
 class UnresolvedInstrument(SourceError):
     """A row names an instrument that cannot be resolved to an ISIN."""
+
+
+class StaleIdentity(Exception):
+    """Deriving identity again would lose stretches that history reaching further back cannot."""
 
 
 @dataclass
@@ -433,3 +441,33 @@ def persist_identity(
             "successions": len(successions),
         },
     )
+
+
+def retire_listings(connection: psycopg.Connection, listings: Sequence[ListingRecord]) -> int:
+    """Remove stored stretches that the whole history no longer derives.
+
+    A stretch is keyed on the day it begins. History reaching further back, such as a session held
+    before an instrument's first stored day, derives the stretch again under an earlier first day,
+    and the row it began on before would otherwise overlap it.
+    """
+    derived = {
+        (listing.isin, listing.exchange, listing.local_symbol, listing.listing_date)
+        for listing in listings
+    }
+    stored = connection.execute(
+        "select listing_id, isin, exchange, local_symbol, listing_date from listing"
+    ).fetchall()
+    continuing = {(listing.isin, listing.exchange, listing.local_symbol) for listing in listings}
+    stale = [row for row in stored if (row[1], row[2], row[3], row[4]) not in derived]
+    vanished = [row for row in stale if (row[1], row[2], row[3]) not in continuing]
+
+    if len(vanished) > VANISHED_SHARE * len(stored):
+        raise StaleIdentity(
+            f"deriving identity would lose {len(vanished)} of {len(stored)} stored stretches"
+        )
+    if stale:
+        connection.execute(
+            "delete from listing where listing_id = any(%s)", ([row[0] for row in stale],)
+        )
+        logger.info("listing stretches no longer derived removed", extra={"stretches": len(stale)})
+    return len(stale)
