@@ -489,8 +489,8 @@ unit_tests:
 
   - name: a_bonus_no_venue_traded_across_is_not_applied
     description: >
-      Mohota Industries last traded on 2014-02-04 before its bonus of 2014-02-06, so no move
-      measures it.
+      Mohota Industries last traded on 2014-02-04 before its bonus of 2014-02-06. With no trade
+      recorded after it, no move measures it.
     model: int_capital_action_factors
     given:
       - input: ref('int_instrument_lineage')
@@ -511,6 +511,60 @@ unit_tests:
       rows:
         - {isin: INE313D01013, ex_date: "2014-02-06", venues_traded: 0, basis: nse_untraded,
            applied_factor: null}
+
+  - name: a_bonus_is_confirmed_across_a_trading_gap
+    description: >
+      Mohota Industries did not trade for ten weeks around its one for two bonus of 2014-02-06,
+      closing at 100 on 2014-02-04 and at 35 on 2014-04-15, the next day it traded.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE313D01013, current_isin: INE313D01013}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE313D01013, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2014-02-06", qualifier: ordinary, adjustment_factor: 0.333333,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_successions')
+        rows: []
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE313D01013, venue: NSE, trade_date: "2014-02-04", as_of_date: "2014-02-04",
+             close: 100.00}
+          - {isin: INE313D01013, venue: NSE, trade_date: "2014-04-15", as_of_date: "2014-04-15",
+             close: 35.00}
+    expect:
+      rows:
+        - {isin: INE313D01013, ex_date: "2014-02-06", venues_traded: 1, venues_confirming: 1,
+           basis: nse_confirmed, applied_factor: "0.3333330000"}
+
+  - name: a_bonus_a_close_across_a_trading_gap_contradicts_is_not_applied
+    description: >
+      NSE records a one for four bonus for Silgo Retail on 2021-01-07, and its close across the
+      month without a trade fell from 44.00 to 42.20.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE01II01013, current_isin: INE01II01013}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE01II01013, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2021-01-07", qualifier: ordinary, adjustment_factor: 0.8,
+             as_of_date: "2026-09-26"}
+      - input: ref('stg_successions')
+        rows: []
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE01II01013, venue: NSE, trade_date: "2020-12-04", as_of_date: "2020-12-04",
+             close: 44.00}
+          - {isin: INE01II01013, venue: NSE, trade_date: "2021-01-07", as_of_date: "2021-01-07",
+             close: 42.20}
+    expect:
+      rows:
+        - {isin: INE01II01013, ex_date: "2021-01-07", venues_traded: 1, venues_confirming: 0,
+           basis: nse_contradicted, applied_factor: null}
 
   - name: a_fund_split_is_read_from_the_close_across_its_change_of_isin
     description: >
