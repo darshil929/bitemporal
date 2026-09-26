@@ -98,11 +98,15 @@ def validate_day(
     bars: Sequence[PriceBar],
     cross_venue_bars: Sequence[PriceBar] = (),
     typical_bars: int | None = None,
+    judged_on: date | None = None,
 ) -> DayVerdict:
     """Decide whether one venue's day may be read downstream.
 
     `typical_bars` is how many the venue usually publishes, against which a truncated file is
     recognised. Left out, only an empty day fails on count.
+
+    A verdict is knowable on the day it describes. One drawn again after the day's bars changed
+    is knowable on `judged_on`, leaving the verdict it restates standing for the dates before.
     """
     failures = []
     floor = int(TRUNCATION_FRACTION * typical_bars) if typical_bars else 0
@@ -125,7 +129,7 @@ def validate_day(
     verdict = DayVerdict(
         venue=venue,
         trade_date=trade_date,
-        as_of_date=trade_date,
+        as_of_date=judged_on or trade_date,
         is_complete=not failures,
         bars=len(bars),
         divergent_instruments=len(wide),
