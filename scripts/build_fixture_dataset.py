@@ -34,7 +34,7 @@ from pipelines.models.identity import ListingRecord, SuccessionRecord
 from pipelines.models.market import DeliveryRecord, PriceBar
 from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
-from pipelines.sources.bse.corporate_actions import BseCorporateActions
+from pipelines.sources.bse.corporate_actions import BseCorporateActions, years
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
@@ -452,7 +452,7 @@ def emit(
 def collect_actions(
     listings: Sequence[ListingRecord], cache: DiskCache, reported_on: date
 ) -> tuple[CorporateActionRecord, ...]:
-    """Read the action history of every BSE scrip in the dataset, up to the collection date."""
+    """Read the actions of every BSE scrip in the dataset, a year of ex-dates at a time."""
     settings = SourceSettings()
     client = httpx.Client(
         headers={"User-Agent": settings.source_user_agent},
@@ -469,11 +469,13 @@ def collect_actions(
     }
 
     actions: list[CorporateActionRecord] = []
-    for scrip_code in sorted(isin_for_scrip):
+    for first, last in years(reported_on):
+        if first > reported_on:
+            continue
         try:
-            payload = adapter.fetch(scrip_code)
+            payload = adapter.fetch(first, last, reported_on)
         except SourceError:
-            logger.warning("actions unavailable", extra={"scrip_code": scrip_code})
+            logger.warning("actions unavailable", extra={"from": first, "to": last})
             continue
         actions.extend(adapter.normalize(adapter.parse(payload), isin_for_scrip, reported_on))
 

@@ -57,8 +57,10 @@ base_url = "https://api.bseindia.com/BseIndiaAPI/api"
 requests_per_second = 0.2
 cache_policy = "permanent"
 owner_notes = """
-The exchange's own endpoint, undocumented, answering per scrip code with every action recorded
-against it. A request carrying no Origin or Referer is answered with a page rather than JSON.
+The exchange's own endpoint, undocumented, answering a range of ex-dates with the actions of every
+scrip code inside it. The venue's corporate action page asks it the same question, so a response
+saved from that page is read from the cache like one fetched. A request carrying no Origin or
+Referer is answered with a page rather than JSON.
 Corporate announcements sit outside the SEBI equity cash market curation, so no row there names
 it. The venue publishes no announcement date, so an action carries the day it was collected.
 The edge answers 403 to an address that reads several thousand codes in a sitting at one request

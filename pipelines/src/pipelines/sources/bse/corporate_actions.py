@@ -1,4 +1,4 @@
-"""BSE corporate actions, served as JSON keyed on scrip code."""
+"""BSE corporate actions, served as JSON for a range of ex-dates across every scrip code."""
 
 import json
 import logging
@@ -113,10 +113,13 @@ def normalize(
     unhandled: list[str] = []
     empty = 0
 
+    outside: set[str] = set()
+
     for record in records:
         scrip_code = str(record["scrip_code"])
         isin = isin_for_scrip.get(scrip_code)
         if isin is None:
+            outside.add(scrip_code)
             continue
 
         purpose = " ".join(record["Purpose"].split())
@@ -148,6 +151,12 @@ def normalize(
             )
         )
 
+    if outside:
+        logger.info(
+            "corporate actions for scrip codes outside the tracked universe",
+            extra={"source_id": SOURCE_ID, "scrip_codes": len(outside), "kept": len(actions)},
+        )
+
     if empty:
         logger.warning(
             "corporate actions carrying no purpose text left out",
@@ -163,11 +172,39 @@ def normalize(
     return tuple(actions)
 
 
-class BseCorporateActions:
-    """Reads the full action history for one scrip code.
+# The venue records no action before 2000.
+FIRST_YEAR = 2000
 
-    The endpoint answers per scrip rather than per date, so a partition here is a scrip code and
-    the response covers every action the venue has recorded for it.
+# An action is announced ahead of its ex-date, which can fall in the following year.
+YEARS_AHEAD = 1
+
+
+def years(collected_on: date) -> list[tuple[date, date]]:
+    """Every calendar year of ex-dates the venue has recorded or announced."""
+    return [
+        (date(year, 1, 1), date(year, 12, 31))
+        for year in range(FIRST_YEAR, collected_on.year + YEARS_AHEAD + 1)
+    ]
+
+
+def range_key(first: date, last: date, collected_on: date) -> str:
+    """The cache key for one range of ex-dates.
+
+    An answer for a range still open on the collection day changes as actions are announced, so
+    it is held under that day rather than for good.
+    """
+    key = f"exdate-{first:%Y%m%d}-{last:%Y%m%d}"
+    if last >= collected_on:
+        key += f"-as-of-{collected_on:%Y%m%d}"
+    return key
+
+
+class BseCorporateActions:
+    """Reads every action the venue recorded with an ex-date inside a range, for every scrip code.
+
+    A response already in the cache is read from disk and costs no request, whether this adapter
+    fetched it or it was saved there from the venue's own corporate action page, which asks the
+    endpoint the same question.
     """
 
     source_id = SOURCE_ID
@@ -177,19 +214,22 @@ class BseCorporateActions:
         self._cache = cache
         self._base_url = base_url.rstrip("/")
 
-    def url_for(self, scrip_code: str) -> str:
+    def url_for(self, first: date, last: date) -> str:
         return (
             f"{self._base_url}/DefaultData/w?ddlcategorys=E&ddlindustrys=&segment=0"
-            f"&strSearch=S&Fdate=&TDate=&Purposecode=&scripcode={scrip_code}"
+            f"&strSearch=D&Fdate={first:%Y%m%d}&TDate={last:%Y%m%d}&Purposecode=&scripcode="
         )
 
-    def fetch(self, scrip_code: str) -> bytes:
-        cached = self._cache.read(SOURCE_ID, scrip_code, CACHE_SUFFIX)
+    def fetch(self, first: date, last: date, collected_on: date) -> bytes:
+        key = range_key(first, last, collected_on)
+        cached = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX)
         if cached is not None:
             return cached
 
-        payload = self._client.get(self.url_for(scrip_code), REQUIRED_HEADERS)
-        self._cache.write(SOURCE_ID, scrip_code, CACHE_SUFFIX, payload)
+        payload = self._client.get(self.url_for(first, last), REQUIRED_HEADERS)
+        # A response that is not the answer, such as the page served in its place, is never held.
+        parse_actions(payload)
+        self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)
         return payload
 
     def parse(self, payload: bytes) -> tuple[dict[str, str], ...]:
