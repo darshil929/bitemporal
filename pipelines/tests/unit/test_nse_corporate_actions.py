@@ -209,3 +209,80 @@ def test_an_isin_the_history_holds_is_followed_before_the_ticker() -> None:
     )
 
     assert resolver.resolve(SHRIRAM_OLD, "SHRIRAMFIN", date(2025, 1, 10)) == SHRIRAM_NEW
+
+
+ENSER_BEFORE, ENSER_AFTER = "INE0R9I01013", "INE0R9I01021"
+
+
+def recorded_sme(year: int) -> bytes:
+    return (CASSETTES / f"sme-exdate-{year}0101-{year}1231.json").read_bytes()
+
+
+def segment_client() -> ThrottledClient:
+    return ThrottledClient("nse", httpx.Client(), Throttle(0.0), initial_backoff_seconds=0.001)
+
+
+@respx.mock
+def test_a_range_holds_the_actions_of_both_market_segments(tmp_path: Path) -> None:
+    """ENSER's split of 7 February 2025 is on the SME platform, Shriram Finance's on the main board."""
+    respx.get(url__startswith="https://www.nseindia.com/companies-listing").mock(
+        return_value=httpx.Response(200)
+    )
+    respx.get(url__regex=r".*index=equities.*").mock(
+        return_value=httpx.Response(200, content=recorded(2025))
+    )
+    respx.get(url__regex=r".*index=sme.*").mock(
+        return_value=httpx.Response(200, content=recorded_sme(2025))
+    )
+    adapter = NseCorporateActions(segment_client(), DiskCache(tmp_path), BASE)
+
+    records = adapter.parse(adapter.fetch(date(2025, 1, 1), date(2025, 12, 31), COLLECTED_ON))
+
+    symbols = {record["symbol"] for record in records}
+    cached = sorted(path.name for path in tmp_path.rglob("*.json"))
+    assert {"SHRIRAMFIN", "ENSER", "PRITIKA"} <= symbols
+    assert cached == ["exdate-20250101-20251231.json", "sme-exdate-20250101-20251231.json"]
+
+
+@respx.mock
+def test_a_range_before_the_sme_platform_opened_asks_the_main_board_alone(tmp_path: Path) -> None:
+    respx.get(url__startswith="https://www.nseindia.com/companies-listing").mock(
+        return_value=httpx.Response(200)
+    )
+    main_board = respx.get(url__regex=r".*index=equities.*").mock(
+        return_value=httpx.Response(200, content=recorded(2011))
+    )
+    sme = respx.get(url__regex=r".*index=sme.*").mock(
+        return_value=httpx.Response(200, content=b"[]")
+    )
+    adapter = NseCorporateActions(segment_client(), DiskCache(tmp_path), BASE)
+
+    adapter.fetch(date(2011, 1, 1), date(2011, 12, 31), COLLECTED_ON)
+
+    assert main_board.called
+    assert not sme.called
+
+
+def test_an_sme_row_is_placed_by_the_ticker_listed_on_its_ex_date() -> None:
+    """An SME row's isin field holds a number, so ENSER's bonus and split resolve by its ticker."""
+    resolver = IsinResolver(
+        {ENSER_BEFORE: ENSER_AFTER, ENSER_AFTER: ENSER_AFTER},
+        {
+            "ENSER": (
+                (date(2023, 5, 1), date(2025, 2, 6), ENSER_BEFORE),
+                (date(2025, 2, 7), None, ENSER_AFTER),
+            )
+        },
+    )
+
+    actions = normalize(parse_actions(recorded_sme(2025)), resolver, COLLECTED_ON)
+
+    enser = sorted(
+        (item.action_type, item.ex_date, item.ratio_from, item.ratio_to)
+        for item in actions
+        if item.isin == ENSER_AFTER
+    )
+    assert enser == [
+        ("bonus", date(2025, 1, 3), Decimal(1), Decimal(2)),
+        ("split", date(2025, 2, 7), Decimal(1), Decimal(5)),
+    ]

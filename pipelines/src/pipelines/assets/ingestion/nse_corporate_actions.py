@@ -1,4 +1,4 @@
-"""Every corporate action NSE has recorded, read to check BSE's rather than to adjust prices.
+"""Every corporate action NSE has recorded, on its main board and its SME platform.
 
 A row names an ISIN, which for an instrument that changed face value can be one it carried years
 before. Each is recorded under the ISIN it has since become, following the successions identity
@@ -62,7 +62,7 @@ def ingest_nse_actions(
 @asset(
     deps=[AssetKey("instrument_identity")],
     group_name=GROUP,
-    description="Corporate actions NSE reports for every listed security, read to check BSE's.",
+    description="Corporate actions NSE reports for every security on either market segment.",
 )
 def nse_corporate_actions(
     context: AssetExecutionContext, database: Database, nse_actions: NseActions
