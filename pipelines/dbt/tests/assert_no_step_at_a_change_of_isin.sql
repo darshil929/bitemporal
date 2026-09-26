@@ -1,7 +1,8 @@
 -- A change of face value moves the traded price by the whole ratio, a one for five split by
 -- eighty percent. Adjustment exists to remove that step, so on the continuous series the day
 -- either side of a succession must move no more than an ordinary day does. A step surviving
--- here means a momentum factor reads a split as a crash.
+-- here means a momentum factor reads a split as a crash. A change reviewed and listed in
+-- unadjusted_changes_of_isin, whose step no venue's record explains, is passed over.
 
 -- The largest move, in log terms, an ordinary day makes. Price bands hold a smaller company to 20
 -- percent a day, and trading after a split often carries it to the band's edge, 0.18 in log terms.
@@ -48,4 +49,11 @@ select
     close_before,
     close_on
 from either_side
-where abs(ln(close_on / close_before)) > {{ ordinary_move }}
+where
+    abs(ln(close_on / close_before)) > {{ ordinary_move }}
+    and not exists (
+        select 1 from {{ ref('unadjusted_changes_of_isin') }} as reviewed
+        where
+            reviewed.successor_isin = either_side.successor_isin
+            and reviewed.changed_on = either_side.changed_on
+    )
