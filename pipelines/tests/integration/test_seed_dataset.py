@@ -210,6 +210,27 @@ def test_a_market_holiday_falls_inside_the_window(connection: psycopg.Connection
     assert weekdays > traded
 
 
+def test_a_session_held_at_a_weekend_is_present(connection: psycopg.Connection) -> None:
+    """A Budget day or a special Saturday session is a trading day like any other."""
+    weekend_sessions = scalar(
+        connection,
+        "select count(distinct trade_date) from price_daily where extract(isodow from trade_date) >= 6",
+    )
+
+    assert weekend_sessions > 0
+
+
+def test_both_venues_report_capital_actions(connection: psycopg.Connection) -> None:
+    """The comparison across venues needs each venue's splits and bonuses to compare."""
+    venues = scalar(
+        connection,
+        "select count(distinct source_id) from corporate_action"
+        " where action_type in ('split', 'bonus', 'consolidation')",
+    )
+
+    assert venues == 2
+
+
 def test_every_traded_price_sits_inside_the_days_range(connection: psycopg.Connection) -> None:
     assert (
         scalar(

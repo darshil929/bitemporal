@@ -100,22 +100,25 @@ def bars_around(
         (MAZAGON, date(2024, 12, 27), "split", Decimal("0.5")),
     ],
 )
-def test_a_known_event_is_recorded_with_the_terms_the_price_implies(
+def test_a_known_event_is_recorded_by_each_venue_with_the_terms_the_price_implies(
     actions: tuple[CorporateActionRecord, ...],
     isin: str,
     ex_date: date,
     action_type: str,
     expected_factor: Decimal,
 ) -> None:
-    recorded = [
-        item
+    recorded = {
+        item.source_id: item
         for item in actions
         if item.isin == isin and item.ex_date == ex_date and item.action_type == action_type
-    ]
+    }
 
-    assert len(recorded) == 1, f"{isin} has no {action_type} on {ex_date}"
-    assert recorded[0].ratio_from is not None and recorded[0].ratio_to is not None
-    assert recorded[0].ratio_from / recorded[0].ratio_to == expected_factor
+    assert set(recorded) == {"bse_corporate_actions", "nse_corporate_actions"}, (
+        f"{isin} has no {action_type} on {ex_date} from each venue"
+    )
+    for item in recorded.values():
+        assert item.ratio_from is not None and item.ratio_to is not None
+        assert item.ratio_from / item.ratio_to == expected_factor
 
 
 @pytest.mark.parametrize(
