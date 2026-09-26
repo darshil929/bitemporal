@@ -7,7 +7,6 @@ row carries the venue-local identifier and is resolved through the listing in fo
 import csv
 import io
 import logging
-import re
 import zipfile
 from collections.abc import Sequence
 from datetime import date, datetime
@@ -26,9 +25,11 @@ BSE_COLUMNS = frozenset({"DATE", "SCRIP CODE", "DELIVERY QTY"})
 NSE_DATE_FORMAT = "%d-%b-%Y"
 BSE_DATE_FORMAT = "%d%m%Y"
 
-# The position file states its day once, above the rows, as Trade Date <14-AUG-2026>, and marks
-# each security's row with the record type 20.
-POSITION_TRADE_DATE = re.compile(r"Trade Date <(\d{2}-[A-Za-z]{3}-\d{4})>")
+# The position file names its day in a control record of type 10, as 10,MTO,14082026, and marks
+# each security's row with the record type 20. The line of text above the rows states the day
+# too, but NSE has published it as "rade Date" on some days.
+POSITION_CONTROL = "10"
+POSITION_CONTROL_DATE_FORMAT = "%d%m%Y"
 POSITION_RECORD = "20"
 POSITION_FIELDS = 7
 
@@ -75,10 +76,7 @@ def parse_nse_delivery(payload: bytes) -> tuple[DeliveryRow, ...]:
 def parse_nse_position(payload: bytes) -> tuple[DeliveryRow, ...]:
     """Read the NSE security-wise delivery position file, which carries the full file's figures."""
     text = decoded(payload, "nse delivery position")
-    stated = POSITION_TRADE_DATE.search(text)
-    if stated is None:
-        raise SchemaDrift("nse delivery position file states no trade date")
-    trade_date = _parse_day(stated.group(1), NSE_DATE_FORMAT)
+    trade_date = _position_day(text)
 
     rows = []
     for line in text.splitlines():
@@ -99,6 +97,19 @@ def parse_nse_position(payload: bytes) -> tuple[DeliveryRow, ...]:
     if not rows:
         raise SchemaDrift("nse delivery position file holds no rows")
     return tuple(rows)
+
+
+def _position_day(text: str) -> date:
+    for line in text.splitlines():
+        fields = [field.strip() for field in line.split(",")]
+        if fields[0] == POSITION_CONTROL and len(fields) > 2:
+            try:
+                return _parse_day(fields[2], POSITION_CONTROL_DATE_FORMAT)
+            except ValueError as error:
+                raise SchemaDrift(
+                    f"nse delivery position control record names no day: {line[:80]}"
+                ) from error
+    raise SchemaDrift("nse delivery position file carries no control record")
 
 
 def held_to(rows: Sequence[DeliveryRow], day: date, venue: str) -> Sequence[DeliveryRow]:

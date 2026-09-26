@@ -179,3 +179,11 @@ def test_a_file_describing_another_day_is_never_cached(tmp_path: Path) -> None:
         adapter.fetch(date(2019, 9, 30))
 
     assert cache.read("nse_delivery", "2019-09-30", ".csv") is None
+
+
+def test_the_position_file_is_dated_from_its_control_record() -> None:
+    """NSE headed the file for 30 March 2017 "rade Date", its control record naming the day intact."""
+    rows = parse_nse_position(position_bytes("30032017"))
+
+    assert {row.trade_date for row in rows} == {date(2017, 3, 30)}
+    assert [row.venue_key for row in rows] == ["20MICRONS", "RELIANCE", "TCS"]
