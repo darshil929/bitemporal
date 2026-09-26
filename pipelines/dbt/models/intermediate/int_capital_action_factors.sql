@@ -13,6 +13,10 @@
 -- venue that did not trade on both sides within it is not counted.
 {% set window_days = 10 %}
 
+-- A thinly traded company can go weeks without a trade. Where no venue traded within the window,
+-- each venue's nearest closes within this many days either side measure the move instead.
+{% set quiet_window_days = 92 %}
+
 -- A move confirms a factor when it lies within this distance of it in log terms, and nearer to it
 -- than to no action at all. A company held at a 20 percent circuit limit on its ex-date moves 0.18
 -- from its factor.
@@ -87,45 +91,69 @@ reported as (
 ),
 
 -- The close before and after a day NSE alone reports, at each venue, drawn across the lineage so
--- a split that issued a new ISIN is measured from the retired one to its successor.
+-- a split that issued a new ISIN is measured from the retired one to its successor. The lineage's
+-- ISINs are passed to each lookup as one array, which reads only that instrument's bars.
 moves as (
     select
         reported.current_isin,
         reported.ex_date,
         venues.venue,
         ln(after.close / before.close) as log_move,
+        greatest(reported.ex_date - before.trade_date, after.trade_date - reported.ex_date)
+        <= {{ window_days }} as is_near,
         greatest(before.as_of_date, after.as_of_date) as as_of_date
     from reported
+    cross join
+        lateral (
+            select array_agg(lineage.isin) as isins
+            from lineage
+            where lineage.current_isin = reported.current_isin
+        ) as family
     cross join (values ('BSE'), ('NSE')) as venues (venue)
     inner join lateral (
         select
             prices.close,
+            prices.trade_date,
             prices.as_of_date
         from {{ ref('stg_price_daily') }} as prices
-        inner join lineage on prices.isin = lineage.isin
         where
-            lineage.current_isin = reported.current_isin
+            prices.isin = any(family.isins)
             and prices.venue = venues.venue
             and prices.trade_date < reported.ex_date
-            and prices.trade_date >= reported.ex_date - {{ window_days }}
+            and prices.trade_date >= reported.ex_date - {{ quiet_window_days }}
         order by prices.trade_date desc
         limit 1
     ) as before on true
     inner join lateral (
         select
             prices.close,
+            prices.trade_date,
             prices.as_of_date
         from {{ ref('stg_price_daily') }} as prices
-        inner join lineage on prices.isin = lineage.isin
         where
-            lineage.current_isin = reported.current_isin
+            prices.isin = any(family.isins)
             and prices.venue = venues.venue
             and prices.trade_date >= reported.ex_date
-            and prices.trade_date < reported.ex_date + {{ window_days }}
+            and prices.trade_date < reported.ex_date + {{ quiet_window_days }}
         order by prices.trade_date asc
         limit 1
     ) as after on true
     where reported.bse_factor is null
+),
+
+-- A venue that traded within the window counts, and where none did, every venue that traded
+-- within the quiet window counts.
+counted as (
+    select *
+    from (
+        select
+            moves.*,
+            bool_or(moves.is_near) over (
+                partition by moves.current_isin, moves.ex_date
+            ) as any_near
+        from moves
+    ) as flagged
+    where is_near or not any_near
 ),
 
 evidence as (
@@ -138,7 +166,7 @@ evidence as (
             <= least({{ tolerance }}, abs(ln(reported.nse_factor)) / 2)
         ) as venues_confirming,
         max(moves.as_of_date) as as_of_date
-    from moves
+    from counted as moves
     inner join reported
         on
             moves.current_isin = reported.current_isin
