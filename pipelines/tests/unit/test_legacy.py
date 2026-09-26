@@ -217,8 +217,10 @@ def test_a_trade_date_in_no_shape_the_venue_uses_is_refused() -> None:
         parse_nse_legacy(payload)
 
 
-def test_bse_groups_that_carried_ordinary_shares_until_2018_are_read() -> None:
-    """BSE traded A.SARABHAI in XD on 1 September 2017, with companies in XC, ST and SS beside it."""
+def test_bse_groups_that_carry_shares_and_funds_are_read() -> None:
+    """BSE traded A.SARABHAI in XD on 1 September 2017, companies in XC, ST and SS beside it, and in
+    E the Invesco India Gold ETF, which NSE carries in EQ under the same ISIN.
+    """
     rows = parse_bse_legacy(
         (CASSETTES / "bse_bhavcopy_equity" / "20170901_legacy.csv").read_bytes()
     )
@@ -228,6 +230,7 @@ def test_bse_groups_that_carried_ordinary_shares_until_2018_are_read() -> None:
 
     assert sorted(group_of[bar.isin] for bar in bars) == [
         "A",
+        "E",
         "SS",
         "SS",
         "ST",
