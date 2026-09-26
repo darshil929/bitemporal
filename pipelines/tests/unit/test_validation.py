@@ -97,6 +97,25 @@ def test_a_smaller_universe_is_not_mistaken_for_truncation() -> None:
     assert verdict.is_complete
 
 
+def test_a_session_opened_for_funds_alone_is_not_mistaken_for_truncation() -> None:
+    """NSE traded 14 gold ETFs and no company share on Sunday 11 November 2012, for Dhanteras."""
+    gold_etfs = ["INF846K01347", "INF732E01102", "INF373I01015", "INF733I01010", "INF200K01099"]
+    session = [bar(isin=isin) for isin in gold_etfs]
+
+    verdict = validate_day("NSE", TRADE_DATE, session, typical_bars=1350)
+
+    assert verdict.is_complete
+
+
+def test_a_short_file_holding_company_shares_is_still_truncated() -> None:
+    """A file cut short lists companies from its first rows, whatever else it carries."""
+    short = [*many(3), bar(isin="INF732E01102")]
+
+    verdict = validate_day("NSE", TRADE_DATE, short, typical_bars=1350)
+
+    assert not verdict.is_complete
+
+
 def test_a_bar_from_another_day_is_incomplete() -> None:
     bars = [*many(150), bar(isin=INFOSYS, day=date(2025, 6, 3))]
 

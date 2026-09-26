@@ -35,6 +35,11 @@ COMPARABLE_PRICE = Decimal(10)
 # so the floor is relative to that rather than a count no subset of the market would meet.
 TRUNCATION_FRACTION = Decimal("0.5")
 
+# ISINs issued to Indian companies begin INE. A file cut short still lists companies, which sort
+# among its first rows, so a day carrying none is a session the venue opened for another class of
+# instrument, such as the gold ETFs NSE traded alone on 11 November 2012.
+COMPANY_ISIN_PREFIX = "INE"
+
 BASIS_POINTS = Decimal(10000)
 
 
@@ -104,7 +109,7 @@ def validate_day(
 
     if not bars:
         failures.append("the venue published no bars")
-    elif len(bars) < floor:
+    elif len(bars) < floor and any(bar.isin.startswith(COMPANY_ISIN_PREFIX) for bar in bars):
         failures.append(f"only {len(bars)} bars, below the {floor} a full file carries")
 
     if any(bar.trade_date != trade_date for bar in bars):
