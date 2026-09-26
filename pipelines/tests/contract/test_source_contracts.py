@@ -18,6 +18,7 @@ from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import NotPublished, SourceError, WrongDay
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
+from pipelines.sources.nse.corporate_actions import NseCorporateActions
 from pipelines.sources.nse.delivery import POSITION, NseDelivery
 from pipelines.sources.registry import load_definitions
 
@@ -197,3 +198,22 @@ def test_the_corporate_action_endpoint_still_answers_with_its_fields(
 
     assert records, "the endpoint answered with no records"
     assert any(item.action_type == "bonus" for item in actions), "no bonus was recognised"
+
+
+def test_the_nse_corporate_action_endpoint_still_answers_with_its_fields(
+    cache: DiskCache, browser: httpx.Client
+) -> None:
+    """Reliance went ex its one for one bonus on 28 October 2024, which NSE files as Bonus 1:1."""
+    adapter = NseCorporateActions(
+        client("nse_corporate_actions", browser),
+        cache,
+        definitions()["nse_corporate_actions"].base_url,  # type: ignore[attr-defined]
+    )
+
+    records = adapter.parse(
+        adapter.fetch(date(2024, 10, 1), date(2024, 10, 31), date.today())  # noqa: DTZ011
+    )
+    actions = adapter.normalize(records, {"INE002A01018": "INE002A01018"}, date.today())  # noqa: DTZ011
+
+    assert records, "the endpoint answered with no records"
+    assert any(item.action_type == "bonus" for item in actions), "Reliance's bonus was not read"

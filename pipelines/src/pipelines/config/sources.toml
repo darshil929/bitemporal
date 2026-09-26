@@ -72,6 +72,26 @@ version = "bse_actions_json"
 effective_from = 1990-01-01
 
 [[source]]
+source_id = "nse_corporate_actions"
+tier = 2
+base_url = "https://www.nseindia.com/api"
+requests_per_second = 0.5
+cache_policy = "permanent"
+owner_notes = """
+The exchange's own endpoint behind its corporate filings page, answering a range of ex-dates with
+every listed security's actions. Read to check BSE's actions, never to adjust prices. A request
+needs the session cookie the filings page sets and that page as referrer. A row's ISIN can be one
+the instrument carried before a change of face value. Corporate announcements sit outside the SEBI
+equity cash market curation, so no row there names it. caBroadcastDate is empty on every row, so an
+action carries the day it was collected.
+"""
+
+# Nothing is served for 1994.
+[[source.schema_version]]
+version = "nse_actions_json"
+effective_from = 1995-01-01
+
+[[source]]
 source_id = "nse_delivery"
 tier = 1
 sebi_curation_ref = "Equity Cash Market, row 2"

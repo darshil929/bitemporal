@@ -13,6 +13,7 @@ from pipelines.sources.bse.corporate_actions import parse_actions
 from pipelines.sources.delivery import parse_bse_delivery, parse_nse_delivery, parse_nse_position
 from pipelines.sources.errors import SchemaDrift, SourceError
 from pipelines.sources.legacy import parse_bse_legacy, parse_nse_legacy
+from pipelines.sources.nse.corporate_actions import parse_actions as parse_nse_actions
 from pipelines.sources.payload import decoded
 from pipelines.sources.udiff import parse_udiff
 
@@ -37,6 +38,7 @@ PARSERS: dict[str, Callable[[bytes], object]] = {
     "nse delivery position": parse_nse_position,
     "bse delivery": parse_bse_delivery,
     "corporate actions": parse_actions,
+    "nse corporate actions": parse_nse_actions,
 }
 
 
