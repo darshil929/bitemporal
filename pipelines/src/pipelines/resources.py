@@ -14,6 +14,7 @@ from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
+from pipelines.sources.nse.corporate_actions import NseCorporateActions
 from pipelines.sources.nse.delivery import NseDelivery
 from pipelines.sources.registry import SourceDefinition, load_definitions
 
@@ -26,6 +27,7 @@ BROWSER_USER_AGENT = (
 
 BHAVCOPY_SOURCES = {"BSE": "bse_bhavcopy_equity", "NSE": "nse_bhavcopy_equity"}
 ACTIONS_SOURCE = "bse_corporate_actions"
+NSE_ACTIONS_SOURCE = "nse_corporate_actions"
 DELIVERY_SOURCES = {"BSE": "bse_delivery", "NSE": "nse_delivery"}
 
 
@@ -80,6 +82,25 @@ class CorporateActions(ConfigurableResource[None]):
             Throttle(1 / definition.requests_per_second),
         )
         return BseCorporateActions(
+            client, DiskCache(settings.source_cache_dir), definition.base_url
+        )
+
+
+class NseActions(ConfigurableResource[None]):
+    """The NSE corporate action adapter, throttled at the rate its registry entry states."""
+
+    def definition(self) -> SourceDefinition:
+        return next(item for item in load_definitions() if item.source_id == NSE_ACTIONS_SOURCE)
+
+    def adapter(self) -> NseCorporateActions:
+        settings = SourceSettings()
+        definition = self.definition()
+        client = ThrottledClient(
+            definition.source_id,
+            httpx.Client(headers={"User-Agent": BROWSER_USER_AGENT}, follow_redirects=True),
+            Throttle(1 / definition.requests_per_second),
+        )
+        return NseCorporateActions(
             client, DiskCache(settings.source_cache_dir), definition.base_url
         )
 
