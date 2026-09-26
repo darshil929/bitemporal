@@ -11,7 +11,7 @@ import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from pipelines.models.corporate_action import CorporateActionRecord
@@ -37,6 +37,10 @@ SEGMENTS = (("equities", FIRST_YEAR), ("sme", 2012))
 MAIN_BOARD = SEGMENTS[0][0]
 
 REQUIRED_FIELDS = frozenset({"symbol", "series", "isin", "exDate", "subject"})
+
+# The venue can halt trading around a split, so the ISIN the split issued opens up to a week after
+# its ex-date.
+OPENING_WINDOW = timedelta(days=7)
 
 # The endpoint answers only a session that has loaded the filings page, and only with it as referrer.
 FILINGS_PAGE = "https://www.nseindia.com/companies-listing/corporate-filings-actions"
@@ -143,7 +147,8 @@ class IsinResolver:
     The row's own ISIN is followed onto the one it has become where it is one the history holds.
     NSE sometimes names an ISIN from before the history begins, or another security's, and then the
     row is placed by the ticker NSE listed on its ex-date. On a split's ex-date that is the listing
-    the new ISIN opened.
+    the new ISIN opened, and an ex-date falling while trading was halted belongs to the listing that
+    opens within a week after it.
     """
 
     isin_now: dict[str, str]
@@ -152,8 +157,12 @@ class IsinResolver:
     def resolve(self, isin: str, symbol: str, on: date) -> str | None:
         if isin in self.isin_now:
             return self.isin_now[isin]
-        for first, last, held in self.listed.get(symbol, ()):
+        stretches = self.listed.get(symbol, ())
+        for first, last, held in stretches:
             if first <= on and (last is None or on <= last):
+                return self.isin_now.get(held, held)
+        for first, _, held in stretches:
+            if on < first <= on + OPENING_WINDOW:
                 return self.isin_now.get(held, held)
         return None
 
