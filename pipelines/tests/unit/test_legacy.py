@@ -215,3 +215,40 @@ def test_a_trade_date_in_no_shape_the_venue_uses_is_refused() -> None:
 
     with pytest.raises(MalformedRow):
         parse_nse_legacy(payload)
+
+
+def test_bse_groups_that_carry_shares_and_funds_are_read() -> None:
+    """BSE traded A.SARABHAI in XD on 1 September 2017, companies in XC, ST and SS beside it, and in
+    E the Invesco India Gold ETF, which NSE carries in EQ under the same ISIN.
+    """
+    rows = parse_bse_legacy(
+        (CASSETTES / "bse_bhavcopy_equity" / "20170901_legacy.csv").read_bytes()
+    )
+    group_of = {row.to_bar("BSE").isin: row.series for row in rows}
+
+    bars = normalize(rows, "BSE")
+
+    assert sorted(group_of[bar.isin] for bar in bars) == [
+        "A",
+        "E",
+        "SS",
+        "SS",
+        "ST",
+        "ST",
+        "XC",
+        "XC",
+        "XD",
+        "XD",
+    ]
+
+
+def test_nse_sme_and_institutional_platform_series_are_read() -> None:
+    """NSE traded an SME company in SZ and a company in IT on 26 May 2020, beside a bond in N1."""
+    rows = parse_nse_legacy(
+        _only_csv(CASSETTES / "nse_bhavcopy_equity" / "20200526_legacy.csv.zip")
+    )
+    series_of = {row.to_bar("NSE").isin: row.series for row in rows}
+
+    bars = normalize(rows, "NSE")
+
+    assert sorted(series_of[bar.isin] for bar in bars) == ["EQ", "IT", "SZ"]
