@@ -12,6 +12,8 @@ from dagster import build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.nse_corporate_actions import ingest_nse_actions
+from pipelines.facts import persist_actions
+from pipelines.models.corporate_action import CorporateActionRecord
 from pipelines.resources import NseActions
 from pipelines.sources.errors import SourceUnavailable
 from pipelines.sources.nse.corporate_actions import NseCorporateActions
@@ -24,6 +26,7 @@ HCL, ITC = "INE860A01027", "INE154A01025"
 YEAR_2025 = (date(2025, 1, 1), date(2025, 12, 31))
 YEAR_2024 = (date(2024, 1, 1), date(2024, 12, 31))
 COLLECTED_ON = date(2026, 9, 26)
+SHRIRAM_SPLIT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
 
 
 class RecordedActions:
@@ -129,3 +132,49 @@ def test_a_year_the_venue_will_not_serve_costs_that_year_alone(
     outcomes = dict(rows(postgres_dsn, "select outcome, count(*) from ingestion_log group by 1"))
     assert result.metadata["ranges"] == 1
     assert outcomes == {"succeeded": 1, "failed": 1}
+
+
+def hold_unhandled(dsn: str, isin: str, ex_date: date, text: str) -> None:
+    with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        persist_actions(
+            open_,
+            [
+                CorporateActionRecord(
+                    isin=isin,
+                    action_type="unhandled",
+                    ex_date=ex_date,
+                    source_id="nse_corporate_actions",
+                    as_of_date=date(2026, 9, 25),
+                    qualifier=text.lower(),
+                    purpose=text,
+                )
+            ],
+        )
+        open_.commit()
+
+
+def test_an_action_held_unhandled_is_answered_by_the_terms_read_from_it(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A parser that learned to read a subject answers the action it once left unhandled."""
+    hold_unhandled(postgres_dsn, SHRIRAM_NEW, date(2025, 1, 10), SHRIRAM_SPLIT)
+
+    result = ingest_nse_actions(
+        build_asset_context(), database, RecordedActions(), [YEAR_2025], COLLECTED_ON
+    )
+
+    split = rows(postgres_dsn, "select isin from corporate_action where action_type = 'split'")
+    assert result.metadata["failed"] == 0
+    assert split == [(SHRIRAM_NEW,)]
+
+
+def test_an_action_held_unhandled_on_a_day_the_answer_lacks_is_refused(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    hold_unhandled(postgres_dsn, ITC, date(2025, 2, 3), "Scheme Of Arrangement")
+
+    result = ingest_nse_actions(
+        build_asset_context(), database, RecordedActions(), [YEAR_2025], COLLECTED_ON
+    )
+
+    assert result.metadata["failed"] == 1

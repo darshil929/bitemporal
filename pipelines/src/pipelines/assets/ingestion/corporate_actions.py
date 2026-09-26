@@ -53,6 +53,8 @@ where source_id = %s and ex_date between %s and %s
 order by isin, action_type, ex_date, qualifier, as_of_date desc
 """
 
+UNHANDLED = "unhandled"
+
 type ActionKey = tuple[str, str, date, str]
 type Terms = tuple[Decimal | None, Decimal | None, Decimal | None, str | None]
 
@@ -75,6 +77,24 @@ def held_actions(
 
 def key_of(item: CorporateActionRecord) -> ActionKey:
     return (item.isin, item.action_type, item.ex_date, item.qualifier)
+
+
+def unanswered(
+    held: dict[ActionKey, Terms], records: tuple[CorporateActionRecord, ...]
+) -> list[ActionKey]:
+    """Actions already stored that an answer does not account for.
+
+    An action held as unhandled is the venue's text with no terms read from it. A parser that has
+    since learned to read that text answers it with the terms instead, so any action the answer
+    holds for the same ISIN on the same ex-date accounts for it.
+    """
+    answered = {key_of(item) for item in records}
+    days = {(item.isin, item.ex_date) for item in records}
+    return sorted(
+        key
+        for key in held
+        if key not in answered and not (key[1] == UNHANDLED and (key[0], key[2]) in days)
+    )
 
 
 def terms_of(item: CorporateActionRecord) -> Terms:
@@ -118,11 +138,11 @@ def collect_ranges(
             if outside:
                 raise SchemaDrift(f"answer for {partition} holds ex-dates {outside[:3]} outside it")
             held = held_actions(connection, definition.source_id, first, last, current)
-            missing = held.keys() - {key_of(item) for item in records}
+            missing = unanswered(held, records)
             if missing:
                 raise SchemaDrift(
                     f"answer for {partition} lacks {len(missing)} actions already stored,"
-                    f" such as {sorted(missing)[:3]}"
+                    f" such as {missing[:3]}"
                 )
         except SourceError as failure:
             record_ingestion(
