@@ -5,6 +5,7 @@ before. Each is recorded under the ISIN it has since become, following the succe
 derived, so an action lines up with BSE's for the same instrument.
 """
 
+from collections import defaultdict
 from datetime import date, datetime
 
 import psycopg
@@ -12,7 +13,7 @@ from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
 
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME, collect_ranges
 from pipelines.resources import Database, NseActions
-from pipelines.sources.nse.corporate_actions import years
+from pipelines.sources.nse.corporate_actions import IsinResolver, years
 
 GROUP = "ingestion"
 
@@ -40,6 +41,24 @@ def isins_now(connection: psycopg.Connection) -> dict[str, str]:
     return mapping
 
 
+# Each NSE ticker with the ISINs it has been listed under and when.
+LISTED = """
+select local_symbol, listing_date, delisting_date, isin
+from listing
+where exchange = 'NSE'
+order by local_symbol, listing_date
+"""
+
+
+def nse_listings(
+    connection: psycopg.Connection,
+) -> dict[str, tuple[tuple[date, date | None, str], ...]]:
+    listed: dict[str, list[tuple[date, date | None, str]]] = defaultdict(list)
+    for symbol, first, last, isin in connection.execute(LISTED):
+        listed[symbol].append((first, last, isin))
+    return {symbol: tuple(spans) for symbol, spans in listed.items()}
+
+
 def ingest_nse_actions(
     context: AssetExecutionContext,
     database: Database,
@@ -49,14 +68,16 @@ def ingest_nse_actions(
 ) -> MaterializeResult[None]:
     with database.connect() as connection:
         mapping = isins_now(connection)
+        resolver = IsinResolver(mapping, nse_listings(connection))
+        adapter = actions.adapter()
         return collect_ranges(
             context,
             connection,
             actions.definition(),
-            actions.adapter(),
+            adapter,
             ranges,
             collected_on,
-            mapping,
+            lambda rows: adapter.normalize(rows, resolver, collected_on),
             mapping,
         )
 

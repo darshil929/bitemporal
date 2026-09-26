@@ -13,6 +13,7 @@ from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import SchemaDrift
 from pipelines.sources.nse.corporate_actions import (
     FIRST_YEAR,
+    IsinResolver,
     NseCorporateActions,
     normalize,
     parse_actions,
@@ -72,6 +73,13 @@ def test_a_bonus_and_a_split_in_one_subject_are_both_read() -> None:
     assert [item[0] for item in terms(subject)] == ["bonus", "split"]
 
 
+def test_the_abbreviated_wording_of_a_split_is_read() -> None:
+    """JSW Steel's split to one rupee in January 2017 was filed as Fv Splt Frm Rs 10 To Re 1."""
+    assert terms("Fv Splt Frm Rs 10 To Re 1") == [
+        ("split", "ordinary", Decimal(1), Decimal(10), None)
+    ]
+
+
 def test_a_bonus_of_debentures_issues_no_shares() -> None:
     subject = "Scheme Of Arrangement - Bonus Debentures 6:1"
 
@@ -117,7 +125,7 @@ def test_an_action_without_derivable_terms_keeps_its_text() -> None:
 
 def test_actions_are_recorded_under_the_isin_each_instrument_carries_now() -> None:
     """NSE filed Bajaj Finance's 2025 bonus and split under the ISIN it carried before 2016."""
-    actions = normalize(parse_actions(recorded(2025)), ISIN_NOW, COLLECTED_ON)
+    actions = normalize(parse_actions(recorded(2025)), IsinResolver(ISIN_NOW), COLLECTED_ON)
     capital = {(item.isin, item.action_type, item.ex_date) for item in actions if item.ratio_from}
 
     assert capital == {
@@ -131,13 +139,13 @@ def test_actions_are_recorded_under_the_isin_each_instrument_carries_now() -> No
 
 def test_rows_outside_the_equity_series_are_left_out() -> None:
     """An InvIT's distribution is recorded in the IV series."""
-    actions = normalize(parse_actions(recorded(2025)), ISIN_NOW, COLLECTED_ON)
+    actions = normalize(parse_actions(recorded(2025)), IsinResolver(ISIN_NOW), COLLECTED_ON)
 
     assert "INE0MIZ23019" not in {item.isin for item in actions}
 
 
 def test_an_isin_outside_the_tracked_universe_is_left_out() -> None:
-    actions = normalize(parse_actions(recorded(2011)), {}, COLLECTED_ON)
+    actions = normalize(parse_actions(recorded(2011)), IsinResolver({}), COLLECTED_ON)
 
     assert actions == ()
 
@@ -176,3 +184,28 @@ def test_an_answer_that_is_not_the_data_is_never_cached(tmp_path: Path) -> None:
         adapter.fetch(date(2024, 1, 1), date(2024, 12, 31), COLLECTED_ON)
 
     assert not any(tmp_path.rglob("*.json"))
+
+
+ONGC_BEFORE_2011, ONGC_NOW = "INE213A01011", "INE213A01029"
+ONGC_LISTED = {"ONGC": ((date(2011, 6, 22), None, ONGC_NOW),)}
+
+
+def test_an_isin_from_before_the_history_is_placed_by_the_ticker_listed_that_day() -> None:
+    """NSE filed ONGC's bonus of 15 December 2016 under the ISIN its 2011 split retired."""
+    resolver = IsinResolver({ONGC_NOW: ONGC_NOW}, ONGC_LISTED)
+
+    assert resolver.resolve(ONGC_BEFORE_2011, "ONGC", date(2016, 12, 15)) == ONGC_NOW
+
+
+def test_a_ticker_not_listed_on_the_ex_date_places_nothing() -> None:
+    resolver = IsinResolver({ONGC_NOW: ONGC_NOW}, ONGC_LISTED)
+
+    assert resolver.resolve(ONGC_BEFORE_2011, "ONGC", date(2010, 12, 15)) is None
+
+
+def test_an_isin_the_history_holds_is_followed_before_the_ticker() -> None:
+    resolver = IsinResolver(
+        {SHRIRAM_OLD: SHRIRAM_NEW}, {"SHRIRAMFIN": ((date(2011, 6, 22), None, "OTHER"),)}
+    )
+
+    assert resolver.resolve(SHRIRAM_OLD, "SHRIRAMFIN", date(2025, 1, 10)) == SHRIRAM_NEW

@@ -6,7 +6,7 @@ hold every action already stored for that year: a range the venue cut short read
 year with fewer actions in it.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol
@@ -86,9 +86,8 @@ class RangeReader(Protocol):
 
     def parse(self, payload: bytes) -> tuple[dict[str, str], ...]: ...
 
-    def normalize(
-        self, records: Sequence[dict[str, str]], mapping: dict[str, str], as_of_date: date
-    ) -> tuple[CorporateActionRecord, ...]: ...
+
+type Normalize = Callable[[tuple[dict[str, str], ...]], tuple[CorporateActionRecord, ...]]
 
 
 def collect_ranges(
@@ -98,13 +97,13 @@ def collect_ranges(
     adapter: RangeReader,
     ranges: list[tuple[date, date]],
     collected_on: date,
-    mapping: dict[str, str],
+    normalize: Normalize,
     current: dict[str, str],
 ) -> MaterializeResult[None]:
     """Read each range of ex-dates, committing each as it is read.
 
-    `mapping` resolves a row to an ISIN in the venue adapter's terms, and `current` maps every ISIN
-    already stored onto the one it has since become.
+    `normalize` turns a venue's response into actions under the ISINs they belong to, and `current`
+    maps every ISIN already stored onto the one it has since become.
     """
     version = definition.version_for(collected_on)
     read = failed = written = 0
@@ -112,9 +111,7 @@ def collect_ranges(
     for first, last in ranges:
         partition = f"{first:%Y%m%d}-{last:%Y%m%d}"
         try:
-            records = adapter.normalize(
-                adapter.parse(adapter.fetch(first, last, collected_on)), mapping, collected_on
-            )
+            records = normalize(adapter.parse(adapter.fetch(first, last, collected_on)))
             outside = sorted(
                 {item.ex_date for item in records if not first <= item.ex_date <= last}
             )
@@ -182,14 +179,15 @@ def ingest_actions(
     with database.connect() as connection:
         isin_for_scrip = dict(connection.execute(SCRIP_CODES).fetchall())
         current = {isin: isin_for_scrip[code] for isin, code in connection.execute(LISTED)}
+        adapter = actions.adapter()
         return collect_ranges(
             context,
             connection,
             actions.definition(),
-            actions.adapter(),
+            adapter,
             ranges,
             collected_on,
-            isin_for_scrip,
+            lambda rows: adapter.normalize(rows, isin_for_scrip, collected_on),
             current,
         )
 
