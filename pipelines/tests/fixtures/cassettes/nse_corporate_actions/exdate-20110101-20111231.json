@@ -1,0 +1,50 @@
+[
+    {
+        "bcEndDate": "-",
+        "bcStartDate": "-",
+        "caBroadcastDate": null,
+        "comp": "Oil & Natural Gas Corporation Limited",
+        "exDate": "08-Feb-2011",
+        "faceVal": "5",
+        "ind": "-",
+        "isin": "INE213A01011",
+        "ndEndDate": "-",
+        "ndStartDate": "-",
+        "recDate": "09-Feb-2011",
+        "series": "EQ",
+        "subject": "Bonus 1:1 And Face Value Split From Rs.10/- To Rs.5/-",
+        "symbol": "ONGC"
+    },
+    {
+        "bcEndDate": "-",
+        "bcStartDate": "-",
+        "caBroadcastDate": null,
+        "comp": "Dr. Reddy's Laboratories Limited",
+        "exDate": "17-Mar-2011",
+        "faceVal": "1",
+        "ind": "-",
+        "isin": "INE089A01023",
+        "ndEndDate": "-",
+        "ndStartDate": "-",
+        "recDate": "18-Mar-2011",
+        "series": "EQ",
+        "subject": "Scheme Of Arrangement - Bonus Debentures 6:1",
+        "symbol": "DRREDDY"
+    },
+    {
+        "bcEndDate": "10-Jan-2011",
+        "bcStartDate": "05-Jan-2011",
+        "caBroadcastDate": null,
+        "comp": "Simbhaoli Sugars Limited",
+        "exDate": "03-Jan-2011",
+        "faceVal": "10",
+        "ind": "-",
+        "isin": "INE270C01017",
+        "ndEndDate": "-",
+        "ndStartDate": "-",
+        "recDate": "-",
+        "series": "EQ",
+        "subject": "Annual General Meeting",
+        "symbol": "SIMBHSUGAR"
+    }
+]
