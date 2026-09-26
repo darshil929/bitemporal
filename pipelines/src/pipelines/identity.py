@@ -160,19 +160,34 @@ def close_listings(
 
     A stretch the venue kept trading past is closed as renamed when another follows it under the
     same venue-local identifier, and as delisted when none does, unless another ISIN took the
-    instrument over, which supersedes it.
+    instrument over, which supersedes it. A takeover closes the stretch at once, however recently
+    it happened, since the instrument carries on under its new ISIN.
     """
     grouped: dict[tuple[str, str, str], list[Stretch]] = defaultdict(list)
     for stretch in stretches:
         grouped[(stretch.isin, stretch.exchange, stretch.scrip_code or "")].append(stretch)
 
+    histories = {
+        group: _absorb_untickered(sorted(history, key=lambda item: item.first_day), group[2])
+        for group, history in sorted(grouped.items())
+    }
+    openings: dict[tuple[str, str], list[tuple[date, str]]] = defaultdict(list)
+    for (isin, venue, _), history in histories.items():
+        for stretch in history:
+            openings[(venue, stretch.scrip_code or stretch.local_symbol)].append(
+                (stretch.first_day, isin)
+            )
+
     listings = []
-    for (isin, venue, key), history in sorted(grouped.items()):
-        history = _absorb_untickered(sorted(history, key=lambda item: item.first_day), key)
+    for (isin, venue, _), history in histories.items():
         for index, stretch in enumerate(history):
             renamed = index < len(history) - 1
             stopped = stretch.last_day < venue_last_day[venue] - SETTLED_AFTER
-            closed = renamed or stopped
+            taken_over = any(
+                other != isin and stretch.last_day < opened <= stretch.last_day + SUCCESSION_WINDOW
+                for opened, other in openings[(venue, stretch.scrip_code or stretch.local_symbol)]
+            )
+            closed = renamed or stopped or taken_over
             listings.append(
                 ListingRecord(
                     isin=isin,
