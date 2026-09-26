@@ -12,12 +12,35 @@ from pipelines.sources.errors import MalformedRow
 
 logger = logging.getLogger(__name__)
 
-# Series that trade as ordinary equity. Every other series carries a bond, an exchange traded
-# fund, a government security, a treasury bill, a warrant or a trust unit. A new equity series
-# must be added here or its instruments are skipped.
+# Series that trade as ordinary equity. BSE carried ordinary shares in XC and XD until November 2017
+# and in ST and SS from June 2017 to April 2018. NSE carries them in SZ, an SME series, and IT, its
+# institutional trading platform. Every other series carries a bond, a government security, a
+# treasury bill, a warrant, a preference share, a partly paid share or a trust unit. A new equity
+# series must be added here or its instruments are skipped.
 EQUITY_SERIES: dict[str, frozenset[str]] = {
-    "BSE": frozenset({"A", "B", "M", "MS", "MT", "P", "R", "T", "TS", "X", "XT", "Z", "ZP", "ZY"}),
-    "NSE": frozenset({"EQ", "BE", "BZ", "SM", "ST"}),
+    "BSE": frozenset(
+        {
+            "A",
+            "B",
+            "M",
+            "MS",
+            "MT",
+            "P",
+            "R",
+            "SS",
+            "ST",
+            "T",
+            "TS",
+            "X",
+            "XC",
+            "XD",
+            "XT",
+            "Z",
+            "ZP",
+            "ZY",
+        }
+    ),
+    "NSE": frozenset({"EQ", "BE", "BZ", "IT", "SM", "ST", "SZ"}),
 }
 
 
