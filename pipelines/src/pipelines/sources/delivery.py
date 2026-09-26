@@ -14,6 +14,7 @@ from datetime import date, datetime
 from pydantic import BaseModel
 
 from pipelines.models.market import DeliveryRecord
+from pipelines.sources.bhavcopy import EQUITY_SERIES
 from pipelines.sources.errors import MalformedRow, SchemaDrift, SourceUnavailable, WrongDay
 from pipelines.sources.payload import decoded
 
@@ -21,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 NSE_COLUMNS = frozenset({"SYMBOL", "SERIES", "DATE1", "TTL_TRD_QNTY", "DELIV_QTY"})
 BSE_COLUMNS = frozenset({"DATE", "SCRIP CODE", "DELIVERY QTY"})
+
+# Both NSE files list a ticker once per series. Beside the equity series sit the block deal window
+# (BL) and the company's bonds, debentures and preference shares (E1, D1, N1 to N8, P1 and others),
+# each settling its own delivery under the same ticker. Only the equity series matches the bar.
+NSE_EQUITY_SERIES = EQUITY_SERIES["NSE"]
 
 NSE_DATE_FORMAT = "%d-%b-%Y"
 BSE_DATE_FORMAT = "%d%m%Y"
@@ -61,7 +67,7 @@ def parse_nse_delivery(payload: bytes) -> tuple[DeliveryRow, ...]:
     for record in reader:
         stripped = {key.strip(): (value or "").strip() for key, value in record.items() if key}
         quantity = stripped["DELIV_QTY"]
-        if quantity == NOT_DELIVERABLE:
+        if stripped["SERIES"] not in NSE_EQUITY_SERIES or quantity == NOT_DELIVERABLE:
             continue
         rows.append(
             DeliveryRow(
@@ -86,7 +92,7 @@ def parse_nse_position(payload: bytes) -> tuple[DeliveryRow, ...]:
         if len(fields) != POSITION_FIELDS:
             raise MalformedRow(f"nse delivery position row has {len(fields)} fields: {line[:80]}")
         quantity = fields[5]
-        if quantity == NOT_DELIVERABLE:
+        if fields[3] not in NSE_EQUITY_SERIES or quantity == NOT_DELIVERABLE:
             continue
         if not quantity.isdigit():
             raise MalformedRow(f"nse delivery position quantity is not a count: {line[:80]}")
@@ -95,7 +101,7 @@ def parse_nse_position(payload: bytes) -> tuple[DeliveryRow, ...]:
         )
 
     if not rows:
-        raise SchemaDrift("nse delivery position file holds no rows")
+        raise SchemaDrift("nse delivery position file holds no equity rows")
     return tuple(rows)
 
 
