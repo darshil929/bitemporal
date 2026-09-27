@@ -34,6 +34,9 @@ class SourceDefinition(BaseModel):
     owner_notes: str | None = None
     schema_version: tuple[SchemaVersion, ...] = ()
 
+    def covers(self, partition: date) -> bool:
+        return any(candidate.covers(partition) for candidate in self.schema_version)
+
     def version_for(self, partition: date) -> str:
         for candidate in self.schema_version:
             if candidate.covers(partition):

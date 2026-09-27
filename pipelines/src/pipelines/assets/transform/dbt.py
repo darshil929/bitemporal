@@ -19,7 +19,7 @@ BSE = AssetKey("bse_bhavcopy")
 NSE = AssetKey("nse_bhavcopy")
 IDENTITY = AssetKey("instrument_identity")
 COMPLETENESS = AssetKey("trading_day_completeness")
-ACTIONS = AssetKey("corporate_actions")
+ACTIONS = [AssetKey("corporate_actions"), AssetKey("nse_corporate_actions")]
 DELIVERY = [AssetKey("bse_delivery"), AssetKey("nse_delivery")]
 
 # Which asset fills each table the models read.
@@ -30,7 +30,7 @@ SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "instrument_succession": [IDENTITY],
     "trading_day": [COMPLETENESS],
     "delivery_daily": DELIVERY,
-    "corporate_action": [ACTIONS],
+    "corporate_action": ACTIONS,
 }
 
 dbt_project = DbtProject(project_dir=DBT_DIR, profiles_dir=DBT_DIR)

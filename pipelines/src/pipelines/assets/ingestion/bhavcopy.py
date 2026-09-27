@@ -7,17 +7,17 @@ attempt is recorded rather than failing.
 A run covers a range of days, reading them through one throttled client and one venue session.
 """
 
-from collections.abc import Iterable, Iterator
-from datetime import date, timedelta
+from collections.abc import Iterable
+from datetime import date
 
 from dagster import (
     AssetExecutionContext,
     BackfillPolicy,
     MaterializeResult,
-    TimeWindowPartitionsDefinition,
     asset,
 )
 
+from pipelines.assets.ingestion.calendar import INGESTION_DAYS, calendar_days
 from pipelines.facts import persist_bars, record_ingestion
 from pipelines.identity import (
     derive_instruments,
@@ -33,25 +33,6 @@ from pipelines.sources.legacy import named_by_isin
 from pipelines.sources.registry import SourceDefinition
 
 GROUP = "ingestion"
-
-# Every day, since a session is not confined to the weekdays.
-EVERY_DAY = "0 0 * * *"
-
-
-def trading_days(venue: str) -> TimeWindowPartitionsDefinition:
-    """Daily partitions from the first day the registry has a parser for."""
-    covered = Bhavcopies().definition(venue).schema_version
-    first = min(version.effective_from for version in covered)
-    return TimeWindowPartitionsDefinition(
-        cron_schedule=EVERY_DAY, start=f"{first:%Y-%m-%d}", fmt="%Y-%m-%d"
-    )
-
-
-def calendar_days(first: date, last: date) -> Iterator[date]:
-    day = first
-    while day <= last:
-        yield day
-        day += timedelta(days=1)
 
 
 def reading_order(days: Iterable[date], definition: SourceDefinition) -> list[date]:
@@ -71,13 +52,16 @@ def ingest(
 
     published = unpublished = failed = written = 0
     bars_read = secondary_lines = 0
+    days = list(calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)))
+    # A day outside every format the registry holds for the venue is passed over without a request.
+    covered = [day for day in days if definition.covers(day)]
+    outside_coverage = len(days) - len(covered)
     # The same instruments appear on every day of a run, under the same names. A name already
     # stored stands until the venue publishes a different one.
     named: dict[str, str] = {}
 
     with database.connect() as connection:
-        days = calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end))
-        for day in reading_order(days, definition):
+        for day in reading_order(covered, definition):
             partition = day.isoformat()
             version = definition.version_for(day)
 
@@ -156,6 +140,7 @@ def ingest(
             "published": published,
             "unpublished": unpublished,
             "failed": failed,
+            "outside_coverage": outside_coverage,
             "bars": bars_read,
             "secondary_lines": secondary_lines,
         },
@@ -168,6 +153,7 @@ def ingest(
             "published": published,
             "unpublished": unpublished,
             "failed": failed,
+            "outside_coverage": outside_coverage,
             "bars": bars_read,
             "secondary_lines": secondary_lines,
             "written": written,
@@ -177,7 +163,7 @@ def ingest(
 
 
 @asset(
-    partitions_def=trading_days("BSE"),
+    partitions_def=INGESTION_DAYS,
     backfill_policy=BackfillPolicy.single_run(),
     group_name=GROUP,
     description="BSE equity bars for each trading day in the run.",
@@ -189,7 +175,7 @@ def bse_bhavcopy(
 
 
 @asset(
-    partitions_def=trading_days("NSE"),
+    partitions_def=INGESTION_DAYS,
     backfill_policy=BackfillPolicy.single_run(),
     group_name=GROUP,
     description="NSE equity bars for each trading day in the run.",
