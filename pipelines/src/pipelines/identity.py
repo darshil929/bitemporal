@@ -488,27 +488,31 @@ def retire_listings(connection: psycopg.Connection, listings: Sequence[ListingRe
     return len(stale)
 
 
-# Every BSE listing stretch with the scrip code it was listed under.
+# Every ISIN each BSE scrip code was stored under, with the first and last day it was. The day being
+# resolved is left out: its stored bars came from an earlier read of the same file.
 SCRIP_STRETCHES = """
-select scrip_code, isin, listing_date, delisting_date
-from listing
-where exchange = 'BSE' and scrip_code is not null
+select scrip_code, isin, min(trade_date), max(trade_date)
+from price_daily
+where venue = 'BSE' and scrip_code is not null and trade_date <> %s
+group by scrip_code, isin
 """
 
 
 def isins_by_scrip_code(connection: psycopg.Connection, day: date) -> dict[str, str]:
-    """The ISIN each BSE scrip code names on a day.
+    """The ISIN each BSE scrip code names on a day, read from the bars stored under the code.
 
-    The stretch in force on the day names it. Otherwise the stretch under the code nearest the day
-    does, a listing opening on the first day inside the recorded window rather than the day the
-    instrument listed. A code whose nearest stretches lie equally far either side and name different
-    ISINs names none.
+    The stretch of stored bars spanning the day names it. Otherwise the stretch under the code
+    nearest the day does, the first stored bar being the first day inside the recorded window
+    rather than the day the instrument listed. A code whose nearest stretches lie equally far
+    either side and name different ISINs names none.
+
+    Listings are derived from the stored bars, so a code resolves before any listing exists.
     """
     nearest: dict[str, tuple[int, set[str]]] = {}
-    for code, isin, first, last in connection.execute(SCRIP_STRETCHES):
+    for code, isin, first, last in connection.execute(SCRIP_STRETCHES, (day,)):
         if day < first:
             distance = (first - day).days
-        elif last is not None and last < day:
+        elif last < day:
             distance = (day - last).days
         else:
             distance = 0

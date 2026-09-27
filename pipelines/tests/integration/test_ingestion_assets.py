@@ -28,11 +28,14 @@ class RecordedBhavcopies:
     """The real adapters and registry entries, reading a recorded response rather than the venue.
 
     A venue mapped to None published nothing that day, which is what a holiday looks like, and
-    a day named unreadable stands for one the venue published badly.
+    a day named unreadable stands for one the venue published badly. A venue mapped to days serves
+    each its own file.
     """
 
     def __init__(
-        self, payloads: dict[str, bytes | None], unreadable: set[date] | None = None
+        self,
+        payloads: dict[str, bytes | dict[date, bytes] | None],
+        unreadable: set[date] | None = None,
     ) -> None:
         self._payloads = payloads
         self._unreadable = unreadable or set()
@@ -43,14 +46,15 @@ class RecordedBhavcopies:
 
     def adapter(self, venue: str) -> BseBhavcopy | NseBhavcopy:
         adapter = self._real.adapter(venue)
-        payload = self._payloads[venue]
+        recorded = self._payloads[venue]
 
         def fetch(partition: date, schema_version: str) -> bytes:
             if partition in self._unreadable:
                 raise MalformedRow(f"{venue} published a file for {partition} that is not bars")
-            if payload is None:
+            served = recorded.get(partition) if isinstance(recorded, dict) else recorded
+            if served is None:
                 raise NotPublished(f"{venue} published nothing for {partition}")
-            return payload
+            return served
 
         adapter.fetch = fetch  # type: ignore[method-assign]
         return adapter
@@ -143,19 +147,22 @@ def test_an_isin_on_two_lines_is_stored_from_its_ordinary_line(
 SHORT_DAY = date(2022, 7, 15)
 
 
-def listed(dsn: str, stretches: list[tuple[str, str, str, str | None]]) -> None:
-    """BSE listing stretches as (scrip code, ISIN, first day, last day)."""
+def store_bars(
+    dsn: str, bars: list[tuple[str, str, str]], names: dict[str, str] | None = None
+) -> None:
+    """BSE bars as (scrip code, ISIN, trade date), each instrument under its name or its code."""
     with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
-        for code, isin, first, last in stretches:
+        for code, isin, day in bars:
             open_.execute(
                 "insert into instrument_master (isin, name, country, instrument_type)"
                 " values (%s, %s, 'IN', 'equity') on conflict do nothing",
-                (isin, code),
+                (isin, (names or {}).get(isin, code)),
             )
             open_.execute(
-                "insert into listing (isin, exchange, local_symbol, scrip_code, listing_date,"
-                " delisting_date, closure_reason) values (%s, 'BSE', %s, %s, %s, %s, %s)",
-                (isin, code, code, first, last, "renamed" if last else None),
+                "insert into price_daily (isin, venue, trade_date, as_of_date, open, high, low,"
+                " close, volume, local_symbol, scrip_code)"
+                " values (%s, 'BSE', %s, %s, 1, 1, 1, 1, 0, %s, %s)",
+                (isin, day, day, code, code),
             )
         open_.commit()
 
@@ -163,19 +170,23 @@ def listed(dsn: str, stretches: list[tuple[str, str, str, str | None]]) -> None:
 def test_a_scrip_code_names_the_isin_of_its_nearest_stretch(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """A stretch opens on the first day inside the recorded window, not the day the code listed.
+    """A code's first stored bar is the first day inside the recorded window, not the day it listed.
 
     A code whose stretches lie a day either side of the day and name different ISINs names none.
+    The day's own stored bars came from an earlier read of it, and are not consulted.
     """
-    listed(
+    store_bars(
         postgres_dsn,
         [
-            ("531780", "INE229G01022", "2016-12-19", None),
-            ("541233", "INE970X01018", "2022-07-18", None),
-            ("599999", "INE999Z01011", "2018-04-25", "2022-07-14"),
-            ("599999", "INE999Z01029", "2022-07-16", None),
-            ("541276", "INE626Z01011", "2018-04-25", "2023-06-02"),
-            ("541276", "INE626Z01029", "2023-06-05", None),
+            ("531780", "INE229G01022", "2016-12-19"),
+            ("531780", "INE229G01022", "2026-09-25"),
+            ("541233", "INE970X01018", "2022-07-18"),
+            ("599999", "INE999Z01011", "2022-07-14"),
+            ("599999", "INE999Z01029", "2022-07-15"),
+            ("599999", "INE999Z01029", "2022-07-16"),
+            ("541276", "INE626Z01011", "2018-04-25"),
+            ("541276", "INE626Z01011", "2023-06-02"),
+            ("541276", "INE626Z01029", "2023-06-05"),
         ],
     )
 
@@ -191,26 +202,43 @@ def test_a_scrip_code_names_the_isin_of_its_nearest_stretch(
     }
 
 
-def test_a_day_read_from_the_scrip_code_file_resolves_through_the_listings(
+def test_a_day_read_from_the_scrip_code_file_resolves_through_the_stored_bars(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """BSE's ISIN file for 15 July 2022 lacks 652 scrip codes, and its scrip code file lacks none."""
-    listed(
+    """BSE's ISIN file for 15 July 2022 lacks 652 scrip codes, and its scrip code file lacks none.
+
+    The file carries BSE's short names of the time, and the names already stored stand.
+    """
+    current = {
+        "INE229G01022": "KAISER CORPORATION LIMITED",
+        "INE970X01018": "Lemon Tree Hotels Limited",
+        "INE783X01023": "Chemfab Alkalis Ltd",
+        "INE626Z01011": "HARDWYN",
+        "INE626Z01029": "HARDWYN INDIA LIMITED",
+    }
+    store_bars(
         postgres_dsn,
         [
-            ("531780", "INE229G01022", "2016-12-19", None),
-            ("541233", "INE970X01018", "2018-04-09", None),
-            ("541269", "INE783X01023", "2018-04-25", None),
-            ("541276", "INE626Z01011", "2018-04-25", "2023-06-02"),
-            ("541276", "INE626Z01029", "2023-06-05", None),
+            ("531780", "INE229G01022", "2022-07-14"),
+            ("541233", "INE970X01018", "2022-07-18"),
+            ("541269", "INE783X01023", "2022-07-14"),
+            ("541269", "INE783X01023", "2022-07-18"),
+            ("541276", "INE626Z01011", "2022-07-14"),
+            ("541276", "INE626Z01029", "2023-06-05"),
         ],
+        current,
     )
     bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20220715_scrip.zip")})
 
     result = ingest(build_asset_context(partition_key="2022-07-15"), "BSE", database, bhavcopies)
 
-    stored = rows(postgres_dsn, "select scrip_code, isin from price_daily order by scrip_code")
+    stored = rows(
+        postgres_dsn,
+        "select scrip_code, isin from price_daily where trade_date = '2022-07-15'"
+        " order by scrip_code",
+    )
     logged = rows(postgres_dsn, "select schema_version from ingestion_log")
+    names = dict(rows(postgres_dsn, "select isin, name from instrument_master"))
     assert stored == [
         ("531780", "INE229G01022"),
         ("541233", "INE970X01018"),
@@ -219,6 +247,46 @@ def test_a_day_read_from_the_scrip_code_file_resolves_through_the_listings(
     ]
     assert logged == [("bse_scrip",)]
     assert result.metadata["bars"] == 4
+    assert names == current
+
+
+def test_one_run_into_an_empty_database_reads_a_scrip_code_day(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A scrip code day loads in the same run as the days around it, on a database holding nothing.
+
+    BSE answers its ISIN file for 13 December 2016 with its home page, and Interworld Digital did
+    not trade on the 12th, so the day is read after the 14th, whose bars resolve its codes.
+    """
+    bhavcopies = RecordedBhavcopies(
+        {
+            "BSE": {
+                date(2016, 12, 12): payload("bse_bhavcopy_equity", "20161212_legacy.csv"),
+                date(2016, 12, 13): payload("bse_bhavcopy_equity", "20161213_scrip.csv"),
+                date(2016, 12, 14): payload("bse_bhavcopy_equity", "20161214_legacy.csv"),
+            }
+        }
+    )
+    window = PartitionKeyRange(start="2016-12-12", end="2016-12-14")
+
+    result = ingest(build_asset_context(partition_key_range=window), "BSE", database, bhavcopies)
+
+    stored = rows(
+        postgres_dsn,
+        "select scrip_code, isin from price_daily where trade_date = '2016-12-13'"
+        " order by scrip_code",
+    )
+    logged = rows(
+        postgres_dsn,
+        "select partition_key, schema_version, outcome from ingestion_log order by partition_key",
+    )
+    assert stored == [("500180", "INE040A01026"), ("532072", "INE177D01020")]
+    assert logged == [
+        ("2016-12-12", "bse_legacy", "succeeded"),
+        ("2016-12-13", "bse_scrip", "succeeded"),
+        ("2016-12-14", "bse_legacy", "succeeded"),
+    ]
+    assert result.metadata["failed"] == 0
 
 
 def test_a_day_the_venue_never_published_stores_no_bars(
