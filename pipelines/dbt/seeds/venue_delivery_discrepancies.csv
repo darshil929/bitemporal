@@ -1,0 +1,11 @@
+venue,trade_date,reason
+BSE,2017-04-28,"BSE's delivery file reports more shares traded than its bhavcopy for 13 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 5 instruments"
+BSE,2017-07-28,"BSE's delivery file reports more shares traded than its bhavcopy for 827 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 41 instruments"
+BSE,2017-10-17,"BSE's delivery file reports more shares traded than its bhavcopy for 15 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 5 instruments"
+BSE,2018-04-18,"BSE's delivery file reports more shares traded than its bhavcopy for 16 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 4 instruments"
+BSE,2018-11-05,"BSE's delivery file reports more shares traded than its bhavcopy for 14 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 4 instruments"
+BSE,2019-05-07,"BSE's delivery file reports more shares traded than its bhavcopy for 11 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 4 instruments"
+BSE,2019-10-25,"BSE's delivery file reports more shares traded than its bhavcopy for 14 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 1 instrument"
+BSE,2020-11-14,"A Muhurat session. BSE's delivery file reports more shares traded than its bhavcopy for 246 scrip codes and fewer for none, and delivery above the bhavcopy's volume for 18 instruments"
+NSE,2019-06-17,"NSE's delivery position file reports more shares traded than its bhavcopy for 1236 of 1488 equity tickers and fewer for none, and delivery above the bhavcopy's volume for 3 instruments"
+NSE,2019-06-18,"NSE's delivery position file reports more shares traded than its bhavcopy for 1244 of 1487 equity tickers and fewer for none, and delivery above the bhavcopy's volume for 5 instruments"
