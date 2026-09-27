@@ -98,6 +98,20 @@ def resolver(connection: psycopg.Connection, venue: str, day: date) -> dict[str,
     return {key: isin for key, isin in connection.execute(IN_FORCE, (venue, day, day))}
 
 
+# A delivery figure is part of a bar's day. A venue's delivery file can name an instrument its
+# price file carries no equity line for that day: a fund BSE moved into its debt group, a line
+# BSE ran into another, a day whose price file the venue did not publish.
+PRICED = """
+select isin
+from price_daily
+where venue = %s and trade_date = %s
+"""
+
+
+def priced(connection: psycopg.Connection, venue: str, day: date) -> set[str]:
+    return {isin for (isin,) in connection.execute(PRICED, (venue, day))}
+
+
 def ingest_delivery(
     context: AssetExecutionContext, venue: str, database: Database, deliveries: Deliveries
 ) -> MaterializeResult[None]:
@@ -106,7 +120,7 @@ def ingest_delivery(
     adapter = deliveries.adapter(venue)
     price_source = Bhavcopies().definition(venue).source_id
 
-    published = unpublished = failed = written = 0
+    published = unpublished = failed = written = unpriced = 0
 
     with database.connect() as connection:
         for day in calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)):
@@ -148,7 +162,19 @@ def ingest_delivery(
                 )
                 continue
 
-            records = adapter.normalize(rows, resolver(connection, venue, day))
+            resolved = adapter.normalize(rows, resolver(connection, venue, day))
+            with_bars = priced(connection, venue, day)
+            records = [record for record in resolved if record.isin in with_bars]
+            if len(records) < len(resolved):
+                unpriced += len(resolved) - len(records)
+                context.log.info(
+                    "delivery for instruments without a bar left out",
+                    extra={
+                        "venue": venue,
+                        "trade_date": partition,
+                        "rows": len(resolved) - len(records),
+                    },
+                )
             written += persist_delivery(connection, records)
             record_ingestion(
                 connection, definition.source_id, partition, version, "succeeded", len(records)
@@ -163,7 +189,13 @@ def ingest_delivery(
 
     context.log.info(
         "delivery ingested",
-        extra={"venue": venue, "published": published, "failed": failed, "written": written},
+        extra={
+            "venue": venue,
+            "published": published,
+            "failed": failed,
+            "written": written,
+            "unpriced": unpriced,
+        },
     )
     return MaterializeResult(
         metadata={
@@ -174,6 +206,7 @@ def ingest_delivery(
             "unpublished": unpublished,
             "failed": failed,
             "written": written,
+            "unpriced": unpriced,
         }
     )
 
