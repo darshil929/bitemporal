@@ -21,3 +21,25 @@ seeds:
       - name: reason
         description: What the prices did across the change and what the venues record of it.
         data_tests: [not_null]
+
+  - name: venue_delivery_discrepancies
+    description: >
+      Venue days on which the venue's delivery file counts more shares traded than its bhavcopy,
+      each reviewed against both of the venue's files for the day. Delivery above the bhavcopy's
+      volume on such a day is the venue's own figure, stored as published. The delivery check
+      passes over each.
+    config:
+      column_types:
+        venue: varchar(12)
+        trade_date: date
+        reason: text
+    columns:
+      - name: venue
+        description: The venue whose two files disagree.
+        data_tests: [not_null]
+      - name: trade_date
+        description: The trading day both files describe.
+        data_tests: [not_null]
+      - name: reason
+        description: How far the two files disagree that day, and on how many instruments.
+        data_tests: [not_null]
