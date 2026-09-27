@@ -7,7 +7,7 @@ attempt is recorded rather than failing.
 A run covers a range of days, reading them through one throttled client and one venue session.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import date, timedelta
 
 from dagster import (
@@ -30,6 +30,7 @@ from pipelines.sources.bhavcopy import names_by_isin, ordinary_lines
 from pipelines.sources.bse.bhavcopy import SCRIP
 from pipelines.sources.errors import NotPublished, SourceError
 from pipelines.sources.legacy import named_by_isin
+from pipelines.sources.registry import SourceDefinition
 
 GROUP = "ingestion"
 
@@ -53,6 +54,14 @@ def calendar_days(first: date, last: date) -> Iterator[date]:
         day += timedelta(days=1)
 
 
+def reading_order(days: Iterable[date], definition: SourceDefinition) -> list[date]:
+    """The days of a run in the order they are read, BSE's scrip code days after every other.
+
+    A scrip code day resolves each code through the bars stored on the days around it.
+    """
+    return sorted(days, key=lambda day: definition.version_for(day) == SCRIP)
+
+
 def ingest(
     context: AssetExecutionContext, venue: str, database: Database, bhavcopies: Bhavcopies
 ) -> MaterializeResult[None]:
@@ -67,14 +76,15 @@ def ingest(
     named: dict[str, str] = {}
 
     with database.connect() as connection:
-        for day in calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)):
+        days = calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end))
+        for day in reading_order(days, definition):
             partition = day.isoformat()
             version = definition.version_for(day)
 
             try:
                 rows = adapter.parse(adapter.fetch(day, version), version, day)
-                # BSE's scrip code file names no ISIN. Its rows resolve through the listings the
-                # ISIN files of the days around it establish.
+                # BSE's scrip code file names no ISIN. Its rows resolve through the bars the ISIN
+                # files of the days around it stored.
                 if version == SCRIP:
                     rows = named_by_isin(rows, isins_by_scrip_code(connection, day))
                 lines = resolvable(adapter.normalize(rows))
@@ -109,8 +119,11 @@ def ingest(
                 )
                 continue
 
-            names = names_by_isin(rows, venue)
-            introduced = derive_instruments(bars, names)
+            # Every code on a scrip code day resolves to an instrument already stored, and the day is
+            # read after the days around it, so it leaves the names they wrote in place.
+            introduced = (
+                () if version == SCRIP else derive_instruments(bars, names_by_isin(rows, venue))
+            )
             unwritten = [item for item in introduced if named.get(item.isin) != item.name]
 
             # Every fact references the instrument master, so the identities a day introduces are

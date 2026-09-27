@@ -112,7 +112,7 @@ class BseScripRow(BseLegacyRow):
     """One row of the BSE bhavcopy that names the instrument by scrip code alone.
 
     The file carries neither an ISIN nor a trade date. The ISIN is resolved from the scrip code
-    through the listings, and the day is the one the file was asked for.
+    through the bars stored under it, and the day is the one the file was asked for.
     """
 
     isin: str = Field(default="", alias="ISIN_CODE")
