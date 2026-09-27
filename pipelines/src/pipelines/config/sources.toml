@@ -10,16 +10,41 @@ cache_policy = "permanent"
 owner_notes = """
 Serves a bare CSV to a plain client. No cookie or browser header required. The legacy file is
 served zipped, the plain CSV covering only about the last two years, and a day the venue holds
-nothing for is answered with the BSE home page under HTTP 200.
+nothing for is answered with the BSE home page under HTTP 200. Beside the legacy file naming
+instruments by ISIN, BSE serves one naming them by scrip code alone, EQddmmyy_CSV.ZIP.
 """
 
 # EQ_ISINCODE is served back to 8 December 2016, but the files for 8 and 9 December both carry
 # the prices of 28 November, so the first day read is 12 December. TRADING_DATE appears on 23 June
 # 2017, and a file without it is dated from the day it was asked for. The format runs to the
 # Sunday before the UDiFF cutover, so every calendar day has a parser.
+#
+# BSE answers EQ_ISINCODE for 13 December 2016 with its home page, and serves the file for 15 July
+# 2022 without 652 of its scrip codes, between 531784 and 541269, its lines run together where
+# they break off. Its scrip code file is complete on both days, and is read for them alone.
 [[source.schema_version]]
 version = "bse_legacy"
 effective_from = 2016-12-12
+effective_to = 2016-12-12
+
+[[source.schema_version]]
+version = "bse_scrip"
+effective_from = 2016-12-13
+effective_to = 2016-12-13
+
+[[source.schema_version]]
+version = "bse_legacy"
+effective_from = 2016-12-14
+effective_to = 2022-07-14
+
+[[source.schema_version]]
+version = "bse_scrip"
+effective_from = 2022-07-15
+effective_to = 2022-07-15
+
+[[source.schema_version]]
+version = "bse_legacy"
+effective_from = 2022-07-16
 effective_to = 2024-07-07
 
 [[source.schema_version]]

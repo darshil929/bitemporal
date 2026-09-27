@@ -9,15 +9,19 @@ from pipelines.sources.bhavcopy import BhavcopyRow, normalize
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import ThrottledClient
 from pipelines.sources.errors import NotPublished, UnknownSchemaVersion
-from pipelines.sources.legacy import parse_bse_legacy
+from pipelines.sources.legacy import parse_bse_legacy, parse_bse_scrip
 from pipelines.sources.udiff import parse_udiff
 
 SOURCE_ID = "bse_bhavcopy_equity"
 VENUE = "BSE"
 CACHE_SUFFIX = ".csv"
+# The scrip code file for a day is held beside the ISIN file BSE served for the same day.
+SCRIP_CACHE_SUFFIX = ".scrip.csv"
 
 UDIFF = "udiff"
 LEGACY = "bse_legacy"
+SCRIP = "bse_scrip"
+ZIPPED = frozenset({LEGACY, SCRIP})
 
 
 class BseBhavcopy:
@@ -36,20 +40,23 @@ class BseBhavcopy:
             return f"{self._base_url}/BhavCopy_BSE_CM_0_0_0_{partition:%Y%m%d}_F_0000.CSV"
         if schema_version == LEGACY:
             return f"{self._base_url}/EQ_ISINCODE_{partition:%d%m%y}.zip"
+        if schema_version == SCRIP:
+            return f"{self._base_url}/EQ{partition:%d%m%y}_CSV.ZIP"
         raise UnknownSchemaVersion(f"{SOURCE_ID} has no url for {schema_version}")
 
     def fetch(self, partition: date, schema_version: str = UDIFF) -> bytes:
         key = partition.isoformat()
-        cached = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX)
+        suffix = SCRIP_CACHE_SUFFIX if schema_version == SCRIP else CACHE_SUFFIX
+        cached = self._cache.read(SOURCE_ID, key, suffix)
         if cached is not None:
             return cached
 
         url = self.url_for(partition, schema_version)
         payload = self._client.get(url)
         reject_error_page(payload, url)
-        if schema_version == LEGACY:
+        if schema_version in ZIPPED:
             payload = extract_csv(payload)
-        self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)
+        self._cache.write(SOURCE_ID, key, suffix, payload)
         return payload
 
     def parse(
@@ -59,6 +66,8 @@ class BseBhavcopy:
             return parse_udiff(payload)
         if schema_version == LEGACY:
             return parse_bse_legacy(payload, partition)
+        if schema_version == SCRIP:
+            return parse_bse_scrip(payload, partition)
         raise UnknownSchemaVersion(f"{SOURCE_ID} has no parser for {schema_version}")
 
     def normalize(self, records: Sequence[BhavcopyRow]) -> Sequence[PriceBar]:
