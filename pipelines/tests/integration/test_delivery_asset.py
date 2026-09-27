@@ -101,12 +101,25 @@ def database(migrated: Config, postgres_dsn: str) -> Iterator[PointedDatabase]:
                 " delisting_date, closure_reason) values (%s, 'NSE', %s, null, %s, %s, %s)",
                 (isin, TICKER, opened, closed, reason),
             )
+        for isin, day in ((EARLIER_ISIN, "2026-08-13"), (CURRENT_ISIN, TRADE_DATE)):
+            open_.execute(
+                "insert into price_daily (isin, venue, trade_date, as_of_date, open, high, low,"
+                " close, volume, local_symbol) values (%s, 'NSE', %s, %s, 182.28, 193.00,"
+                " 182.00, 190.90, 219809, %s)",
+                (isin, day, day, TICKER),
+            )
         open_.commit()
 
     yield PointedDatabase(dsn=postgres_dsn)
 
     with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
-        for table in ("delivery_daily", "ingestion_log", "listing", "instrument_master"):
+        for table in (
+            "delivery_daily",
+            "price_daily",
+            "ingestion_log",
+            "listing",
+            "instrument_master",
+        ):
             open_.execute(f"delete from {table}")
         open_.commit()
 
@@ -154,6 +167,25 @@ def test_a_row_naming_no_listing_that_day_is_left_out(
 
     assert result.metadata["written"] == 1
     assert rows(postgres_dsn, "select count(*) from delivery_daily")[0][0] == 1
+
+
+def test_a_row_for_an_instrument_without_a_bar_that_day_is_left_out(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """The ticker's listing is in force on the 15th, a Saturday on which it has no bar."""
+    deliveries = RecordedDeliveries({"NSE": {date(2026, 8, 15): nse_day("15-Aug-2026", 231)}})
+
+    result = ingest_delivery(
+        build_asset_context(partition_key="2026-08-15"), "NSE", database, deliveries
+    )
+
+    logged = rows(
+        postgres_dsn,
+        "select outcome, row_count from ingestion_log where source_id = 'nse_delivery'",
+    )
+    assert result.metadata["unpriced"] == 1
+    assert result.metadata["written"] == 0
+    assert logged == [("succeeded", 0)]
 
 
 def test_a_day_the_venue_published_no_delivery_for_is_recorded(
