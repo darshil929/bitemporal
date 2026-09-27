@@ -486,3 +486,35 @@ def retire_listings(connection: psycopg.Connection, listings: Sequence[ListingRe
         )
         logger.info("listing stretches no longer derived removed", extra={"stretches": len(stale)})
     return len(stale)
+
+
+# Every BSE listing stretch with the scrip code it was listed under.
+SCRIP_STRETCHES = """
+select scrip_code, isin, listing_date, delisting_date
+from listing
+where exchange = 'BSE' and scrip_code is not null
+"""
+
+
+def isins_by_scrip_code(connection: psycopg.Connection, day: date) -> dict[str, str]:
+    """The ISIN each BSE scrip code names on a day.
+
+    The stretch in force on the day names it. Otherwise the stretch under the code nearest the day
+    does, a listing opening on the first day inside the recorded window rather than the day the
+    instrument listed. A code whose nearest stretches lie equally far either side and name different
+    ISINs names none.
+    """
+    nearest: dict[str, tuple[int, set[str]]] = {}
+    for code, isin, first, last in connection.execute(SCRIP_STRETCHES):
+        if day < first:
+            distance = (first - day).days
+        elif last is not None and last < day:
+            distance = (day - last).days
+        else:
+            distance = 0
+        held = nearest.get(code)
+        if held is None or distance < held[0]:
+            nearest[code] = (distance, {isin})
+        elif distance == held[0]:
+            held[1].add(isin)
+    return {code: isins.pop() for code, (_, isins) in nearest.items() if len(isins) == 1}

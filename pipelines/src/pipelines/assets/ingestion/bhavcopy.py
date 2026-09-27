@@ -19,10 +19,17 @@ from dagster import (
 )
 
 from pipelines.facts import persist_bars, record_ingestion
-from pipelines.identity import derive_instruments, persist_identity, resolvable
+from pipelines.identity import (
+    derive_instruments,
+    isins_by_scrip_code,
+    persist_identity,
+    resolvable,
+)
 from pipelines.resources import Bhavcopies, Database
 from pipelines.sources.bhavcopy import names_by_isin, ordinary_lines
+from pipelines.sources.bse.bhavcopy import SCRIP
 from pipelines.sources.errors import NotPublished, SourceError
+from pipelines.sources.legacy import named_by_isin
 
 GROUP = "ingestion"
 
@@ -66,6 +73,10 @@ def ingest(
 
             try:
                 rows = adapter.parse(adapter.fetch(day, version), version, day)
+                # BSE's scrip code file names no ISIN. Its rows resolve through the listings the
+                # ISIN files of the days around it establish.
+                if version == SCRIP:
+                    rows = named_by_isin(rows, isins_by_scrip_code(connection, day))
                 lines = resolvable(adapter.normalize(rows))
                 bars = ordinary_lines(lines)
             except NotPublished as absence:

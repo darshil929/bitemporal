@@ -2,6 +2,7 @@
 
 import csv
 import io
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
@@ -48,7 +49,7 @@ class BseLegacyRow(BhavcopyRow):
     """One row of the BSE bhavcopy that carries an ISIN column.
 
     BSE published two legacy files per day. Only this one names the instrument by ISIN; the
-    other identifies it by scrip code alone and cannot be joined without the instrument master.
+    other identifies it by scrip code alone, and is read where this one is not served whole.
 
     The format carries no ticker, so a bar reports the scrip code as the venue-local symbol. BSE
     began publishing a ticker with the UDiFF cutover.
@@ -105,6 +106,16 @@ class BseLegacyRow(BhavcopyRow):
             turnover=self.turnover,
             trade_count=self.trade_count,
         )
+
+
+class BseScripRow(BseLegacyRow):
+    """One row of the BSE bhavcopy that names the instrument by scrip code alone.
+
+    The file carries neither an ISIN nor a trade date. The ISIN is resolved from the scrip code
+    through the listings, and the day is the one the file was asked for.
+    """
+
+    isin: str = Field(default="", alias="ISIN_CODE")
 
 
 class NseLegacyRow(BhavcopyRow):
@@ -166,6 +177,7 @@ BSE_LEGACY_COLUMNS = frozenset(
 # does now, so the day the file was asked for supplies what it does not carry.
 BSE_DATED_COLUMN = "TRADING_DATE"
 BSE_UNDATED_COLUMNS = BSE_LEGACY_COLUMNS - {BSE_DATED_COLUMN}
+BSE_SCRIP_COLUMNS = BSE_UNDATED_COLUMNS - {"ISIN_CODE"}
 NSE_LEGACY_COLUMNS = frozenset(
     field.alias for field in NseLegacyRow.model_fields.values() if field.alias
 )
@@ -201,6 +213,32 @@ def parse_bse_legacy(payload: bytes, partition: date | None = None) -> tuple[Bse
             raise WrongDay(f"bse legacy bhavcopy for {partition} describes {sorted(served)[:3]}")
 
     return parsed
+
+
+def parse_bse_scrip(payload: bytes, partition: date | None = None) -> tuple[BseScripRow, ...]:
+    """Read a BSE scrip code bhavcopy, every row dated from the day it was asked for."""
+    if partition is None:
+        raise SchemaDrift(f"bse scrip bhavcopy is missing ['{BSE_DATED_COLUMN}']")
+    reader = _read(payload, BSE_SCRIP_COLUMNS, "bse scrip")
+    return validated(
+        BseScripRow, ({**row, BSE_DATED_COLUMN: partition} for row in reader), "bse scrip"
+    )
+
+
+def named_by_isin(
+    rows: Sequence[BhavcopyRow], isin_for_code: Mapping[str, str]
+) -> tuple[BhavcopyRow, ...]:
+    """Each scrip code row with the ISIN its code resolves to, left blank where it resolves to none.
+
+    A blank ISIN is how a venue's own file marks a row naming no instrument, and ingestion counts
+    such a row and leaves it out.
+    """
+    return tuple(
+        row.model_copy(update={"isin": isin_for_code.get(row.scrip_code, "")})
+        if isinstance(row, BseScripRow)
+        else row
+        for row in rows
+    )
 
 
 def parse_nse_legacy(payload: bytes) -> tuple[NseLegacyRow, ...]:

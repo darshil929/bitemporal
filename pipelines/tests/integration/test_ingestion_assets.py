@@ -13,6 +13,7 @@ from dagster import PartitionKeyRange, build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.bhavcopy import ingest
+from pipelines.identity import isins_by_scrip_code
 from pipelines.resources import Bhavcopies
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.errors import MalformedRow, NotPublished
@@ -137,6 +138,87 @@ def test_an_isin_on_two_lines_is_stored_from_its_ordinary_line(
     assert stored == [("530343", "GENUSPOWER", 112_827)]
     assert named == [("GENUS POWER INFRASTRUCTURES LT",)]
     assert result.metadata["secondary_lines"] == 1
+
+
+SHORT_DAY = date(2022, 7, 15)
+
+
+def listed(dsn: str, stretches: list[tuple[str, str, str, str | None]]) -> None:
+    """BSE listing stretches as (scrip code, ISIN, first day, last day)."""
+    with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        for code, isin, first, last in stretches:
+            open_.execute(
+                "insert into instrument_master (isin, name, country, instrument_type)"
+                " values (%s, %s, 'IN', 'equity') on conflict do nothing",
+                (isin, code),
+            )
+            open_.execute(
+                "insert into listing (isin, exchange, local_symbol, scrip_code, listing_date,"
+                " delisting_date, closure_reason) values (%s, 'BSE', %s, %s, %s, %s, %s)",
+                (isin, code, code, first, last, "renamed" if last else None),
+            )
+        open_.commit()
+
+
+def test_a_scrip_code_names_the_isin_of_its_nearest_stretch(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A stretch opens on the first day inside the recorded window, not the day the code listed.
+
+    A code whose stretches lie a day either side of the day and name different ISINs names none.
+    """
+    listed(
+        postgres_dsn,
+        [
+            ("531780", "INE229G01022", "2016-12-19", None),
+            ("541233", "INE970X01018", "2022-07-18", None),
+            ("599999", "INE999Z01011", "2018-04-25", "2022-07-14"),
+            ("599999", "INE999Z01029", "2022-07-16", None),
+            ("541276", "INE626Z01011", "2018-04-25", "2023-06-02"),
+            ("541276", "INE626Z01029", "2023-06-05", None),
+        ],
+    )
+
+    with psycopg.connect(
+        postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public"
+    ) as connection:
+        named = isins_by_scrip_code(connection, SHORT_DAY)
+
+    assert named == {
+        "531780": "INE229G01022",
+        "541233": "INE970X01018",
+        "541276": "INE626Z01011",
+    }
+
+
+def test_a_day_read_from_the_scrip_code_file_resolves_through_the_listings(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """BSE's ISIN file for 15 July 2022 lacks 652 scrip codes, and its scrip code file lacks none."""
+    listed(
+        postgres_dsn,
+        [
+            ("531780", "INE229G01022", "2016-12-19", None),
+            ("541233", "INE970X01018", "2018-04-09", None),
+            ("541269", "INE783X01023", "2018-04-25", None),
+            ("541276", "INE626Z01011", "2018-04-25", "2023-06-02"),
+            ("541276", "INE626Z01029", "2023-06-05", None),
+        ],
+    )
+    bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20220715_scrip.zip")})
+
+    result = ingest(build_asset_context(partition_key="2022-07-15"), "BSE", database, bhavcopies)
+
+    stored = rows(postgres_dsn, "select scrip_code, isin from price_daily order by scrip_code")
+    logged = rows(postgres_dsn, "select schema_version from ingestion_log")
+    assert stored == [
+        ("531780", "INE229G01022"),
+        ("541233", "INE970X01018"),
+        ("541269", "INE783X01023"),
+        ("541276", "INE626Z01011"),
+    ]
+    assert logged == [("bse_scrip",)]
+    assert result.metadata["bars"] == 4
 
 
 def test_a_day_the_venue_never_published_stores_no_bars(
