@@ -6,6 +6,7 @@ covers years of rows, and the full universe holds tens of millions.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -156,6 +157,26 @@ group by held.trade_date
 order by held.trade_date
 """
 
+# A day whose venues' latest verdicts count different diverging instruments. Every venue's verdict
+# counts divergence over all the day's bars, so the counts differ only where the verdicts were drawn
+# from different bars, one venue judged before another venue's bars arrived or changed.
+DAYS_WHOSE_VENUES_DISAGREE = """
+select trade_date
+from (
+    select distinct on (venue, trade_date) venue, trade_date, divergent_instruments
+    from trading_day
+    where as_of_date <= %(as_of)s
+    order by venue, trade_date, as_of_date desc
+) as latest
+group by trade_date
+having count(distinct divergent_instruments) > 1
+order by trade_date
+"""
+
+VENUE_DAYS_JUDGED = """
+select distinct venue, trade_date from trading_day where trade_date = any(%(days)s)
+"""
+
 # How many instruments a venue usually lists, against which a truncated file is recognised.
 TYPICAL_BARS = """
 select venue, percentile_disc(0.5) within group (order by bars) as typical
@@ -185,6 +206,21 @@ def days_whose_bars_changed(
     connection: psycopg.Connection, as_of: date = FAR_FUTURE
 ) -> tuple[date, ...]:
     return tuple(row[0] for row in connection.execute(DAYS_WHOSE_BARS_CHANGED, {"as_of": as_of}))
+
+
+def days_whose_venues_disagree(
+    connection: psycopg.Connection, as_of: date = FAR_FUTURE
+) -> tuple[date, ...]:
+    return tuple(row[0] for row in connection.execute(DAYS_WHOSE_VENUES_DISAGREE, {"as_of": as_of}))
+
+
+def venue_days_judged(
+    connection: psycopg.Connection, days: Sequence[date]
+) -> set[tuple[str, date]]:
+    """The venue days among these that already carry a verdict."""
+    return {
+        (venue, day) for venue, day in connection.execute(VENUE_DAYS_JUDGED, {"days": list(days)})
+    }
 
 
 def typical_bars(connection: psycopg.Connection, as_of: date = FAR_FUTURE) -> dict[str, int]:

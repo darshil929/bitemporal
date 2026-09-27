@@ -145,10 +145,14 @@ def validate_day(
     return verdict
 
 
-def persist_verdicts(connection: psycopg.Connection, verdicts: Sequence[DayVerdict]) -> None:
-    """Record each verdict, leaving one already written for the same as-of date in place."""
+def persist_verdicts(connection: psycopg.Connection, verdicts: Sequence[DayVerdict]) -> int:
+    """Record each verdict, leaving one already written for the same as-of date in place.
+
+    Returns how many were written.
+    """
+    recorded = 0
     for verdict in verdicts:
-        connection.execute(
+        inserted = connection.execute(
             "insert into trading_day"
             " (venue, trade_date, as_of_date, is_complete, bars, divergent_instruments, detail)"
             " values (%s, %s, %s, %s, %s, %s, %s)"
@@ -163,6 +167,11 @@ def persist_verdicts(connection: psycopg.Connection, verdicts: Sequence[DayVerdi
                 verdict.detail,
             ),
         )
+        recorded += inserted.rowcount
 
     incomplete = sum(1 for verdict in verdicts if not verdict.is_complete)
-    logger.info("trading days recorded", extra={"days": len(verdicts), "incomplete": incomplete})
+    logger.info(
+        "trading days recorded",
+        extra={"days": len(verdicts), "recorded": recorded, "incomplete": incomplete},
+    )
+    return recorded

@@ -10,10 +10,11 @@ from alembic.config import Config
 from dagster import build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
-from pipelines.assets.ingestion.completeness import trading_day_completeness
+from pipelines.assets.ingestion.completeness import record_verdicts, trading_day_completeness
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
 from pipelines.checks.completeness import every_stored_day_has_a_verdict
 from pipelines.facts import persist_bars
+from pipelines.history import days_awaiting_a_verdict
 from pipelines.models.market import PriceBar
 
 FIXTURE_SCHEMA = "fixture"
@@ -76,6 +77,14 @@ def verdicts(database: PointedDatabase) -> list[tuple]:
         return connection.execute(
             "select venue, is_complete, divergent_instruments, detail from trading_day"
             " order by venue"
+        ).fetchall()
+
+
+def verdict_rows(database: PointedDatabase) -> list[tuple]:
+    with database.connect() as connection:
+        return connection.execute(
+            "select venue, as_of_date, is_complete, divergent_instruments from trading_day"
+            " order by venue, as_of_date"
         ).fetchall()
 
 
@@ -157,3 +166,87 @@ def test_a_day_whose_bars_grew_after_its_verdict_is_judged_again_on_that_day(
         ("NSE", date(2026, 7, 31), True, 1),
         ("NSE", judged_on, False, 2),
     ]
+
+
+def test_a_venue_judged_before_the_other_venue_arrived_is_judged_again(
+    database: PointedDatabase,
+) -> None:
+    """NSE's day, judged alone, is judged again on the day BSE's bars are.
+
+    The venues close at 1,900 and 950, as an action handled at one venue alone leaves them. NSE's
+    first verdict stands for the dates before, and BSE's first is dated the day it describes.
+    """
+    store(database, [bar("NSE", "950.00")])
+    trading_day_completeness(build_asset_context(), database)
+
+    store(database, [bar("BSE", "1900.00")])
+    result = trading_day_completeness(build_asset_context(), database)
+
+    judged_on = datetime.now(VENUE_TIME).date()
+    assert verdict_rows(database) == [
+        ("BSE", date(2026, 7, 31), False, 1),
+        ("NSE", date(2026, 7, 31), True, 0),
+        ("NSE", judged_on, False, 1),
+    ]
+    assert result.metadata["venue_days_recorded"] == 2
+
+
+def test_a_restatement_refused_on_the_trade_date_is_recorded_by_a_later_run(
+    database: PointedDatabase,
+) -> None:
+    """A venue and day hold one verdict per as-of date, so NSE's day judged again on the day it
+    describes waits for the next run on a later date, which records it.
+    """
+    trade_date, next_day = date(2026, 7, 31), date(2026, 8, 1)
+    store(database, [bar("NSE", "950.00")])
+    with database.connect() as connection:
+        record_verdicts(connection, trade_date)
+        connection.commit()
+
+    store(database, [bar("BSE", "1900.00")])
+    with database.connect() as connection:
+        same_day = record_verdicts(connection, trade_date)
+        connection.commit()
+        later = record_verdicts(connection, next_day)
+        connection.commit()
+        settled = record_verdicts(connection, date(2026, 8, 2))
+        connection.commit()
+
+    assert same_day["venue_days_recorded"] == 1
+    assert later["days_venues_disagreed"] == 1
+    assert settled["venue_days_validated"] == 0
+    assert verdict_rows(database) == [
+        ("BSE", trade_date, False, 1),
+        ("BSE", next_day, False, 1),
+        ("NSE", trade_date, True, 0),
+        ("NSE", next_day, False, 1),
+    ]
+
+
+def test_a_bar_corrected_after_its_verdict_is_judged_again_and_recorded(
+    database: PointedDatabase,
+) -> None:
+    """A second version of NSE's bar, knowable a day later, is judged on the day it is judged.
+
+    Recorded on the trade date, the verdict would collide with the one standing and the day would
+    await a verdict at every run.
+    """
+    store(database, [bar("BSE", "1900.00"), bar("NSE", "1900.40")])
+    trading_day_completeness(build_asset_context(), database)
+
+    corrected = bar("NSE", "950.00").model_copy(update={"as_of_date": date(2026, 8, 1)})
+    store(database, [corrected])
+    trading_day_completeness(build_asset_context(), database)
+    again = trading_day_completeness(build_asset_context(), database)
+
+    judged_on = datetime.now(VENUE_TIME).date()
+    with database.connect() as connection:
+        awaiting = days_awaiting_a_verdict(connection)
+    assert verdict_rows(database) == [
+        ("BSE", date(2026, 7, 31), True, 0),
+        ("BSE", judged_on, False, 1),
+        ("NSE", date(2026, 7, 31), True, 0),
+        ("NSE", judged_on, False, 1),
+    ]
+    assert awaiting == ()
+    assert again.metadata["venue_days_validated"] == 0
