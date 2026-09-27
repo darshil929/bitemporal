@@ -70,6 +70,15 @@ def test_nse_delivery_reads_the_position_file_until_the_full_file_begins(
     assert definition.version_for(date(2019, 10, 1)) == "sec_bhavdata_full"
 
 
+def test_a_source_covers_the_days_a_format_is_registered_for(
+    definitions: dict[str, SourceDefinition],
+) -> None:
+    """BSE's ISIN file is read from 12 December 2016, and its delivery file from 2010."""
+    assert not definitions["bse_bhavcopy_equity"].covers(date(2016, 12, 11))
+    assert definitions["bse_bhavcopy_equity"].covers(date(2016, 12, 12))
+    assert definitions["bse_delivery"].covers(date(2016, 12, 11))
+
+
 def test_a_date_before_any_registered_version_is_an_error(
     definitions: dict[str, SourceDefinition],
 ) -> None:

@@ -19,11 +19,10 @@ from dagster import (
     AssetKey,
     BackfillPolicy,
     MaterializeResult,
-    TimeWindowPartitionsDefinition,
     asset,
 )
 
-from pipelines.assets.ingestion.bhavcopy import EVERY_DAY, calendar_days
+from pipelines.assets.ingestion.calendar import INGESTION_DAYS, calendar_days
 from pipelines.facts import persist_delivery, record_ingestion
 from pipelines.resources import Bhavcopies, Database, Deliveries
 from pipelines.sources.delivery import DeliveryRow, held_to
@@ -40,22 +39,6 @@ where exchange = %s
   and listing_date <= %s
   and (delisting_date is null or %s <= delisting_date)
 """
-
-
-def delivery_days(venue: str) -> TimeWindowPartitionsDefinition:
-    """Days from the later of the day delivery is served and the day prices begin.
-
-    A delivery figure resolves through a listing, and a listing exists only where prices do.
-    """
-    served = Deliveries().definition(venue).schema_version
-    priced = Bhavcopies().definition(venue).schema_version
-    first = max(
-        min(version.effective_from for version in served),
-        min(version.effective_from for version in priced),
-    )
-    return TimeWindowPartitionsDefinition(
-        cron_schedule=EVERY_DAY, start=f"{first:%Y-%m-%d}", fmt="%Y-%m-%d"
-    )
 
 
 # The price log's latest outcome for a day. A day with no prices published held no session.
@@ -118,12 +101,18 @@ def ingest_delivery(
     window = context.partition_key_range
     definition = deliveries.definition(venue)
     adapter = deliveries.adapter(venue)
-    price_source = Bhavcopies().definition(venue).source_id
+    prices = Bhavcopies().definition(venue)
+    price_source = prices.source_id
 
     published = unpublished = failed = written = unpriced = 0
+    days = list(calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)))
+    # A delivery figure is stored only beside a bar, so a day the venue's prices are not registered
+    # for is outside delivery's coverage too, however far back the delivery file reaches.
+    covered = [day for day in days if definition.covers(day) and prices.covers(day)]
+    outside_coverage = len(days) - len(covered)
 
     with database.connect() as connection:
-        for day in calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)):
+        for day in covered:
             partition = day.isoformat()
             version = definition.version_for(day)
 
@@ -193,6 +182,7 @@ def ingest_delivery(
             "venue": venue,
             "published": published,
             "failed": failed,
+            "outside_coverage": outside_coverage,
             "written": written,
             "unpriced": unpriced,
         },
@@ -205,6 +195,7 @@ def ingest_delivery(
             "published": published,
             "unpublished": unpublished,
             "failed": failed,
+            "outside_coverage": outside_coverage,
             "written": written,
             "unpriced": unpriced,
         }
@@ -212,7 +203,7 @@ def ingest_delivery(
 
 
 @asset(
-    partitions_def=delivery_days("BSE"),
+    partitions_def=INGESTION_DAYS,
     backfill_policy=BackfillPolicy.single_run(),
     deps=[AssetKey("instrument_identity")],
     group_name=GROUP,
@@ -225,7 +216,7 @@ def bse_delivery(
 
 
 @asset(
-    partitions_def=delivery_days("NSE"),
+    partitions_def=INGESTION_DAYS,
     backfill_policy=BackfillPolicy.single_run(),
     deps=[AssetKey("instrument_identity")],
     group_name=GROUP,

@@ -188,6 +188,22 @@ def test_a_row_for_an_instrument_without_a_bar_that_day_is_left_out(
     assert logged == [("succeeded", 0)]
 
 
+def test_a_day_the_venues_prices_do_not_cover_is_passed_over_without_a_request(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """BSE's delivery file is registered from 2010, and its prices from 12 December 2016."""
+    deliveries = RecordedDeliveries({"BSE": None})
+    window = PartitionKeyRange(start="2016-12-10", end="2016-12-11")
+
+    result = ingest_delivery(
+        build_asset_context(partition_key_range=window), "BSE", database, deliveries
+    )
+
+    assert deliveries.asked == []
+    assert result.metadata["outside_coverage"] == 2
+    assert rows(postgres_dsn, "select count(*) from ingestion_log")[0][0] == 0
+
+
 def test_a_day_the_venue_published_no_delivery_for_is_recorded(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:

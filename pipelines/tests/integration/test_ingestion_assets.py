@@ -40,6 +40,7 @@ class RecordedBhavcopies:
         self._payloads = payloads
         self._unreadable = unreadable or set()
         self._real = Bhavcopies()
+        self.asked: list[date] = []
 
     def definition(self, venue: str) -> SourceDefinition:
         return self._real.definition(venue)
@@ -49,6 +50,7 @@ class RecordedBhavcopies:
         recorded = self._payloads[venue]
 
         def fetch(partition: date, schema_version: str) -> bytes:
+            self.asked.append(partition)
             if partition in self._unreadable:
                 raise MalformedRow(f"{venue} published a file for {partition} that is not bars")
             served = recorded.get(partition) if isinstance(recorded, dict) else recorded
@@ -287,6 +289,24 @@ def test_one_run_into_an_empty_database_reads_a_scrip_code_day(
         ("2016-12-14", "bse_legacy", "succeeded"),
     ]
     assert result.metadata["failed"] == 0
+
+
+def test_a_day_before_the_venue_is_covered_is_passed_over_without_a_request(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """Every ingestion asset shares one calendar from 2011, and BSE is read from 12 December 2016."""
+    bhavcopies = RecordedBhavcopies(
+        {"BSE": {date(2016, 12, 12): payload("bse_bhavcopy_equity", "20161212_legacy.csv")}}
+    )
+    window = PartitionKeyRange(start="2016-12-10", end="2016-12-12")
+
+    result = ingest(build_asset_context(partition_key_range=window), "BSE", database, bhavcopies)
+
+    logged = rows(postgres_dsn, "select partition_key, outcome from ingestion_log")
+    assert bhavcopies.asked == [date(2016, 12, 12)]
+    assert logged == [("2016-12-12", "succeeded")]
+    assert result.metadata["outside_coverage"] == 2
+    assert result.metadata["published"] == 1
 
 
 def test_a_day_the_venue_never_published_stores_no_bars(
