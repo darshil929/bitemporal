@@ -12,6 +12,7 @@ from datetime import date
 
 from dagster import (
     AssetExecutionContext,
+    AssetKey,
     BackfillPolicy,
     MaterializeResult,
     asset,
@@ -177,6 +178,7 @@ def ingest(
 @asset(
     partitions_def=INGESTION_DAYS,
     backfill_policy=BackfillPolicy.single_run(),
+    deps=[AssetKey("source_registry")],
     group_name=GROUP,
     description="BSE equity bars for each trading day in the run.",
 )
@@ -189,6 +191,7 @@ def bse_bhavcopy(
 @asset(
     partitions_def=INGESTION_DAYS,
     backfill_policy=BackfillPolicy.single_run(),
+    deps=[AssetKey("source_registry")],
     group_name=GROUP,
     description="NSE equity bars for each trading day in the run.",
 )

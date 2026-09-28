@@ -88,3 +88,10 @@ def test_a_run_builds_the_models_after_every_table_they_read() -> None:
 
     waits_for = plan.get_step_by_key("dbt_models").get_execution_dependency_keys()
     assert waits_for == {f"market__{table}" for table in SOURCE_WRITERS}
+
+
+def test_the_registry_is_written_before_either_venues_prices() -> None:
+    graph = defs.resolve_asset_graph()
+
+    for venue in ("bse_bhavcopy", "nse_bhavcopy"):
+        assert AssetKey("source_registry") in graph.get(AssetKey(venue)).parent_keys
