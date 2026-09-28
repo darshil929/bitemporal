@@ -2,6 +2,7 @@
 
 import logging
 import re
+import zlib
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -456,6 +457,17 @@ def persist_identity(
             "successions": len(successions),
         },
     )
+
+
+# Both venues' price runs write instrument_master and price_daily. A chunk TimescaleDB creates for a
+# new range of days locks instrument_master for its foreign key while the other run can hold rows it
+# has just inserted there, each waiting on the other, so the runs write in turn.
+INSTRUMENT_WRITES = zlib.crc32(b"instrument_master")
+
+
+def hold_instrument_writes(connection: psycopg.Connection) -> None:
+    """Wait for the turn to write instruments and bars, held until the transaction ends."""
+    connection.execute("select pg_advisory_xact_lock(%s)", (INSTRUMENT_WRITES,))
 
 
 # Where both venues traded an instrument's latest day, BSE's name stands, so the name does not depend
