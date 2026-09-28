@@ -22,6 +22,7 @@ from pipelines.facts import persist_bars, record_ingestion
 from pipelines.identity import (
     derive_instruments,
     isins_by_scrip_code,
+    name_instruments,
     persist_identity,
     resolvable,
 )
@@ -56,9 +57,9 @@ def ingest(
     # A day outside every format the registry holds for the venue is passed over without a request.
     covered = [day for day in days if definition.covers(day)]
     outside_coverage = len(days) - len(covered)
-    # The same instruments appear on every day of a run, under the same names. A name already
-    # stored stands until the venue publishes a different one.
-    named: dict[str, str] = {}
+    # Each instrument the run reads, with the latest day it was read on and the name published that
+    # day. Names are written once the run's bars are stored, so the order of reading decides none.
+    read_names: dict[str, tuple[date, str]] = {}
 
     with database.connect() as connection:
         for day in reading_order(covered, definition):
@@ -103,18 +104,21 @@ def ingest(
                 )
                 continue
 
-            # Every code on a scrip code day resolves to an instrument already stored, and the day is
-            # read after the days around it, so it leaves the names they wrote in place.
-            introduced = (
-                () if version == SCRIP else derive_instruments(bars, names_by_isin(rows, venue))
-            )
-            unwritten = [item for item in introduced if named.get(item.isin) != item.name]
-
-            # Every fact references the instrument master, so the identities a day introduces are
-            # written first. Listings and the primary venue read the whole history and are derived
-            # downstream rather than one day at a time.
-            persist_identity(connection, unwritten, (), ())
-            named.update((item.isin, item.name) for item in unwritten)
+            # A scrip code day resolves every code to an instrument already stored and read on the
+            # days around it, so it neither introduces nor names one.
+            if version != SCRIP:
+                names = names_by_isin(rows, venue)
+                introduced = [
+                    item for item in derive_instruments(bars, names) if item.isin not in read_names
+                ]
+                # Every fact references the instrument master, so an instrument a day introduces
+                # is written before its bars, under that day's name. Listings and the primary venue
+                # read the whole history and are derived downstream rather than one day at a time.
+                persist_identity(connection, introduced, (), ())
+                for bar in bars:
+                    held = read_names.get(bar.isin)
+                    if held is None or day > held[0]:
+                        read_names[bar.isin] = (day, names.get(bar.isin, bar.isin))
             written += persist_bars(connection, bars)
             record_ingestion(
                 connection, definition.source_id, partition, version, "succeeded", len(bars)
@@ -125,6 +129,9 @@ def ingest(
             published += 1
             bars_read += len(bars)
             secondary_lines += len(lines) - len(bars)
+
+        renamed = name_instruments(connection, venue, read_names)
+        connection.commit()
 
     if failed and not published:
         raise SourceError(
@@ -143,6 +150,7 @@ def ingest(
             "outside_coverage": outside_coverage,
             "bars": bars_read,
             "secondary_lines": secondary_lines,
+            "renamed": renamed,
         },
     )
     return MaterializeResult(
@@ -157,7 +165,8 @@ def ingest(
             "bars": bars_read,
             "secondary_lines": secondary_lines,
             "written": written,
-            "instruments": len(named),
+            "instruments": len(read_names),
+            "renamed": renamed,
         }
     )
 
