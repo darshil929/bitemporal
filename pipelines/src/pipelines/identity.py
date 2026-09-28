@@ -3,7 +3,7 @@
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -402,7 +402,7 @@ def persist_identity(
     for instrument in instruments:
         connection.execute(
             "insert into instrument_master (isin, name, country, instrument_type)"
-            " values (%s, %s, %s, %s) on conflict (isin) do update set name = excluded.name",
+            " values (%s, %s, %s, %s) on conflict (isin) do nothing",
             (instrument.isin, instrument.name, instrument.country, instrument.instrument_type),
         )
 
@@ -456,6 +456,49 @@ def persist_identity(
             "successions": len(successions),
         },
     )
+
+
+# Where both venues traded an instrument's latest day, BSE's name stands, so the name does not depend
+# on which venue is read last. NSE's file named an instrument by its ticker alone before the UDiFF
+# cutover, where BSE's carried a name.
+NAMING_VENUE = "BSE"
+
+# Each instrument's latest stored day at any venue, and its latest at the other venues.
+LATEST_STORED_DAYS = """
+select isin, max(trade_date), max(trade_date) filter (where venue <> %(venue)s)
+from price_daily
+where isin = any(%(isins)s)
+group by isin
+"""
+
+
+def name_instruments(
+    connection: psycopg.Connection, venue: str, read: Mapping[str, tuple[date, str]]
+) -> int:
+    """Name each instrument as a venue published it on the latest day the instrument traded.
+
+    `read` holds, for each instrument a run read at the venue, the latest day it was read on and
+    the name published that day. The name is written where no later bar of the instrument is
+    stored at any venue and, where another venue traded that day too, by the naming venue alone,
+    so the name that stands does not depend on the order days or venues are read in. Returns how
+    many names changed.
+    """
+    latest = {
+        isin: (last, elsewhere)
+        for isin, last, elsewhere in connection.execute(
+            LATEST_STORED_DAYS, {"venue": venue, "isins": list(read)}
+        )
+    }
+    renamed = 0
+    for isin, (day, name) in read.items():
+        last, elsewhere = latest[isin]
+        if last > day or (venue != NAMING_VENUE and elsewhere == day):
+            continue
+        renamed += connection.execute(
+            "update instrument_master set name = %s where isin = %s and name is distinct from %s",
+            (name, isin, name),
+        ).rowcount
+    return renamed
 
 
 def retire_listings(connection: psycopg.Connection, listings: Sequence[ListingRecord]) -> int:

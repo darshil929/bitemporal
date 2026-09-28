@@ -22,6 +22,8 @@ from pipelines.sources.registry import SourceDefinition
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
 TRADE_DATE = "2026-08-14"
+ABB = "INE117A01022"
+ANSAL_PROPERTIES = "INE436A01026"
 
 
 class RecordedBhavcopies:
@@ -384,3 +386,64 @@ def test_a_day_the_venue_published_badly_costs_that_day_alone(
     assert result.metadata["published"] == 4
     assert result.metadata["failed"] == 1
     assert outcomes == {"succeeded": 4, "failed": 1}
+
+
+def name_of(dsn: str, isin: str) -> str:
+    with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        found = open_.execute(
+            "select name from instrument_master where isin = %s", (isin,)
+        ).fetchone()
+    assert found is not None
+    return str(found[0])
+
+
+def test_a_day_read_after_a_later_one_leaves_the_later_days_name(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A history bootstrap reads the recent years first and the older years in a second run.
+
+    BSE names ABB as ABB INDIA LIMITED on 14 August 2026 and as ABB LTD. on 15 January 2024.
+    """
+    recent = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20260814.csv")})
+    older = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20240115_legacy.csv.zip")})
+
+    ingest(build_asset_context(partition_key=TRADE_DATE), "BSE", database, recent)
+    result = ingest(build_asset_context(partition_key="2024-01-15"), "BSE", database, older)
+
+    assert name_of(postgres_dsn, ABB) == "ABB INDIA LIMITED"
+    assert result.metadata["renamed"] == 0
+
+
+@pytest.mark.parametrize("order", [("BSE", "NSE"), ("NSE", "BSE")])
+def test_bses_name_stands_where_both_venues_traded_the_latest_day(
+    database: PointedDatabase, postgres_dsn: str, order: tuple[str, str]
+) -> None:
+    """On 14 August 2026 BSE names Ansal Properties ANSAL PROPERTIES & INFRASTRUCT and NSE names it
+    ANSAL PROP & INFRA LTD.
+    """
+    bhavcopies = RecordedBhavcopies(
+        {
+            "BSE": payload("bse_bhavcopy_equity", "20260814.csv"),
+            "NSE": payload("nse_bhavcopy_equity", "20260814.csv.zip"),
+        }
+    )
+
+    for venue in order:
+        ingest(build_asset_context(partition_key=TRADE_DATE), venue, database, bhavcopies)
+
+    assert name_of(postgres_dsn, ANSAL_PROPERTIES) == "ANSAL PROPERTIES & INFRASTRUCT"
+
+
+def test_the_name_of_the_latest_day_at_either_venue_stands(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """NSE's day of 14 August 2026 is later than BSE's of 15 January 2024, which names Ansal
+    Properties ANSAL INFRAS.
+    """
+    nse = RecordedBhavcopies({"NSE": payload("nse_bhavcopy_equity", "20260814.csv.zip")})
+    bse = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20240115_legacy.csv.zip")})
+
+    ingest(build_asset_context(partition_key=TRADE_DATE), "NSE", database, nse)
+    ingest(build_asset_context(partition_key="2024-01-15"), "BSE", database, bse)
+
+    assert name_of(postgres_dsn, ANSAL_PROPERTIES) == "ANSAL PROP & INFRA LTD"
