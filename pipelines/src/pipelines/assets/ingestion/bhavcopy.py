@@ -1,8 +1,9 @@
 """One venue's published prices, stored as they were published.
 
 A partition is a calendar day, since both venues trade on the occasional weekend: a Diwali
-Muhurat, a Budget day or a special session. A day the venue did not publish stores no bars: the
-attempt is recorded rather than failing.
+Muhurat, a Budget day or a special session. A day the venue did not publish stores no bars, and
+neither does a day it published badly; each attempt is recorded, and the run carries on with the
+days it could read.
 
 A run covers a range of days, reading them through one throttled client and one venue session.
 """
@@ -135,11 +136,6 @@ def ingest(
         hold_instrument_writes(connection)
         renamed = name_instruments(connection, venue, read_names)
         connection.commit()
-
-    if failed and not published:
-        raise SourceError(
-            f"{venue} published no readable day between {window.start} and {window.end}"
-        )
 
     context.log.info(
         "bhavcopy ingested",

@@ -474,3 +474,25 @@ def test_a_venue_writes_its_day_only_in_its_turn(
     assert waited
     assert stored_while_waiting == 0
     assert rows(postgres_dsn, "select count(*) from price_daily")[0][0] > 0
+
+
+def test_a_run_whose_every_day_failed_finishes_and_counts_them(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A run carries on past a venue that served nothing readable, and records every day it tried.
+
+    Identity, delivery and the models read both venues, so a venue's run failing its step would
+    stop them for the other venue too.
+    """
+    bhavcopies = RecordedBhavcopies(
+        {"BSE": payload("bse_bhavcopy_equity", "20260814.csv")},
+        unreadable={date(2026, 8, 13), date(2026, 8, 14)},
+    )
+    window = PartitionKeyRange(start="2026-08-13", end=TRADE_DATE)
+
+    result = ingest(build_asset_context(partition_key_range=window), "BSE", database, bhavcopies)
+
+    logged = rows(postgres_dsn, "select outcome, count(*) from ingestion_log group by outcome")
+    assert result.metadata["failed"] == 2
+    assert result.metadata["published"] == 0
+    assert logged == [("failed", 2)]
