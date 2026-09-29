@@ -33,14 +33,10 @@ from pipelines.assets.ingestion.calendar import INGESTION_DAYS
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
 from pipelines.config.settings import DatabaseSettings
 from pipelines.definitions import defs
-from pipelines.jobs import BOOTSTRAP, FLOW_TAG, SYNC
+from pipelines.jobs import BOOTSTRAP, FLOW_TAG, RANGE_END, RANGE_START, SYNC, sync_window
 from pipelines.resources import Database
 
-RANGE_START = "dagster/asset_partition_range_start"
-RANGE_END = "dagster/asset_partition_range_end"
-
 RECENT = timedelta(days=730)
-SYNC_DAYS = 7
 
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
@@ -81,10 +77,6 @@ def bootstrap_windows(today: date) -> list[tuple[date, date]]:
     """The two most recent years ending today, then every earlier day of the calendar."""
     split = today - RECENT
     return [(split + timedelta(days=1), today), (INGESTION_DAYS.start.date(), split)]
-
-
-def sync_window(day: date) -> tuple[date, date]:
-    return day - timedelta(days=SYNC_DAYS - 1), day
 
 
 def refuse_unless_ready(connection: psycopg.Connection, instance: DagsterInstance) -> None:
