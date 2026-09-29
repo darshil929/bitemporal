@@ -6,7 +6,7 @@ force on its own trade date rather than through whichever ISIN the identifier ca
 
 NSE answers some days with the file of another day, so a file is held to the day it was asked
 for. On a day the venue traded, a file that does not answer is followed by the other file NSE
-publishes the same figures in.
+publishes the same figures in. A day no file answers for is recorded, and the run carries on.
 """
 
 from collections.abc import Sequence
@@ -170,11 +170,6 @@ def ingest_delivery(
             )
             connection.commit()
             published += 1
-
-    if failed and not published:
-        raise SourceError(
-            f"{venue} published no readable delivery between {window.start} and {window.end}"
-        )
 
     context.log.info(
         "delivery ingested",
