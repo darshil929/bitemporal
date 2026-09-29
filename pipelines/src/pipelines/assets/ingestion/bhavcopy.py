@@ -21,6 +21,7 @@ from pipelines.assets.ingestion.calendar import INGESTION_DAYS, calendar_days
 from pipelines.facts import persist_bars, record_ingestion
 from pipelines.identity import (
     derive_instruments,
+    hold_instrument_writes,
     isins_by_scrip_code,
     name_instruments,
     persist_identity,
@@ -104,6 +105,7 @@ def ingest(
                 )
                 continue
 
+            hold_instrument_writes(connection)
             # A scrip code day resolves every code to an instrument already stored and read on the
             # days around it, so it neither introduces nor names one.
             if version != SCRIP:
@@ -130,6 +132,7 @@ def ingest(
             bars_read += len(bars)
             secondary_lines += len(lines) - len(bars)
 
+        hold_instrument_writes(connection)
         renamed = name_instruments(connection, venue, read_names)
         connection.commit()
 

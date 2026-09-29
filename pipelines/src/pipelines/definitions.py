@@ -8,11 +8,11 @@ from dagster import (
 from dagster_dbt import DbtCliResource
 
 from pipelines import assets, checks
-from pipelines.assets.transform.dbt import dbt_project, source_assets
+from pipelines.assets.transform.dbt import dbt_project, table_assets
 from pipelines.resources import Bhavcopies, CorporateActions, Database, Deliveries, NseActions
 
 defs = Definitions(
-    assets=[*load_assets_from_package_module(assets), *source_assets()],
+    assets=[*load_assets_from_package_module(assets), *table_assets()],
     asset_checks=load_asset_checks_from_package_module(checks),
     resources={
         "database": Database(),

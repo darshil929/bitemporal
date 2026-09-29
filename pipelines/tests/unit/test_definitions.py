@@ -4,8 +4,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from dagster import AssetKey, AssetSelection, Definitions, define_asset_job
+from dagster._core.execution.api import create_execution_plan
 
 from pipelines.assets.ingestion.calendar import INGESTION_DAYS
+from pipelines.assets.transform.dbt import SOURCE_WRITERS
 from pipelines.definitions import defs
 
 INGESTION = ("bse_bhavcopy", "nse_bhavcopy", "bse_delivery", "nse_delivery")
@@ -76,3 +78,13 @@ def test_the_calendar_runs_from_the_first_priced_day_to_today_in_india() -> None
 def test_every_asset_finds_the_resources_it_asks_for() -> None:
     """A missing resource fails here rather than on the first partition of a backfill."""
     Definitions.validate_loadable(defs)
+
+
+def test_a_run_builds_the_models_after_every_table_they_read() -> None:
+    """A table held only as a source is left out of a job, which then starts the models first."""
+    job = define_asset_job("every_asset", selection=AssetSelection.all())
+
+    plan = create_execution_plan(job.resolve(asset_graph=defs.resolve_asset_graph()))
+
+    waits_for = plan.get_step_by_key("dbt_models").get_execution_dependency_keys()
+    assert waits_for == {f"market__{table}" for table in SOURCE_WRITERS}
