@@ -295,3 +295,18 @@ def test_a_trading_day_the_full_file_does_not_answer_is_read_from_the_position_f
     assert result.metadata["published"] == 1
     assert stored == [(TRADE_DATE, CURRENT_ISIN, 109_556)]
     assert logged == [("mto", "succeeded")]
+
+
+def test_a_run_whose_every_day_failed_finishes_and_counts_them(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A run carries on past a venue that served nothing readable, and records every day it tried."""
+    deliveries = RecordedDeliveries({"NSE": b"<html>the venue's home page</html>"})
+
+    result = ingest_delivery(
+        build_asset_context(partition_key=TRADE_DATE), "NSE", database, deliveries
+    )
+
+    assert result.metadata["failed"] == 1
+    assert result.metadata["published"] == 0
+    assert rows(postgres_dsn, "select outcome from ingestion_log") == [("failed",)]
