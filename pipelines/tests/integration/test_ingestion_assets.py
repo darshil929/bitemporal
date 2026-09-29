@@ -1,6 +1,7 @@
 """Ingesting one venue's day, by invoking the asset directly with a recorded response."""
 
 import io
+import threading
 import zipfile
 from collections.abc import Iterator
 from datetime import date
@@ -13,7 +14,7 @@ from dagster import PartitionKeyRange, build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.bhavcopy import ingest
-from pipelines.identity import isins_by_scrip_code
+from pipelines.identity import INSTRUMENT_WRITES, isins_by_scrip_code
 from pipelines.resources import Bhavcopies
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.errors import MalformedRow, NotPublished
@@ -447,3 +448,29 @@ def test_the_name_of_the_latest_day_at_either_venue_stands(
     ingest(build_asset_context(partition_key="2024-01-15"), "BSE", database, bse)
 
     assert name_of(postgres_dsn, ANSAL_PROPERTIES) == "ANSAL PROP & INFRA LTD"
+
+
+def test_a_venue_writes_its_day_only_in_its_turn(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """Both venues' runs write the instrument master and the bars, so they write in turn.
+
+    A chunk created for a new range of days locks the instrument master while the other venue's
+    run can hold rows it has just inserted there, and the two deadlocked.
+    """
+    bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20260814.csv")})
+    context = build_asset_context(partition_key=TRADE_DATE)
+    writer = threading.Thread(target=ingest, args=(context, "BSE", database, bhavcopies))
+
+    with psycopg.connect(postgres_dsn, autocommit=True) as other_venue:
+        other_venue.execute("select pg_advisory_lock(%s)", (INSTRUMENT_WRITES,))
+        writer.start()
+        writer.join(timeout=2)
+        waited = writer.is_alive()
+        stored_while_waiting = rows(postgres_dsn, "select count(*) from price_daily")[0][0]
+        other_venue.execute("select pg_advisory_unlock(%s)", (INSTRUMENT_WRITES,))
+    writer.join(timeout=30)
+
+    assert waited
+    assert stored_while_waiting == 0
+    assert rows(postgres_dsn, "select count(*) from price_daily")[0][0] > 0
