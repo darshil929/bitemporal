@@ -3,12 +3,14 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from dagster import AssetKey, AssetSelection, Definitions, define_asset_job
 from dagster._core.execution.api import create_execution_plan
 
 from pipelines.assets.ingestion.calendar import INGESTION_DAYS
 from pipelines.assets.transform.dbt import SOURCE_WRITERS
 from pipelines.definitions import defs
+from pipelines.jobs import BOOTSTRAP, FLOW_TAG, SYNC
 
 INGESTION = ("bse_bhavcopy", "nse_bhavcopy", "bse_delivery", "nse_delivery")
 
@@ -95,3 +97,14 @@ def test_the_registry_is_written_before_either_venues_prices() -> None:
 
     for venue in ("bse_bhavcopy", "nse_bhavcopy"):
         assert AssetKey("source_registry") in graph.get(AssetKey(venue)).parent_keys
+
+
+@pytest.mark.parametrize(("job", "flow"), [("history_bootstrap", BOOTSTRAP), ("daily_sync", SYNC)])
+def test_each_flow_runs_every_asset_under_its_flow_tag(job: str, flow: str) -> None:
+    resolved = defs.resolve_job_def(job)
+
+    assert resolved.tags[FLOW_TAG] == flow
+    assert resolved.partitions_def == INGESTION_DAYS
+    assert resolved.asset_layer.selected_asset_keys == set(
+        defs.resolve_asset_graph().materializable_asset_keys
+    )

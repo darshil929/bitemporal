@@ -20,7 +20,7 @@ CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 SQL_SOURCES = $(shell find infra pipelines -name '*.sql' -not -path '*/target/*' 2>/dev/null)
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill pgadmin
+.PHONY: setup lint test-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill bootstrap sync pgadmin
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -93,9 +93,18 @@ migrate:
 seed:
 	uv run python scripts/load_fixture_seed.py
 
-# Reads every trading day both venues have published, throttled and cached to disk. Hours on
-# a cold cache, and resumable: a day already cached costs no request. The default start is the
-# first day either venue names its instruments by ISIN; a venue skips the days before its own.
+# Runs a flow against the database .env names, printed before the flow starts. FLOW_ARGS carries a
+# range, FLOW_ARGS="--from 2026-09-01 --to 2026-09-25", or a sync's last day, FLOW_ARGS="--day ...".
+bootstrap:
+	uv run --env-file .env python -m pipelines.flows bootstrap $(FLOW_ARGS)
+
+sync:
+	uv run --env-file .env python -m pipelines.flows sync $(FLOW_ARGS)
+
+# Downloads every bhavcopy both venues have published into the cache, throttled, and stores nothing
+# in the database. Hours on a cold cache, and resumable: a day already cached costs no request. The
+# default start is the first day either venue names its instruments by ISIN; a venue skips the
+# days before its own.
 BACKFILL_FROM ?= 2011-06-22
 BACKFILL_TO ?= $(shell date +%Y-%m-%d)
 

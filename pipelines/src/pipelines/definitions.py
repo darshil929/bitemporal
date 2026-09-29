@@ -9,11 +9,13 @@ from dagster_dbt import DbtCliResource
 
 from pipelines import assets, checks
 from pipelines.assets.transform.dbt import dbt_project, table_assets
+from pipelines.jobs import daily_sync, history_bootstrap
 from pipelines.resources import Bhavcopies, CorporateActions, Database, Deliveries, NseActions
 
 defs = Definitions(
     assets=[*load_assets_from_package_module(assets), *table_assets()],
     asset_checks=load_asset_checks_from_package_module(checks),
+    jobs=[history_bootstrap, daily_sync],
     resources={
         "database": Database(),
         "bhavcopies": Bhavcopies(),
