@@ -4,7 +4,8 @@ from datetime import date
 
 import pytest
 
-from pipelines.flows import FlowReport, bootstrap_windows, sync_window
+from pipelines.flows import FlowReport, bootstrap_windows
+from pipelines.jobs import sync_window
 
 
 def report(**changed: object) -> FlowReport:

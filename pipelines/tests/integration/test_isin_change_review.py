@@ -2,17 +2,11 @@
 
 import os
 import subprocess
-from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urlsplit
 
-import psycopg
-import pytest
-from alembic.config import Config
-
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from conftest import MIGRATION_SCHEMA, PointedDatabase, dbt_environment
 from pipelines.facts import persist_bars
 from pipelines.identity import persist_identity
 from pipelines.models.identity import InstrumentRecord
@@ -27,44 +21,20 @@ SUCCESSOR = "INE947T01022"
 
 def dbt(dsn: str, *arguments: str) -> subprocess.CompletedProcess[str]:
     """Run dbt against the schema the tests migrate, in the test container."""
-    url = urlsplit(dsn)
-    env = {
-        **os.environ,
-        "POSTGRES_HOST": url.hostname or "",
-        "POSTGRES_PORT": str(url.port),
-        "POSTGRES_USER": url.username or "",
-        "POSTGRES_PASSWORD": url.password or "",
-        "POSTGRES_DB": url.path.lstrip("/"),
-    }
     command = ["dbt", *arguments, "--profiles-dir", ".", "--target", MIGRATION_SCHEMA]
     return subprocess.run(
-        command, cwd=DBT_DIR, env=env, capture_output=True, text=True, check=False
+        command,
+        cwd=DBT_DIR,
+        env={**os.environ, **dbt_environment(dsn)},
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
-@pytest.fixture
-def built(migrated: Config, postgres_dsn: str) -> Iterator[None]:
-    yield
-    # The models are views over the migrated tables, which cannot be dropped while they stand.
-    with psycopg.connect(postgres_dsn, autocommit=True) as connection:
-        views = connection.execute(
-            "select table_name from information_schema.views where table_schema = %s",
-            (MIGRATION_SCHEMA,),
-        ).fetchall()
-        for (view,) in views:
-            connection.execute(
-                psycopg.sql.SQL("drop view if exists {}.{} cascade").format(
-                    psycopg.sql.Identifier(MIGRATION_SCHEMA), psycopg.sql.Identifier(view)
-                )
-            )
-        connection.execute(
-            psycopg.sql.SQL("drop table if exists {}.unadjusted_changes_of_isin").format(
-                psycopg.sql.Identifier(MIGRATION_SCHEMA)
-            )
-        )
-
-
-def test_a_change_before_the_history_held_is_not_asked_for(built: None, postgres_dsn: str) -> None:
+def test_a_change_before_the_history_held_is_not_asked_for(
+    dbt_built: None, postgres_dsn: str
+) -> None:
     """A bootstrap reads the two most recent years first, holding a successor traded since and
     neither side of its change.
     """
