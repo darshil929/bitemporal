@@ -91,6 +91,21 @@ def test_a_truncated_file_is_incomplete() -> None:
     assert "below" in (verdict.detail or "")
 
 
+def test_a_file_missing_a_sixth_of_its_lines_is_incomplete() -> None:
+    """BSE served 2022-07-15 without 652 scrip codes, 2,790 bars against a median of 3,454."""
+    verdict = validate_day("BSE", TRADE_DATE, many(2790, venue="BSE"), typical_bars=3454)
+
+    assert not verdict.is_complete
+    assert "below" in (verdict.detail or "")
+
+
+def test_a_special_session_is_not_mistaken_for_truncation() -> None:
+    """BSE's Muhurat evening of 27 October 2019 listed 2,313 against a median of 2,679 before it."""
+    verdict = validate_day("BSE", TRADE_DATE, many(2313, venue="BSE"), typical_bars=2679)
+
+    assert verdict.is_complete
+
+
 def test_a_smaller_universe_is_not_mistaken_for_truncation() -> None:
     verdict = validate_day("NSE", TRADE_DATE, many(35), typical_bars=35)
 

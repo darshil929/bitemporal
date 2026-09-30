@@ -32,8 +32,10 @@ COMPARABLE_TURNOVER = Decimal(2_500_000)
 COMPARABLE_PRICE = Decimal(10)
 
 # A file that arrives truncated carries a fraction of the instruments the venue usually lists,
-# so the floor is relative to that rather than a count no subset of the market would meet.
-TRUNCATION_FRACTION = Decimal("0.5")
+# so the floor is relative to that rather than a count no subset of the market would meet. A
+# regular day lists within a few percent of the days before it, and a special session, such as a
+# Muhurat evening, more than this share of them.
+TRUNCATION_FRACTION = Decimal("0.85")
 
 # ISINs issued to Indian companies begin INE. A file cut short still lists companies, which sort
 # among its first rows, so a day carrying none is a session the venue opened for another class of
@@ -102,8 +104,9 @@ def validate_day(
 ) -> DayVerdict:
     """Decide whether one venue's day may be read downstream.
 
-    `typical_bars` is how many the venue usually publishes, against which a truncated file is
-    recognised. Left out, only an empty day fails on count.
+    `typical_bars` is the median the venue listed on the days this one is measured against,
+    `history.usual_bars`, against which a truncated file is recognised. Left out, only an empty
+    day fails on count.
 
     A verdict is knowable on the day it describes. One drawn again after the day's bars changed
     is knowable on `judged_on`, leaving the verdict it restates standing for the dates before.
