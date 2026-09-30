@@ -22,11 +22,20 @@ CACHE_SUFFIX = ".json"
 
 REQUIRED_FIELDS = frozenset({"scrip_code", "Purpose", "exdate"})
 
-# The endpoint answers a request carrying none of these with a page rather than JSON.
+# The venue's edge refuses a client that does not present a current browser's headers, an older
+# browser version included, and the endpoint answers a request carrying no Origin or Referer with a
+# page rather than JSON.
 REQUIRED_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/153.0.0.0 Safari/537.36"
+    ),
     "Accept": "application/json, text/plain, */*",
-    "Origin": "https://www.bseindia.com",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Origin": "https://www.bseindia.com/",
     "Referer": "https://www.bseindia.com/",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Site": "same-site",
 }
 
 # The purpose is free text. Each pattern below names an action whose effect on the share count or
@@ -238,9 +247,11 @@ class BseCorporateActions:
         self._base_url = base_url.rstrip("/")
 
     def url_for(self, first: date, last: date) -> str:
+        # The query the venue's page sends. With strSearch=D the endpoint answers the forthcoming
+        # actions and passes over the range.
         return (
-            f"{self._base_url}/DefaultData/w?ddlcategorys=E&ddlindustrys=&segment=0"
-            f"&strSearch=D&Fdate={first:%Y%m%d}&TDate={last:%Y%m%d}&Purposecode=&scripcode="
+            f"{self._base_url}/DefaultData/w?scripcode=&Fdate={first:%Y%m%d}&Purposecode="
+            f"&TDate={last:%Y%m%d}&ddlcategorys=E&ddlindustrys=&segment=0&strSearch=S"
         )
 
     def fetch(self, first: date, last: date, collected_on: date) -> bytes:

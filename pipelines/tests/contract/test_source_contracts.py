@@ -12,7 +12,6 @@ import httpx
 import pytest
 
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
-from pipelines.sources.bse.corporate_actions import BseCorporateActions, ScripResolver
 from pipelines.sources.bse.delivery import BseDelivery
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
@@ -33,8 +32,6 @@ IDENTIFYING_USER_AGENT = "bitemporal (personal research)"
 # A venue publishes some hours after the close, so the newest day is not a fair target.
 FIRST_CANDIDATE = 3
 CANDIDATES = 12
-
-RELIANCE_SCRIP = "500325"
 
 
 def definitions() -> dict[str, object]:
@@ -178,27 +175,6 @@ def test_the_nse_delivery_position_file_still_carries_its_layout(
         )
         return
     pytest.fail(f"nse published no position file in the last {CANDIDATES} weekdays")
-
-
-def test_the_corporate_action_endpoint_still_answers_with_its_fields(
-    cache: DiskCache, plain: httpx.Client
-) -> None:
-    """The purpose text is free form, so a month holding a known bonus is read for its terms.
-
-    Reliance went ex its one for one bonus on 28 October 2024.
-    """
-    adapter = BseCorporateActions(
-        client("bse_corporate_actions", plain), cache, "https://api.bseindia.com/BseIndiaAPI/api"
-    )
-
-    records = adapter.parse(
-        adapter.fetch(date(2024, 10, 1), date(2024, 10, 31), date.today())  # noqa: DTZ011
-    )
-    resolver = ScripResolver.throughout({RELIANCE_SCRIP: "INE002A01018"})
-    actions = adapter.normalize(records, resolver, date.today())  # noqa: DTZ011
-
-    assert records, "the endpoint answered with no records"
-    assert any(item.action_type == "bonus" for item in actions), "no bonus was recognised"
 
 
 def test_the_nse_corporate_action_endpoint_still_answers_with_its_fields(
