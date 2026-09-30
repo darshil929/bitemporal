@@ -4,10 +4,13 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 
 from pipelines.sources.bse.corporate_actions import (
     FIRST_YEAR,
+    SOURCE_ID,
     BseCorporateActions,
     ScripResolver,
     normalize,
@@ -16,10 +19,14 @@ from pipelines.sources.bse.corporate_actions import (
     range_key,
     years,
 )
+from pipelines.sources.cache import DiskCache
+from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import SchemaDrift
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
 BSE_ACTIONS = CASSETTES / "bse_corporate_actions"
+BASE = "https://api.bseindia.com/BseIndiaAPI/api"
+IDENTIFYING_USER_AGENT = "bitemporal (personal research)"
 
 RELIANCE = "INE002A01018"
 SHRIRAM = "INE721A01047"
@@ -180,12 +187,35 @@ def test_a_range_still_open_is_held_under_the_day_it_was_read() -> None:
 
 
 def test_a_range_is_asked_for_across_every_scrip_code() -> None:
-    adapter = BseCorporateActions(None, None, "https://api.bseindia.com/BseIndiaAPI/api/")  # type: ignore[arg-type]
+    """With strSearch=D the endpoint answers the forthcoming actions whatever the range."""
+    adapter = BseCorporateActions(None, None, f"{BASE}/")  # type: ignore[arg-type]
 
     url = adapter.url_for(date(2024, 10, 1), date(2024, 10, 31))
 
-    assert url.endswith("&Fdate=20241001&TDate=20241031&Purposecode=&scripcode=")
-    assert "strSearch=D" in url
+    assert url == (
+        f"{BASE}/DefaultData/w?scripcode=&Fdate=20241001&Purposecode=&TDate=20241031"
+        "&ddlcategorys=E&ddlindustrys=&segment=0&strSearch=S"
+    )
+
+
+@respx.mock
+def test_a_range_is_asked_for_with_a_browsers_headers(tmp_path: Path) -> None:
+    """The venue's edge refuses a client that does not present a current browser's headers."""
+    answer = (BSE_ACTIONS / "exdate-20240101-20241231.json").read_bytes()
+    route = respx.get(url__startswith=BASE).mock(return_value=httpx.Response(200, content=answer))
+    client = ThrottledClient(
+        SOURCE_ID, httpx.Client(headers={"User-Agent": IDENTIFYING_USER_AGENT}), Throttle(0.0)
+    )
+    adapter = BseCorporateActions(client, DiskCache(tmp_path), BASE)
+
+    adapter.fetch(date(2024, 1, 1), date(2024, 12, 31), REPORTED_ON)
+
+    sent = route.calls.last.request.headers
+    assert sent["User-Agent"].startswith("Mozilla/5.0")
+    assert "Chrome/" in sent["User-Agent"]
+    assert sent["Origin"].startswith("https://www.bseindia.com")
+    assert sent["Referer"] == "https://www.bseindia.com/"
+    assert sent["Sec-Fetch-Site"] == "same-site"
 
 
 def test_the_years_run_from_the_first_the_venue_records_to_the_one_after_collection() -> None:

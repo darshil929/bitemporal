@@ -83,13 +83,16 @@ requests_per_second = 0.2
 cache_policy = "permanent"
 owner_notes = """
 The exchange's own endpoint, undocumented, answering a range of ex-dates with the actions of every
-scrip code inside it. The venue's corporate action page asks it the same question, so a response
-saved from that page is read from the cache like one fetched. A request carrying no Origin or
-Referer is answered with a page rather than JSON.
+scrip code inside it when asked as the venue's corporate action page asks, with strSearch=S. With
+strSearch=D it answers the forthcoming actions and passes over the range.
+The edge answers 403 to a client that does not present a current browser's headers, an older
+browser version included, so the adapter sends a browser's User-Agent to this endpoint alone. A
+request carrying no Origin or Referer is answered with a page rather than JSON.
+A response saved from the page's request in a browser is read from the cache like one fetched: a
+closed year as bse_corporate_actions/exdate-YYYY0101-YYYY1231.json, an open year as
+exdate-YYYY0101-YYYY1231-as-of-YYYYMMDD.json for the day in India the flow runs.
 Corporate announcements sit outside the SEBI equity cash market curation, so no row there names
 it. The venue publishes no announcement date, so an action carries the day it was collected.
-The edge answers 403 to an address that reads several thousand codes in a sitting at one request
-every two seconds, and holds the refusal for more than a day.
 """
 
 [[source.schema_version]]
