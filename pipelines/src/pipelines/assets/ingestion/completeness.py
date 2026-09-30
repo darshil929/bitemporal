@@ -35,7 +35,7 @@ BHAVCOPIES = [AssetKey("bse_bhavcopy"), AssetKey("nse_bhavcopy")]
 def judge(
     connection: psycopg.Connection,
     days: Sequence[date],
-    usual: dict[str, int],
+    usual: dict[tuple[str, date], int],
     judged_on: date,
 ) -> list[DayVerdict]:
     """Each venue's verdict on each day, dated `judged_on` where the venue already carries one."""
@@ -51,7 +51,7 @@ def judge(
                     day,
                     published,
                     cross_venue_bars=[bar for bar in bars if bar.venue != venue],
-                    typical_bars=usual.get(venue),
+                    typical_bars=usual.get((venue, day)),
                     judged_on=judged_on if (venue, day) in judged else None,
                 )
             )

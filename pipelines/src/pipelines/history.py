@@ -6,10 +6,12 @@ covers years of rows, and the full universe holds tens of millions.
 """
 
 import logging
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from statistics import median
 
 import psycopg
 
@@ -177,15 +179,20 @@ VENUE_DAYS_JUDGED = """
 select distinct venue, trade_date from trading_day where trade_date = any(%(days)s)
 """
 
-# How many instruments a venue usually lists, against which a truncated file is recognised.
-TYPICAL_BARS = """
-select venue, percentile_disc(0.5) within group (order by bars) as typical
-from (
-    select venue, trade_date, count(*) as bars
-    from price_daily where as_of_date <= %(as_of)s group by venue, trade_date
-) as days
-group by venue
+# How many instruments each venue listed on each day, against which a truncated file is recognised.
+BARS_PER_DAY = """
+select venue, trade_date, count(distinct isin) as bars
+from price_daily
+where as_of_date <= %(as_of)s
+group by venue, trade_date
+order by venue, trade_date
 """
+
+# A day is measured against the trading days before it, the only ones a sync holds when it judges
+# the day. The first days of a history, with fewer than MINIMUM_NEIGHBOURS before them, are measured
+# against the nearest days after, and a history shorter still is not measured at all.
+NEIGHBOURS = 20
+MINIMUM_NEIGHBOURS = 10
 
 
 def read_bars(
@@ -223,7 +230,27 @@ def venue_days_judged(
     }
 
 
-def typical_bars(connection: psycopg.Connection, as_of: date = FAR_FUTURE) -> dict[str, int]:
+def usual_bars(counts: Sequence[tuple[date, int]]) -> dict[date, int]:
+    """The median bars of the days each day is measured against, from one venue's days in order."""
+    usual = {}
+    for index, (day, _) in enumerate(counts):
+        around = counts[max(0, index - NEIGHBOURS) : index]
+        if len(around) < MINIMUM_NEIGHBOURS:
+            around = [*around, *counts[index + 1 : index + 1 + NEIGHBOURS - len(around)]]
+        if len(around) >= MINIMUM_NEIGHBOURS:
+            usual[day] = int(median(bars for _, bars in around))
+    return usual
+
+
+def typical_bars(
+    connection: psycopg.Connection, as_of: date = FAR_FUTURE
+) -> dict[tuple[str, date], int]:
+    """The median bars each venue's day is measured against, keyed by venue and day."""
+    days: dict[str, list[tuple[date, int]]] = defaultdict(list)
+    for venue, trade_date, bars in connection.execute(BARS_PER_DAY, {"as_of": as_of}):
+        days[venue].append((trade_date, int(bars)))
     return {
-        venue: int(count) for venue, count in connection.execute(TYPICAL_BARS, {"as_of": as_of})
+        (venue, day): bars
+        for venue, counts in days.items()
+        for day, bars in usual_bars(counts).items()
     }
