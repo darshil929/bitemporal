@@ -7,11 +7,17 @@ The bootstrap reads the two most recent years first, so the platform is usable b
 years arrive, and those in a second run. The sync reads the seven days ending on its day, today in
 India by default, so a file published late is asked for again. A flow finishes whatever a source
 answers; the launcher exits 1 where a day, a check or a step failed, and 2 where it did not start.
+
+The terminal shows where the flow writes and each run's report. Everything a run prints, Dagster's
+step log and dbt's output among it, goes to a file in the Dagster instance's `flow-logs` folder, or
+to the terminal with `--verbose`.
 """
 
 import argparse
+import contextlib
+import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -23,6 +29,7 @@ from alembic.script import ScriptDirectory
 from dagster import (
     DagsterInstance,
     DagsterRunStatus,
+    Definitions,
     JobDefinition,
     RunsFilter,
     execute_job,
@@ -32,7 +39,6 @@ from dagster import (
 from pipelines.assets.ingestion.calendar import INGESTION_DAYS
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
 from pipelines.config.settings import DatabaseSettings
-from pipelines.definitions import defs
 from pipelines.jobs import BOOTSTRAP, FLOW_TAG, RANGE_END, RANGE_START, SYNC, sync_window
 from pipelines.resources import Database
 
@@ -41,6 +47,9 @@ RECENT = timedelta(days=730)
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 UNFINISHED = [DagsterRunStatus.QUEUED, DagsterRunStatus.STARTING, DagsterRunStatus.STARTED]
+
+# Dagster keeps its own telemetry in the instance's `logs` folder.
+LOG_FOLDER = "flow-logs"
 
 # The counts each source's result carries: days for prices and delivery, years of ex-dates for
 # corporate actions.
@@ -65,12 +74,48 @@ class FlowRefused(Exception):
     """A flow cannot start against the database or the Dagster instance as they stand."""
 
 
+def definitions() -> Definitions:
+    # Building the definitions builds every asset, and Dagster warns about the beta parameters
+    # some of them take. Built on first use, the warnings land in the run's output.
+    from pipelines.definitions import defs
+
+    return defs
+
+
 def history_bootstrap() -> JobDefinition:
-    return defs.resolve_job_def("history_bootstrap")
+    return definitions().resolve_job_def("history_bootstrap")
 
 
 def daily_sync() -> JobDefinition:
-    return defs.resolve_job_def("daily_sync")
+    return definitions().resolve_job_def("daily_sync")
+
+
+@contextlib.contextmanager
+def output_to(path: Path) -> Iterator[None]:
+    """Send what this process and every process it starts write to the terminal into `path`.
+
+    A run's steps execute in child processes, which inherit the descriptors rather than
+    `sys.stdout`, so the descriptors are redirected as well as this process's streams.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    terminal = os.dup(1), os.dup(2)
+    try:
+        with path.open("ab") as log, path.open("a", buffering=1, encoding="utf-8") as text:
+            os.dup2(log.fileno(), 1)
+            os.dup2(log.fileno(), 2)
+            try:
+                with contextlib.redirect_stdout(text), contextlib.redirect_stderr(text):
+                    yield
+            finally:
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os.dup2(terminal[0], 1)
+                os.dup2(terminal[1], 2)
+    finally:
+        os.close(terminal[0])
+        os.close(terminal[1])
 
 
 def bootstrap_windows(today: date) -> list[tuple[date, date]]:
@@ -178,11 +223,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--from", dest="first", type=date.fromisoformat)
     parser.add_argument("--to", dest="last", type=date.fromisoformat)
     parser.add_argument("--day", type=date.fromisoformat, help="a sync's last day, today if unset")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="print each run's output rather than keep it in a file",
+    )
     args = parser.parse_args(argv)
     if (args.first is None) != (args.last is None) or (args.day and args.flow == BOOTSTRAP):
         parser.error("--from and --to go together, and --day belongs to a sync")
 
-    today = datetime.now(VENUE_TIME).date()
+    started = datetime.now(VENUE_TIME)
+    today = started.date()
     if args.first is not None:
         windows = [(args.first, args.last)]
     elif args.flow == BOOTSTRAP:
@@ -203,9 +254,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"{args.flow} not started: {refusal}", file=sys.stderr)
         return 2
 
-    reports = [run_window(instance, job, first, last) for first, last in windows]
-    for report in reports:
-        print("\n".join(report.lines()))
+    log = Path(instance.root_directory) / LOG_FOLDER / f"{args.flow}-{started:%Y%m%d-%H%M%S}.log"
+    if not args.verbose:
+        print(f"run output in {log}")
+
+    def output() -> contextlib.AbstractContextManager[None]:
+        return contextlib.nullcontext() if args.verbose else output_to(log)
+
+    reports = []
+    for first, last in windows:
+        with output():
+            report = run_window(instance, job, first, last)
+        print("\n".join(report.lines()), flush=True)
+        reports.append(report)
     return 0 if all(report.is_clean for report in reports) else 1
 
 
