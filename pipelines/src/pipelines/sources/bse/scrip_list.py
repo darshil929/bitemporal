@@ -84,8 +84,8 @@ def names_by_isin(
     """The name the list gives each ISIN.
 
     BSE lists an ISIN more than once where a buy-back window or a retired scrip code carried it,
-    under a code of its own and often a name like `RILBBPH` beside Reliance Industries Ltd. The
-    latest status stands, then the scrip code `held_codes` holds the ISIN under, then the lowest.
+    under a code of its own and often an abbreviated name. The latest status stands, then the scrip
+    code `held_codes` holds the ISIN under, then the lowest.
     """
     rank = {status: index for index, status in enumerate(STATUSES)}
 

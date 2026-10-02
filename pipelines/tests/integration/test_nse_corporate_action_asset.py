@@ -30,7 +30,7 @@ SHRIRAM_SPLIT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 
 
 
 class RecordedActions:
-    """The real adapter and registry entry, answering 2025 from NSE's recorded response."""
+    """The real adapter and registry entry, answering a year from NSE's recorded response."""
 
     def __init__(self) -> None:
         self._real = NseActions()
@@ -88,7 +88,7 @@ def rows(dsn: str, sql: str) -> list[tuple]:
 def test_an_action_filed_under_an_earlier_isin_is_recorded_under_its_successor(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """NSE filed Shriram Finance's split of 10 January 2025 under the ISIN the split retired."""
+    """An action NSE files under the ISIN a split retired is recorded under its successor."""
     ingest_nse_actions(
         build_asset_context(), database, RecordedActions(), [YEAR_2025], COLLECTED_ON
     )
@@ -103,7 +103,7 @@ def test_an_action_filed_under_an_earlier_isin_is_recorded_under_its_successor(
 def test_every_action_of_a_tracked_instrument_is_stored_and_the_rest_left_out(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """Bajaj Finance and HDFC Bank are outside this universe; the InvIT row is outside the series."""
+    """Instruments outside the tracked universe and rows outside the series are left out."""
     ingest_nse_actions(
         build_asset_context(), database, RecordedActions(), [YEAR_2025], COLLECTED_ON
     )

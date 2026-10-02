@@ -47,7 +47,7 @@ def test_the_scrip_code_file_follows_the_published_naming(tmp_path: Path) -> Non
 
 
 def test_a_scrip_code_row_is_dated_from_the_request_and_names_no_isin() -> None:
-    """KACL's line is whole here, where the ISIN file ran it into another and lost its turnover."""
+    """A line is whole in the scrip code file where the ISIN file ran it into another."""
     rows = {row.scrip_code: row for row in parse_bse_scrip(scrip_payload(), SHORT_DAY)}
 
     assert {row.trade_date for row in rows.values()} == {SHORT_DAY}
@@ -76,7 +76,7 @@ def test_a_row_takes_the_isin_its_scrip_code_resolves_to() -> None:
 def test_the_scrip_code_file_is_cached_beside_the_isin_file_for_the_same_day(
     tmp_path: Path,
 ) -> None:
-    """BSE's ISIN file for 15 July 2022 stays cached as served, lines missing, beside the whole one."""
+    """An ISIN file served with lines missing stays cached as served, beside the scrip code file."""
     isin_route = respx.get(BSE_BASE + "EQ_ISINCODE_150722.zip").mock(
         return_value=httpx.Response(
             200, content=(CASSETTES / "20220715_legacy_short.zip").read_bytes()

@@ -1,8 +1,8 @@
 """Both flows run every asset over recorded days into an empty database, the models included.
 
-The venues answer from responses recorded for 14 August 2026 at both, BSE's delivery trimmed to the
-instruments its price file carries, and every other day of the week as unpublished. Corporate actions answer for the years recorded and refuse the rest, as BSE's
-host refuses this machine.
+The venues answer from responses recorded for one trading day at both, BSE's delivery trimmed to the
+instruments its price file carries, and every other day of the week as unpublished. Corporate
+actions answer for the years recorded and refuse the rest, as a refusing venue does.
 """
 
 from datetime import date

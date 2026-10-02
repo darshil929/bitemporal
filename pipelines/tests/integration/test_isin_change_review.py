@@ -15,7 +15,7 @@ from pipelines.models.market import PriceBar
 DBT_DIR = Path(__file__).resolve().parents[2] / "dbt"
 CHECK = "assert_unadjusted_changes_name_a_change_of_isin"
 
-# Reviewed in unadjusted_changes_of_isin: this ISIN took its instrument over on 2025-10-15.
+# A change of ISIN reviewed and listed in unadjusted_changes_of_isin.
 SUCCESSOR = "INE947T01022"
 
 

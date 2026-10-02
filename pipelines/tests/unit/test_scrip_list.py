@@ -88,7 +88,7 @@ def test_an_answer_holding_another_status_is_refused() -> None:
 
 
 def test_the_latest_status_names_an_isin() -> None:
-    """Reliance's buy-back window is delisted as RILBBPH; Emami's retired code as Emami Ltd."""
+    """An ISIN held under a buy-back window or a retired code takes its latest status's name."""
     names = names_by_isin(every_status(), {})
 
     assert names[RELIANCE] == "Reliance Industries Ltd"

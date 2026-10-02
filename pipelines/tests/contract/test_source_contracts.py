@@ -180,7 +180,7 @@ def test_the_nse_delivery_position_file_still_carries_its_layout(
 def test_the_nse_corporate_action_endpoint_still_answers_with_its_fields(
     cache: DiskCache, browser: httpx.Client
 ) -> None:
-    """Reliance went ex its one for one bonus on 28 October 2024, which NSE files as Bonus 1:1."""
+    """A one for one bonus the venue has recorded answers in its own wording, Bonus 1:1."""
     adapter = NseCorporateActions(
         client("nse_corporate_actions", browser),
         cache,

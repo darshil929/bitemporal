@@ -42,8 +42,8 @@ def calendar_days(first: date, last: date) -> Iterator[date]:
         day += timedelta(days=1)
 
 
-# Every daily file measured was last changed on the evening of the day it describes, the latest at
-# 23:55 in India, after the evening sync; the two most recent days held cover such a change.
+# Each venue changes a day's files on the evening of that day, some after the evening sync, so
+# asking again for the two most recent days held covers such a change.
 RECHECKED_DAYS = 2
 
 

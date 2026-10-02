@@ -212,9 +212,9 @@ def venue_identifier(listing: ListingRecord) -> str:
 def mark_supersessions(listings: Sequence[ListingRecord]) -> tuple[ListingRecord, ...]:
     """Record a stretch that ended because a new ISIN took the instrument over.
 
-    Shriram Finance stopped as `INE721A01013` on 2025-01-09 and resumed as `INE721A01047` the next
-    day, keeping its scrip code and its ticker. The instrument never left the venue, so the stretch
-    closes as superseded rather than delisted. Which ISIN succeeded it is recorded by
+    An instrument whose face value changes stops under one ISIN and resumes under another on the
+    next day the venue is open, keeping its scrip code and its ticker. It never left the venue, so
+    the stretch closes as superseded rather than delisted. Which ISIN succeeded it is recorded by
     `derive_successions`, which reads the same link.
     """
     openings = _openings(listings)
@@ -230,10 +230,9 @@ def mark_supersessions(listings: Sequence[ListingRecord]) -> tuple[ListingRecord
 def derive_successions(listings: Sequence[ListingRecord]) -> tuple[SuccessionRecord, ...]:
     """Link each superseded stretch to the ISIN that took it over.
 
-    Bajaj Finance stopped as `INE296A01024` on 2025-06-13 and resumed as `INE296A01032` on
-    2025-06-16 under scrip code 500034 and ticker BAJFINANCE. Following that link is what lets a
-    series run across a split, the predecessor holding every bar before it and no history of its
-    own surviving under the successor.
+    The successor opens under the scrip code and ticker the predecessor closed under. Following that
+    link is what lets a series run across a split, the predecessor holding every bar before it and
+    no history of its own surviving under the successor.
     """
     openings = _openings(listings)
     successions = []

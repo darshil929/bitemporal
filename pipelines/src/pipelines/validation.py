@@ -39,7 +39,7 @@ TRUNCATION_FRACTION = Decimal("0.85")
 
 # ISINs issued to Indian companies begin INE. A file cut short still lists companies, which sort
 # among its first rows, so a day carrying none is a session the venue opened for another class of
-# instrument, such as the gold ETFs NSE traded alone on 11 November 2012.
+# instrument, such as gold ETFs traded alone.
 COMPANY_ISIN_PREFIX = "INE"
 
 BASIS_POINTS = Decimal(10000)

@@ -21,7 +21,7 @@ FIXTURE_SCHEMA = "fixture"
 
 BAJAJ_OLD = "INE296A01024"
 ETERNAL = "INE758T01015"
-# NSDL listed in August 2025, so its first stored bar is the day its history begins.
+# An instrument listed inside the dataset's window, so its first stored bar begins its history.
 NSDL = "INE301O01023"
 # BSE's files named no ticker before 8 July 2024 and report the scrip code as the symbol.
 TICKERS_FROM = date(2024, 7, 8)
@@ -139,8 +139,8 @@ def test_a_stretch_reaching_an_earlier_first_day_leaves_no_row_behind(
 ) -> None:
     """A session held before an instrument's first stored day moves the day its stretch begins.
 
-    BSE held a Muhurat session on Sunday 27 October 2019, two days before two instruments' first
-    stored bar, and the stretch each began on the Tuesday stayed beside the one beginning Sunday.
+    The stretch keyed on the later first day is retired rather than left beside the one the earlier
+    session begins.
     """
     with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
         _copy_fixture_into(open_)
