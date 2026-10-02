@@ -42,7 +42,7 @@ SUCCESSION_WINDOW = timedelta(days=7)
 TURNOVER_WINDOW = timedelta(days=90)
 
 # A fault reading the history loses stretches outright, while history reaching further back only
-# moves the day a stretch begins.
+# moves the day a stretch begins, and a ticker read after a BSE scrip code only renames it.
 VANISHED_SHARE = 0.01
 
 
@@ -518,18 +518,22 @@ def retire_listings(connection: psycopg.Connection, listings: Sequence[ListingRe
 
     A stretch is keyed on the day it begins. History reaching further back, such as a session held
     before an instrument's first stored day, derives the stretch again under an earlier first day,
-    and the row it began on before would otherwise overlap it.
+    and the row it began on before would otherwise overlap it. A BSE stretch stored under its scrip
+    code, from files that named no ticker, continues under the ticker the later files name.
     """
     derived = {
         (listing.isin, listing.exchange, listing.local_symbol, listing.listing_date)
         for listing in listings
     }
     stored = connection.execute(
-        "select listing_id, isin, exchange, local_symbol, listing_date from listing"
+        "select listing_id, isin, exchange, local_symbol, scrip_code, listing_date from listing"
     ).fetchall()
-    continuing = {(listing.isin, listing.exchange, listing.local_symbol) for listing in listings}
-    stale = [row for row in stored if (row[1], row[2], row[3], row[4]) not in derived]
-    vanished = [row for row in stale if (row[1], row[2], row[3]) not in continuing]
+    continuing = {
+        (listing.isin, listing.exchange, listing.scrip_code or listing.local_symbol)
+        for listing in listings
+    }
+    stale = [row for row in stored if (row[1], row[2], row[3], row[5]) not in derived]
+    vanished = [row for row in stale if (row[1], row[2], row[4] or row[3]) not in continuing]
 
     if len(vanished) > VANISHED_SHARE * len(stored):
         raise StaleIdentity(
