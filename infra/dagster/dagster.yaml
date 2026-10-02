@@ -1,0 +1,37 @@
+# The Dagster instance a flow runs in, copied into the directory DAGSTER_HOME names.
+#
+# Scheduling switched on, from the repository with DAGSTER_HOME exported as .env names it:
+#   1. cp infra/dagster/dagster.yaml "$DAGSTER_HOME/dagster.yaml"
+#   2. sed -e "s|__REPOSITORY__|$PWD|g" -e "s|__UV__|$(command -v uv)|g" \
+#        -e "s|__DAGSTER_HOME__|$DAGSTER_HOME|g" infra/launchd/com.bitemporal.dagster-daemon.plist \
+#        > ~/Library/LaunchAgents/com.bitemporal.dagster-daemon.plist
+#   3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.bitemporal.dagster-daemon.plist
+#   4. uv run --env-file .env dagster schedule start daily_sync_schedule -m pipelines.definitions
+#   5. Optionally, the machine woken before the evening sync; macOS keeps one repeating wake:
+#        sudo pmset repeat wakeorpoweron MTWRFSU 20:25:00
+# Switched off: `dagster schedule stop` the same way, then
+# `launchctl bootout gui/$(id -u)/com.bitemporal.dagster-daemon`, then `sudo pmset repeat cancel`.
+
+# Runs wait in a queue the daemon releases. One run tagged bitemporal/flow is in progress at a
+# time, counted over every run in progress however it started, so a scheduled sync waits for a
+# bootstrap or a sync launched from the command line.
+run_coordinator:
+  module: dagster._core.run_coordinator
+  class: QueuedRunCoordinator
+concurrency:
+  runs:
+    tag_concurrency_limits:
+      - key: bitemporal/flow
+        limit: 1
+
+# A sync covers the seven days ending on its day, so after the machine sleeps through several
+# scheduled times the most recent one alone is run.
+scheduler:
+  module: dagster._core.scheduler
+  class: DagsterDaemonScheduler
+  config:
+    max_catchup_runs: 1
+
+# Usage statistics are not sent off the network.
+telemetry:
+  enabled: false

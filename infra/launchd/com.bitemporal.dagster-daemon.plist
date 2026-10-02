@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+The Dagster daemon for this machine, which launches the daily sync schedule's runs and releases
+queued runs, started at login and restarted if it stops. Placeholders stand for absolute paths,
+launchd expanding no variables; infra/dagster/dagster.yaml holds the steps that fill and load it.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bitemporal.dagster-daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__UV__</string>
+        <string>run</string>
+        <string>--env-file</string>
+        <string>.env</string>
+        <string>dagster-daemon</string>
+        <string>run</string>
+        <string>-m</string>
+        <string>pipelines.definitions</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPOSITORY__</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+    <key>StandardOutPath</key>
+    <string>__DAGSTER_HOME__/daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>__DAGSTER_HOME__/daemon.log</string>
+</dict>
+</plist>
