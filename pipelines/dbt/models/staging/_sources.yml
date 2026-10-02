@@ -27,3 +27,7 @@ sources:
         description: >
           The ISIN that took an instrument over when a face value change issued a new one,
           one row per venue that observed the handover.
+      - name: instrument_name
+        description: >
+          A name an exchange's list of securities gives an instrument, written the day a list
+          first gives it or changes it, beside the names read before.
