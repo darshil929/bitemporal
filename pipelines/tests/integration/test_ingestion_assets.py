@@ -549,9 +549,11 @@ def test_a_sync_asks_again_for_the_days_already_held(database: PointedDatabase) 
     window = build_asset_context(partition_key_range=PartitionKeyRange("2026-08-12", TRADE_DATE))
 
     ingest(window, "BSE", database, held)
-    ingest(window, "BSE", database, held, recheck_on=NOTICED_ON)
+    result = ingest(window, "BSE", database, held, recheck_on=NOTICED_ON)
 
     assert held.rechecked == [DAY]
+    assert result.metadata["rechecked"] == 1
+    assert result.metadata["recheck_failed"] == 0
 
 
 def test_a_corrected_day_is_judged_again(database: PointedDatabase, postgres_dsn: str) -> None:

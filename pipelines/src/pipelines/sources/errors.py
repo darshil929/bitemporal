@@ -35,3 +35,7 @@ class MalformedRow(SourceError):
 
 class WrongDay(SourceError):
     """The file a venue served describes a different trading day than the one requested."""
+
+
+class NotHeld(SourceError):
+    """A day asked for again whose file the cache does not hold, so no answer can be compared."""

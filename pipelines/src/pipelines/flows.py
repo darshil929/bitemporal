@@ -51,14 +51,15 @@ UNFINISHED = [DagsterRunStatus.QUEUED, DagsterRunStatus.STARTING, DagsterRunStat
 # Dagster keeps its own telemetry in the instance's `logs` folder.
 LOG_FOLDER = "flow-logs"
 
-# The counts each source's result carries: days for prices and delivery, with the rows a corrected
-# file changed and the days that could not be asked for again; years of ex-dates for corporate
-# actions; statuses for a list of securities.
+# The counts each source's result carries: days for prices and delivery, with the days asked for
+# again and answered, the rows a corrected file changed and the days that could not be asked for
+# again; years of ex-dates for corporate actions; statuses for a list of securities.
 DAY_COUNTS = (
     "published",
     "unpublished",
     "outside_coverage",
     "failed",
+    "rechecked",
     "corrected",
     "recheck_failed",
 )

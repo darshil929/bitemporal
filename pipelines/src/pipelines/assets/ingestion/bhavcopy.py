@@ -80,7 +80,7 @@ def ingest(
     definition = bhavcopies.definition(venue)
     adapter = bhavcopies.adapter(venue)
 
-    published = unpublished = failed = written = corrected = recheck_failed = 0
+    published = unpublished = failed = written = rechecked = corrected = recheck_failed = 0
     bars_read = secondary_lines = 0
     days = list(calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)))
     # A day outside every format the registry holds for the venue is passed over without a request.
@@ -91,16 +91,19 @@ def ingest(
     read_names: dict[str, tuple[date, str]] = {}
 
     with database.connect() as connection:
-        rechecked = set()
+        days_to_recheck = set()
         if recheck_on is not None and days:
-            rechecked = set(latest_days_held(connection, venue, days[0], days[-1], RECHECKED_DAYS))
+            days_to_recheck = set(
+                latest_days_held(connection, venue, days[0], days[-1], RECHECKED_DAYS)
+            )
         for day in reading_order(covered, definition):
             partition = day.isoformat()
             version = definition.version_for(day)
 
-            if day in rechecked and version == UDIFF and recheck_on is not None:
+            if day in days_to_recheck and version == UDIFF and recheck_on is not None:
                 try:
                     adapter.recheck(day, recheck_on)
+                    rechecked += 1
                 except SourceError as failure:
                     recheck_failed += 1
                     context.log.warning(
@@ -216,6 +219,7 @@ def ingest(
             "bars": bars_read,
             "secondary_lines": secondary_lines,
             "renamed": renamed,
+            "rechecked": rechecked,
             "corrected": corrected,
             "recheck_failed": recheck_failed,
         },
@@ -234,6 +238,7 @@ def ingest(
             "written": written,
             "instruments": len(read_names),
             "renamed": renamed,
+            "rechecked": rechecked,
             "corrected": corrected,
             "recheck_failed": recheck_failed,
         }
