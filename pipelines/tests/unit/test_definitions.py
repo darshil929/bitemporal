@@ -26,7 +26,7 @@ def test_both_venues_are_ingested_by_trading_day() -> None:
 
 
 def test_each_dbt_model_is_its_own_asset() -> None:
-    """A failed dbt test then blocks what reads that model rather than the whole run."""
+    """The graph then shows which table a number came from."""
     keys = {key.to_user_string() for key in defs.resolve_asset_graph().get_all_asset_keys()}
 
     assert {"stg_price_daily", "stg_listings", "int_venue_spread"} <= keys

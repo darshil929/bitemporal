@@ -1,8 +1,8 @@
 """The dbt project as assets, one per model, downstream of the assets that fill its sources.
 
-Each model becomes its own step, so a failed dbt test blocks what reads that model rather than
-the whole run, and the graph shows which table a number came from. Each table the models read is
-an asset of its own, run once every asset writing it has, so a run builds the models last.
+Each model becomes its own asset, so the graph shows which table a number came from. Each table
+the models read is an asset of its own, run once every asset writing it has, so a run builds the
+models last.
 """
 
 from collections.abc import Iterator
@@ -103,6 +103,20 @@ def table_asset(table: str, writers: list[AssetKey]) -> AssetsDefinition:
     return written
 
 
+def dbt_commands(target: str) -> list[list[str]]:
+    """Seeds and models one at a time, then every test in parallel.
+
+    Postgres replaces a view by renaming the old one and dropping it with every view built on it, so
+    two views replaced at once lock the views they share in opposite orders and deadlock.
+    """
+    return [
+        ["seed", "--target", target, "--threads", "1"],
+        ["run", "--target", target, "--threads", "1"],
+        ["test", "--target", target],
+    ]
+
+
 @dbt_assets(manifest=dbt_project.manifest_path, project=dbt_project)
 def dbt_models(context: AssetExecutionContext, dbt: DbtCliResource) -> Iterator[Any]:
-    yield from dbt.cli(["build", "--target", DatabaseSettings().data_env], context=context).stream()
+    for command in dbt_commands(DatabaseSettings().data_env):
+        yield from dbt.cli(command, context=context).stream()
