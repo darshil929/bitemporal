@@ -22,13 +22,14 @@ def recorded(name: str, trade_date: date) -> tuple[BhavcopyRow, ...]:
 @pytest.mark.parametrize(
     ("name", "trade_date", "scrip_code", "volume"),
     [
-        # Genus Power's T+0 line, 130343, comes first in the file and traded 24 shares.
+        # A T+0 line, numbered with a leading 1, listed first in the file and trading little.
         ("20250616.csv", date(2025, 6, 16), "530343", 112_827),
-        # State Bank's T+0 line was numbered 100112 in the format BSE published before July 2024.
+        # A T+0 line in BSE's legacy format.
         ("20240328_legacy.csv", date(2024, 3, 28), "500112", 873_887),
-        # HDFC Bank's deal window, 600180, traded 2,183 times at 1,342.95 against 1,699 at 1,181.
+        # A deal window, numbered with a leading 6, trading more often at a higher price than the
+        # ordinary line.
         ("20161216_legacy.csv", date(2016, 12, 16), "500180", 65_262),
-        # Emami's window under a code of its own traded 61,180 shares in 97 trades.
+        # A window under a code of its own, trading more shares than the ordinary line.
         ("20230413_legacy.csv", date(2023, 4, 13), "531162", 2_898),
     ],
 )
@@ -44,7 +45,7 @@ def test_the_ordinary_line_is_the_bar(
 
 
 def test_the_ordinary_line_names_the_instrument() -> None:
-    """Genus Power's T+0 line spells the name in mixed case, and its ordinary line in capitals."""
+    """The ordinary line names the instrument, where a T+0 line spells the name in mixed case."""
     rows = recorded("20250616.csv", date(2025, 6, 16))
 
     assert names_by_isin(rows, "BSE") == {"INE955D01029": "GENUS POWER INFRASTRUCTURES LT"}

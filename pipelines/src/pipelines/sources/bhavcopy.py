@@ -14,12 +14,11 @@ from pipelines.sources.errors import MalformedRow
 
 logger = logging.getLogger(__name__)
 
-# Series that trade as ordinary equity. BSE carried ordinary shares in XC and XD until November 2017
-# and in ST and SS from June 2017 to April 2018. NSE carries them in SZ, an SME series, and IT, its
-# institutional trading platform. Exchange traded funds sit in BSE's E group and among NSE's EQ.
-# Every other series carries a bond, a government security, a treasury bill, a warrant, a
-# preference share, a partly paid share or a trust unit. A new equity series must be added here
-# or its instruments are skipped.
+# Series that trade as ordinary equity. BSE has also carried ordinary shares in XC, XD, ST and SS.
+# NSE carries them in SZ, an SME series, and IT, its institutional trading platform. Exchange traded
+# funds sit in BSE's E group and among NSE's EQ. Every other series carries a bond, a government
+# security, a treasury bill, a warrant, a preference share, a partly paid share or a trust unit. A
+# new equity series must be added here or its instruments are skipped.
 EQUITY_SERIES: dict[str, frozenset[str]] = {
     "BSE": frozenset(
         {
@@ -72,9 +71,8 @@ class BhavcopyRow(BaseModel):
 
 
 # BSE numbers a second line for an ISIN by replacing the first digit of its ordinary scrip code: 1
-# for the T+0 line (100112 beside 500112 in 2024, 130343 beside 530343 since 2025) and 6 for the
-# deal windows of 2016 to 2018 (600180 beside 500180), whose prints can outweigh the ordinary line
-# by value and by trades.
+# for a T+0 line and 6 for a deal window, whose prints can outweigh the ordinary line by value and
+# by trades.
 SECONDARY_LINE_CODE_PREFIXES = ("1", "6")
 
 
@@ -155,13 +153,11 @@ def validated[RowT: BhavcopyRow](
 ) -> tuple[RowT, ...]:
     """Read the rows that are bars, dropping the few a venue mangles.
 
-    A venue occasionally publishes a line that is not a bar: BSE ran two records together on
-    2022-02-07, truncating an ISIN across the join. Such a line is logged and left out, and the
-    rest of the day stands.
-
-    Past a small share the file is being read wrongly rather than carrying a bad line, and the
-    day is refused instead. Completeness does not cover this: it marks a day short only once it
-    has lost half its bars.
+    A venue occasionally publishes a line that is not a bar, such as two records run together with
+    an ISIN truncated across the join. Such a line is logged and left out, and the rest of the day
+    stands. Past a small share the file is being read wrongly rather than carrying a bad line, and
+    the day is refused instead. Completeness does not cover this: a few lost lines leave a day well
+    above the share of its usual count that marks it short.
     """
     parsed = []
     unreadable = []

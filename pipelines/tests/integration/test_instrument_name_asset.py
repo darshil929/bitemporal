@@ -118,7 +118,7 @@ def read(
 def test_an_instrument_held_is_named_as_the_latest_status_names_it(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """Reliance's buy-back window is delisted as RILBBPH, and Emami's retired code as Emami Ltd."""
+    """An ISIN held under a buy-back window or a retired code takes its latest status's name."""
     counts = read(database, RecordedScripLists())
 
     assert names(postgres_dsn) == [
@@ -153,7 +153,7 @@ def test_a_changed_name_is_written_beside_the_one_before(
 
 
 def test_a_list_read_in_part_names_nothing(database: PointedDatabase, postgres_dsn: str) -> None:
-    """Without the active scrips, Emami would be named as its retired code is."""
+    """Without the active list, an ISIN listed under a retired code would take that code's name."""
     counts = read(database, RecordedScripLists(refused=frozenset({"Active"})))
 
     assert names(postgres_dsn) == []

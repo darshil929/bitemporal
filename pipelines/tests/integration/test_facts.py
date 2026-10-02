@@ -91,7 +91,7 @@ def count(connection: psycopg.Connection, table: str) -> int:
 def test_bars_are_written_once_however_often_the_day_is_read(
     connection: psycopg.Connection,
 ) -> None:
-    """Re-running a partition has to produce the same result, which is the exit criterion."""
+    """Re-running a partition produces the same result."""
     assert persist_bars(connection, [bar()]) == 1
     assert persist_bars(connection, [bar()]) == 0
     assert count(connection, "price_daily") == 1

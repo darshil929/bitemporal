@@ -60,7 +60,7 @@ def test_every_calendar_day_from_the_first_format_has_a_parser(
 def test_nse_delivery_reads_the_position_file_until_the_full_file_begins(
     definitions: dict[str, SourceDefinition],
 ) -> None:
-    """The address of the full file for 30 September 2019 answers with the file for 27 June."""
+    """The full file's address answers with another day's file before the full file begins."""
     definition = definitions["nse_delivery"]
     first = min(version.effective_from for version in definition.schema_version)
 

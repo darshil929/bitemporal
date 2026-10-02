@@ -30,7 +30,7 @@ def nse_payload() -> bytes:
 
 
 def test_the_bse_legacy_format_dates_rows_with_a_two_digit_year(bse_payload: bytes) -> None:
-    """BSE writes 15-Jan-24 where NSE writes 15-JAN-2024."""
+    """BSE writes a two digit year, 15-Jan-24, where NSE writes four, 15-JAN-2024."""
     rows = parse_bse_legacy(bse_payload)
 
     assert rows
@@ -104,8 +104,8 @@ BSE_HEADER = (
     "NO_OF_SHRS,NET_TURNOV,TDCLOINDI,ISIN_CODE,TRADING_DATE,FILLER2,FILLER3"
 )
 
-# BSE ran two records together on 2022-02-07, truncating an ISIN across the join, so a company
-# name lands in the trade date column.
+# Two records run together on one line, an ISIN truncated across the join, put a company name in the
+# trade date column.
 RAN_TOGETHER = (
     "531240,SHAMROCK IND,XT,Q,6.53,6.90,6.53,6.55,6.53,6.87,4,1060,6942.00,,INE540108,"
     "TIAANC      ,X ,Q,8.00,8.20,7.82,7.93,8.15,8.06,125,23356,16010.00,,INE802B01019,"
@@ -146,8 +146,8 @@ def test_a_malformed_row_is_reported_as_a_source_failure() -> None:
     assert issubclass(MalformedRow, SourceError)
 
 
-# BSE published this header until 23 June 2017, and once afterwards on 14 December 2017. It is
-# the dated layout with a filler standing where the trade date does now.
+# BSE's legacy layout without a trade date: the dated layout with a filler standing where the trade
+# date does now.
 BSE_UNDATED_HEADER = BSE_HEADER.replace("TRADING_DATE", "FILLER1")
 
 
@@ -202,7 +202,7 @@ def nse_line(written: str) -> str:
 
 @pytest.mark.parametrize("written", ["13-JUL-2020", "13-Jul-20"])
 def test_the_nse_trade_date_is_read_in_either_shape(written: str) -> None:
-    """NSE dated 13 July 2020 with a two digit year, and every other day with four."""
+    """NSE's trade date is read with a two digit year as well as its usual four."""
     payload = f"{NSE_HEADER}\n{nse_line(written)}".encode()
 
     rows = parse_nse_legacy(payload)
@@ -218,8 +218,10 @@ def test_a_trade_date_in_no_shape_the_venue_uses_is_refused() -> None:
 
 
 def test_bse_groups_that_carry_shares_and_funds_are_read() -> None:
-    """BSE traded A.SARABHAI in XD on 1 September 2017, companies in XC, ST and SS beside it, and in
-    E the Invesco India Gold ETF, which NSE carries in EQ under the same ISIN.
+    """Companies' shares in BSE's XC, XD, ST and SS groups are read, and so is a fund in its E
+    group.
+
+    NSE carries the same fund in EQ under the same ISIN.
     """
     rows = parse_bse_legacy(
         (CASSETTES / "bse_bhavcopy_equity" / "20170901_legacy.csv").read_bytes()
@@ -243,7 +245,7 @@ def test_bse_groups_that_carry_shares_and_funds_are_read() -> None:
 
 
 def test_nse_sme_and_institutional_platform_series_are_read() -> None:
-    """NSE traded an SME company in SZ and a company in IT on 26 May 2020, beside a bond in N1."""
+    """NSE's SME series SZ and institutional platform series IT are read; a bond in N1 is not."""
     rows = parse_nse_legacy(
         _only_csv(CASSETTES / "nse_bhavcopy_equity" / "20200526_legacy.csv.zip")
     )

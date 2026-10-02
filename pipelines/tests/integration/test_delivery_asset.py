@@ -21,7 +21,7 @@ from pipelines.sources.registry import SourceDefinition
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes"
 TRADE_DATE = "2026-08-14"
 
-# 20MICRONS traded under one ISIN to 13 August and under another from the 14th, keeping its ticker.
+# A ticker listed under one ISIN until the day before TRADE_DATE and under another from it.
 TICKER = "20MICRONS"
 EARLIER_ISIN = "INE144J01019"
 CURRENT_ISIN = "INE144J01027"
@@ -137,7 +137,7 @@ def rows(dsn: str, sql: str, params: tuple[str, ...] = ()) -> list[tuple]:
 def test_a_row_resolves_to_the_isin_in_force_on_its_trade_date(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """The ticker carried the earlier ISIN to the 13th and the current one from the 14th.
+    """A ticker carries one ISIN to a day and another from the next.
 
     A map from ticker to ISIN that ignores dates holds only one of the two, so on one side of the
     change it places delivery against an instrument that was not trading under that name.
@@ -249,7 +249,7 @@ def test_a_day_without_a_session_answered_with_another_days_file_stores_nothing(
 def test_a_trading_day_answered_with_another_days_file_fails_that_day_alone(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """NSE answered a request for 2019-09-30 with the file for 2019-06-27."""
+    """A venue answering one day's address with another day's file fails that day and no other."""
     deliveries = RecordedDeliveries(
         {
             "NSE": {

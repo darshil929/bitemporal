@@ -148,7 +148,7 @@ def test_reading_the_same_day_twice_stores_it_once(
 def test_an_isin_on_two_lines_is_stored_from_its_ordinary_line(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """BSE lists Genus Power's T+0 line first on 16 June 2025, and it traded 24 shares."""
+    """An ISIN traded on two lines, its second listed first, is stored from its ordinary line."""
     bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20250616.csv")})
 
     result = ingest(build_asset_context(partition_key="2025-06-16"), "BSE", database, bhavcopies)
@@ -221,9 +221,9 @@ def test_a_scrip_code_names_the_isin_of_its_nearest_stretch(
 def test_a_day_read_from_the_scrip_code_file_resolves_through_the_stored_bars(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """BSE's ISIN file for 15 July 2022 lacks 652 scrip codes, and its scrip code file lacks none.
+    """A day whose ISIN file lacks scrip codes is read whole from its scrip code file.
 
-    The file carries BSE's short names of the time, and the names already stored stand.
+    That file carries the venue's short names, and the names already stored stand.
     """
     current = {
         "INE229G01022": "KAISER CORPORATION LIMITED",
@@ -271,8 +271,8 @@ def test_one_run_into_an_empty_database_reads_a_scrip_code_day(
 ) -> None:
     """A scrip code day loads in the same run as the days around it, on a database holding nothing.
 
-    BSE answers its ISIN file for 13 December 2016 with its home page, and Interworld Digital did
-    not trade on the 12th, so the day is read after the 14th, whose bars resolve its codes.
+    A code that did not trade on the day before resolves through the day after, so the scrip code
+    day is read after both.
     """
     bhavcopies = RecordedBhavcopies(
         {
@@ -354,7 +354,7 @@ def test_the_legacy_format_is_read_for_a_day_before_the_cutover(
 
 
 def test_a_session_held_at_a_weekend_is_read(database: PointedDatabase, postgres_dsn: str) -> None:
-    """NSE traded on Saturday 20 January 2024, and the day is stored like any other."""
+    """A session held at a weekend is stored like any other day."""
     bhavcopies = RecordedBhavcopies(
         {"NSE": payload("nse_bhavcopy_equity", "20240120_legacy.csv.zip")}
     )
@@ -414,7 +414,7 @@ def test_a_day_read_after_a_later_one_leaves_the_later_days_name(
 ) -> None:
     """A history bootstrap reads the recent years first and the older years in a second run.
 
-    BSE names ABB as ABB INDIA LIMITED on 14 August 2026 and as ABB LTD. on 15 January 2024.
+    The name published on the later day stands, whichever day is read last.
     """
     recent = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20260814.csv")})
     older = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20240115_legacy.csv.zip")})
@@ -430,9 +430,7 @@ def test_a_day_read_after_a_later_one_leaves_the_later_days_name(
 def test_bses_name_stands_where_both_venues_traded_the_latest_day(
     database: PointedDatabase, postgres_dsn: str, order: tuple[str, str]
 ) -> None:
-    """On 14 August 2026 BSE names Ansal Properties ANSAL PROPERTIES & INFRASTRUCT and NSE names it
-    ANSAL PROP & INFRA LTD.
-    """
+    """Where both venues traded on the latest day, BSE's name for the instrument stands."""
     bhavcopies = RecordedBhavcopies(
         {
             "BSE": payload("bse_bhavcopy_equity", "20260814.csv"),
@@ -449,9 +447,7 @@ def test_bses_name_stands_where_both_venues_traded_the_latest_day(
 def test_the_name_of_the_latest_day_at_either_venue_stands(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """NSE's day of 14 August 2026 is later than BSE's of 15 January 2024, which names Ansal
-    Properties ANSAL INFRAS.
-    """
+    """The name published on the latest day at either venue stands."""
     nse = RecordedBhavcopies({"NSE": payload("nse_bhavcopy_equity", "20260814.csv.zip")})
     bse = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20240115_legacy.csv.zip")})
 
@@ -514,7 +510,7 @@ NOTICED_ON = date(2026, 8, 16)
 
 
 def corrected_abb() -> bytes:
-    """BSE's file of 14 August with ABB's close set to 7650.00 from 7645.00."""
+    """The recorded BSE file with one instrument's close changed, as a venue's corrected file."""
     original = payload("bse_bhavcopy_equity", "20260814.csv")
     return original.replace(b",7640.20,7645.00,7645.00,", b",7640.20,7650.00,7645.00,")
 

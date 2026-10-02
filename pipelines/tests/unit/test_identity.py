@@ -100,7 +100,7 @@ def test_a_listing_that_stops_early_is_recorded_as_delisted() -> None:
 
 
 def test_a_stretch_ended_by_a_change_of_isin_is_superseded() -> None:
-    """Shriram Finance kept its scrip code and ticker across the split that issued a new ISIN."""
+    """An instrument keeps its scrip code and ticker across the split that issues its new ISIN."""
     bars = [
         bar(
             isin=SHRIRAM_OLD,
@@ -271,10 +271,10 @@ def test_a_listing_still_trading_has_no_successor() -> None:
 
 
 def test_a_change_of_isin_near_the_end_of_the_history_is_superseded_at_once() -> None:
-    """Pondy Oxides traded as INE063E01053 to 20 July 2026 and as INE063E01061 from the next day.
+    """A ticker that changes ISIN shortly before the venue's last stored day is superseded at once.
 
-    The venue's last stored day came two months later, too soon for the stretch to have settled
-    as ended, but the new ISIN under the same ticker is what ended it.
+    The last stored day comes too soon for the stretch to have settled as ended, but the new ISIN
+    under the same ticker is what ends it.
     """
     bars = [
         bar(isin=PONDY_OLD, symbol="POCL", day="2026-01-02"),

@@ -1,8 +1,7 @@
 """What every parser does with a response it cannot read.
 
-A caller reading years of days recognises a source failure and records the day. Anything else
-ends the run and discards what it had already read, which is how a thousand days of reading were
-lost to one file.
+A caller reading years of days recognises a source failure and records the day. Anything else ends
+the run and discards what it had already read.
 """
 
 from collections.abc import Callable
@@ -19,7 +18,7 @@ from pipelines.sources.udiff import parse_udiff
 
 # Shapes the venues have answered with in place of the file asked for.
 UNREADABLE = {
-    # The opening bytes NSE served in place of the delivery file on 2022-08-08.
+    # The opening bytes of a spreadsheet served in place of a delivery file.
     "a spreadsheet": (
         b"PK\x03\x04\x14\x00\x06\x00\x08\x00\x00\x00!\x00LA\x02\x11_\x01\x00\x00\x90\x04\x00\x00"
         b"\x13\x00\x08\x02[Content_Types].xml \xa2\x04\x02(\xa0\x00\x02\x00\x00\x00"
@@ -52,7 +51,7 @@ def test_a_response_a_parser_cannot_read_is_a_source_failure(
 
 
 def test_a_response_that_is_not_text_names_the_shape_it_arrived_in() -> None:
-    """NSE served the delivery file as a spreadsheet on 2022-08-08."""
+    """A spreadsheet served in place of a delivery file is reported as a spreadsheet."""
     with pytest.raises(SchemaDrift) as refused:
         decoded(UNREADABLE["a spreadsheet"], "nse delivery")
 

@@ -94,7 +94,7 @@ seed:
 	uv run python scripts/load_fixture_seed.py
 
 # Runs a flow against the database .env names, printed before the flow starts. FLOW_ARGS carries a
-# range, FLOW_ARGS="--from 2026-09-01 --to 2026-09-25", or a sync's last day, FLOW_ARGS="--day ...".
+# range, FLOW_ARGS="--from DAY --to DAY", or a sync's last day, FLOW_ARGS="--day DAY".
 bootstrap:
 	uv run --env-file .env python -m pipelines.flows bootstrap $(FLOW_ARGS)
 
@@ -102,9 +102,8 @@ sync:
 	uv run --env-file .env python -m pipelines.flows sync $(FLOW_ARGS)
 
 # Downloads every bhavcopy both venues have published into the cache, throttled, and stores nothing
-# in the database. Hours on a cold cache, and resumable: a day already cached costs no request. The
-# default start is the first day either venue names its instruments by ISIN; a venue skips the
-# days before its own.
+# in the database. A day already cached costs no request. The default start is the first day either
+# venue names its instruments by ISIN; a venue skips the days before its own.
 BACKFILL_FROM ?= 2011-06-22
 BACKFILL_TO ?= $(shell date +%Y-%m-%d)
 

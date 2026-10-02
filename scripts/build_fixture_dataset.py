@@ -1,11 +1,12 @@
-"""Builds the committed fixture dataset from real bhavcopies.
+"""Builds the committed fixture dataset from the venues' published files.
 
-Runs in three passes. `download` pulls every trading day in the range into the source cache.
-`survey` streams the cache and records, per instrument and venue, the facts the selection needs.
-`select` picks instruments until every required edge case is present and writes the seed files.
+`download` holds every trading day of a range in the source cache. `survey` records the facts the
+selection needs for each instrument and venue. `emit` picks instruments until every required case
+is present, or keeps the committed ones, and writes the seed files. `delivery` adds the delivery
+figures and `validate` the verdict on each venue day the dataset holds.
 
-The download hits both exchanges and is rate limited, so it takes hours on a cold cache and
-minutes on a warm one. Nothing here runs in CI.
+Each venue is asked at the rate its source registers, and a day already cached costs no request.
+The builder reads the venues and the source cache, so no test runs it.
 """
 
 from __future__ import annotations
@@ -284,8 +285,8 @@ def _requirements(range_end: date, survey_data: dict[str, Entry]) -> list[Requir
         )
 
     def changed_symbol(_isin: str, entry: Entry) -> bool:
-        # Only NSE names an instrument by ticker across the whole window, so only NSE can show
-        # a rename rather than a change in how the file identifies instruments.
+        # A venue whose files name instruments by ticker across the whole window shows a rename;
+        # elsewhere a new symbol can be a change in how the file identifies instruments.
         nse = entry.get("NSE")
         return nse is not None and len(nse["symbols"]) > 1
 
@@ -399,9 +400,9 @@ def emit(
 ) -> dict[str, int]:
     """Write the seed files, holding only the chosen instruments.
 
-    A venue can carry one instrument on more than one security line, BSE's T+0 segment beside the
-    ordinary one. Both would claim the same bar, so only the line that traded the most value over
-    the window is kept.
+    A venue can carry one instrument on more than one security line, such as a settlement segment
+    beside the ordinary one. Both would claim the same bar, so only the line that traded the most
+    value over the window is kept.
     """
     adapters = _adapters(cache)
     seed_dir.mkdir(parents=True, exist_ok=True)
@@ -530,8 +531,7 @@ def collect_actions(
                 )
 
     # The endpoint publishes no announcement date, so every action carries the day it was
-    # collected. One with a later ex-date would then claim to have been knowable before it was
-    # announced, which is lookahead in the one environment CI reads.
+    # collected, and one with a later ex-date would read as knowable before its announcement.
     knowable = [action for action in actions if action.ex_date <= reported_on]
     ahead = len(actions) - len(knowable)
     if ahead:

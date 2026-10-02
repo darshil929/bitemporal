@@ -139,11 +139,10 @@ def test_the_check_fails_while_a_day_carries_no_verdict(database: PointedDatabas
 def test_a_day_whose_bars_grew_after_its_verdict_is_judged_again_on_that_day(
     database: PointedDatabase,
 ) -> None:
-    """BSE's gold ETFs were read into the history after their days had been judged complete.
+    """A bar read into the history after its day was judged is judged again.
 
-    LIC Gold ETF closed at 5,711.48 at BSE and 5,332.15 at NSE on 3 August 2020. A bar read later
-    carries the day it describes as its as-of date, so the verdict drawn without it is restated,
-    dated the day it was judged again, and the first stands for the dates before.
+    Such a bar carries the day it describes as its as-of date, so the verdict drawn without it is
+    restated, dated the day it is judged again, and the first stands for the dates before.
     """
     store(database, [bar("BSE", "1900.00"), bar("NSE", "1900.40")])
     trading_day_completeness(build_asset_context(), database)
@@ -171,10 +170,11 @@ def test_a_day_whose_bars_grew_after_its_verdict_is_judged_again_on_that_day(
 def test_a_venue_judged_before_the_other_venue_arrived_is_judged_again(
     database: PointedDatabase,
 ) -> None:
-    """NSE's day, judged alone, is judged again on the day BSE's bars are.
+    """A venue's day judged alone is judged again on the day the other venue's bars arrive.
 
-    The venues close at 1,900 and 950, as an action handled at one venue alone leaves them. NSE's
-    first verdict stands for the dates before, and BSE's first is dated the day it describes.
+    The venues close apart, as an action handled at one venue alone leaves them. The first venue's
+    earlier verdict stands for the dates before, and the other's first is dated the day it
+    describes.
     """
     store(database, [bar("NSE", "950.00")])
     trading_day_completeness(build_asset_context(), database)

@@ -9,10 +9,9 @@ ARCHIVE_MAGIC = b"PK"
 def decoded(payload: bytes, label: str) -> str:
     """Return the response as text, refusing one that is not text at all.
 
-    A venue answers the same address with another format from time to time: NSE served a
-    spreadsheet in place of the delivery file on 2022-08-08. Reporting that as a source failure
-    leaves the caller free to record the day and carry on, where a decoding error would end a run
-    reading years of them.
+    A venue answers the same address with another format from time to time, such as a spreadsheet in
+    place of a delivery file. Reporting that as a source failure leaves the caller free to record
+    the day and carry on, where a decoding error would end a run reading years of them.
     """
     try:
         return payload.decode("utf-8-sig")

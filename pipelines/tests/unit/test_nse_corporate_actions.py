@@ -50,7 +50,7 @@ def terms(subject: str) -> list[tuple[str, str, Decimal | None, Decimal | None, 
 
 
 def test_a_bonus_is_shares_received_for_shares_held() -> None:
-    """Bajaj Finance's four for one bonus of June 2025 took one share to five."""
+    """A four for one bonus takes one share held to five."""
     assert terms("Bonus 4:1") == [("bonus", "ordinary", Decimal(1), Decimal(5), None)]
 
 
@@ -67,14 +67,14 @@ def test_a_face_value_that_rises_is_a_consolidation() -> None:
 
 
 def test_a_bonus_and_a_split_in_one_subject_are_both_read() -> None:
-    """ONGC announced both in one subject in February 2011."""
+    """A bonus and a split announced in one subject are both read."""
     subject = "Bonus 1:1 And Face Value Split From Rs.10/- To Rs.5/-"
 
     assert [item[0] for item in terms(subject)] == ["bonus", "split"]
 
 
 def test_the_abbreviated_wording_of_a_split_is_read() -> None:
-    """JSW Steel's split to one rupee in January 2017 was filed as Fv Splt Frm Rs 10 To Re 1."""
+    """A split worded Fv Splt Frm Rs 10 To Re 1 is read as a split to one rupee."""
     assert terms("Fv Splt Frm Rs 10 To Re 1") == [
         ("split", "ordinary", Decimal(1), Decimal(10), None)
     ]
@@ -124,7 +124,9 @@ def test_an_action_without_derivable_terms_keeps_its_text() -> None:
 
 
 def test_actions_are_recorded_under_the_isin_each_instrument_carries_now() -> None:
-    """NSE filed Bajaj Finance's 2025 bonus and split under the ISIN it carried before 2016."""
+    """An action filed under an ISIN the instrument carried years earlier is recorded under its
+    current one.
+    """
     actions = normalize(parse_actions(recorded(2025)), IsinResolver(ISIN_NOW), COLLECTED_ON)
     capital = {(item.isin, item.action_type, item.ex_date) for item in actions if item.ratio_from}
 
@@ -191,7 +193,7 @@ ONGC_LISTED = {"ONGC": ((date(2011, 6, 22), None, ONGC_NOW),)}
 
 
 def test_an_isin_from_before_the_history_is_placed_by_the_ticker_listed_that_day() -> None:
-    """NSE filed ONGC's bonus of 15 December 2016 under the ISIN its 2011 split retired."""
+    """An action filed under an ISIN retired before the history begins is placed by its ticker."""
     resolver = IsinResolver({ONGC_NOW: ONGC_NOW}, ONGC_LISTED)
 
     assert resolver.resolve(ONGC_BEFORE_2011, "ONGC", date(2016, 12, 15)) == ONGC_NOW
@@ -224,7 +226,7 @@ def segment_client() -> ThrottledClient:
 
 @respx.mock
 def test_a_range_holds_the_actions_of_both_market_segments(tmp_path: Path) -> None:
-    """ENSER's split of 7 February 2025 is on the SME platform, Shriram Finance's on the main board."""
+    """A range holds the actions of the SME platform and the main board alike."""
     respx.get(url__startswith="https://www.nseindia.com/companies-listing").mock(
         return_value=httpx.Response(200)
     )
@@ -264,7 +266,9 @@ def test_a_range_before_the_sme_platform_opened_asks_the_main_board_alone(tmp_pa
 
 
 def test_an_sme_row_is_placed_by_the_ticker_listed_on_its_ex_date() -> None:
-    """An SME row's isin field holds a number, so ENSER's bonus and split resolve by its ticker."""
+    """An SME row's isin field holds a number, so the row resolves by the ticker listed on its
+    ex-date.
+    """
     resolver = IsinResolver(
         {ENSER_BEFORE: ENSER_AFTER, ENSER_AFTER: ENSER_AFTER},
         {
@@ -298,7 +302,7 @@ PRITIKA_LISTED = {
 
 
 def test_an_ex_date_while_trading_was_halted_belongs_to_the_listing_opening_after_it() -> None:
-    """PRITIKA last traded on 13 February 2025, went ex its split on the 14th, and reopened on the 17th."""
+    """An ex-date falling while trading was halted belongs to the listing that opens after it."""
     resolver = IsinResolver(
         {PRITIKA_BEFORE: PRITIKA_AFTER, PRITIKA_AFTER: PRITIKA_AFTER}, PRITIKA_LISTED
     )

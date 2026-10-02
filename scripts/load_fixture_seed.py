@@ -12,7 +12,7 @@ FIXTURES = Path(__file__).resolve().parents[1] / "pipelines" / "tests"
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    # The loader lives beside the data it loads, which pytest puts on the path and this does not.
+    # The fixture loader sits beside its data in the test tree, outside every installed package.
     sys.path.insert(0, str(FIXTURES))
     from fixtures.loader import SEED_SCHEMA, load_seed
     from pipelines.config.settings import DatabaseSettings

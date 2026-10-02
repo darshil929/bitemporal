@@ -134,7 +134,7 @@ def test_the_recorded_shriram_split_normalizes() -> None:
 
 
 def test_the_recorded_spin_off_keeps_its_text_and_carries_no_terms() -> None:
-    """Tata Motors Passenger Vehicles fell 40 percent on this demerger with no action beside it."""
+    """A demerger moves the price on its ex-date while the record carries no terms to adjust by."""
     actions = normalize(parse_actions(payload("500570")), SCRIP_TO_ISIN, REPORTED_ON)
     unhandled = [item for item in actions if item.action_type == "unhandled"]
 
@@ -239,7 +239,7 @@ SUMEET = ScripResolver(
 
 
 def test_an_action_belongs_to_the_isin_its_code_was_listed_under_on_the_ex_date() -> None:
-    """Sumeet Industries went ex a bonus on 2018-08-02, years before its code carried a new ISIN."""
+    """An action dated before its code carried a new ISIN belongs to the ISIN of its ex-date."""
     assert SUMEET.resolve(SUMEET_CODE, date(2018, 8, 2)) == SUMEET_BEFORE
     assert SUMEET.resolve(SUMEET_CODE, date(2025, 10, 3)) == SUMEET_AFTER
 
@@ -258,7 +258,7 @@ def test_an_ex_date_after_the_last_stretch_closed_belongs_to_it() -> None:
 
 
 def test_the_isin_listed_on_the_ex_date_is_followed_onto_its_successor() -> None:
-    """Shriram Finance's dividends before its 2025 split belong to the ISIN it trades under now."""
+    """Actions dated before a split belong to the ISIN the instrument trades under now."""
     shriram = ScripResolver(
         {
             "511218": (

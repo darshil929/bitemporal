@@ -68,10 +68,10 @@ def test_nse_delivery_is_read_from_the_equity_series_alone() -> None:
 
 
 def test_a_ticker_listed_under_other_series_keeps_its_equity_figure() -> None:
-    """On 15 June 2023 Emami's block deal and Indiabulls Housing's bonds came before their equity.
+    """A ticker's other series can come before its equity row in the file.
 
-    Each settled delivery under the ticker its shares trade under, so the first row in the file is
-    not the one the bar describes.
+    A block deal window or a bond settles delivery under the ticker the shares trade under, so the
+    first row in the file is not the one the bar describes.
     """
     rows = parse_nse_delivery((CASSETTES / "nse_delivery" / "20230615.csv").read_bytes())
 
@@ -171,7 +171,7 @@ def test_the_position_file_dates_every_row_from_its_header() -> None:
 
 
 def test_the_position_file_carries_the_full_files_figures() -> None:
-    """20MICRONS settled the same 109,556 shares on 14 August 2026 in both files NSE publishes."""
+    """The position file carries the same figure as the full file on a day both cover."""
     position = {
         row.venue_key: row.delivery_quantity
         for row in parse_nse_position(position_bytes("14082026"))
@@ -182,9 +182,9 @@ def test_the_position_file_carries_the_full_files_figures() -> None:
 
 
 def test_the_position_file_keeps_the_equity_figure_beside_a_block_deal() -> None:
-    """Torrent Pharma's block deal window settled 8,858,864 shares on 29 March 2017.
+    """A block deal window settles delivery under the ticker of the ordinary shares.
 
-    Its ordinary shares traded 175,937 that day and settled 90,772, the figure the bar describes.
+    The position file keeps the equity series' figure, the one the bar describes.
     """
     rows = parse_nse_position(position_bytes("29032017"))
 
@@ -199,10 +199,10 @@ def test_the_position_url_matches_the_published_naming() -> None:
 
 @respx.mock
 def test_a_file_describing_another_day_is_never_cached(tmp_path: Path) -> None:
-    """NSE answers the address for 30 September 2019 with the file for 27 June.
+    """A file served for another day is never cached under the day asked for.
 
-    Held in the cache, that answer would be read back on every later run, and the day it was asked
-    for could never be read again.
+    Held there, it would be read back on every later run, and the day asked for could never be read
+    again.
     """
     answered = (CASSETTES / "nse_delivery" / "20190930_describing_20190627.csv").read_bytes()
     respx.get(url__startswith="https://www.nseindia.com").mock(return_value=httpx.Response(200))
@@ -217,7 +217,9 @@ def test_a_file_describing_another_day_is_never_cached(tmp_path: Path) -> None:
 
 
 def test_the_position_file_is_dated_from_its_control_record() -> None:
-    """NSE headed the file for 30 March 2017 "rade Date", its control record naming the day intact."""
+    """A position file whose header is mangled is dated from its control record, which names the
+    day.
+    """
     rows = parse_nse_position(position_bytes("30032017"))
 
     assert {row.trade_date for row in rows} == {date(2017, 3, 30)}

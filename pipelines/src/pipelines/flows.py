@@ -80,6 +80,14 @@ SOURCE_COUNTS = {
 # The rows a dbt test returned, as dagster-dbt records them on the check's evaluation.
 ROWS_FOUND = "dagster_dbt/failed_row_count"
 
+# dbt names each session it opens and heads each query with the target it builds, so a build still
+# writing to the database shows there whichever process started it.
+DBT_SESSIONS = """
+select pid from pg_stat_activity
+where datname = current_database() and application_name = 'dbt' and query like %s
+order by pid
+"""
+
 FAILED_ATTEMPTS = """
 select source_id, partition_key, detail
 from ingestion_log
@@ -142,8 +150,10 @@ def bootstrap_windows(today: date) -> list[tuple[date, date]]:
     return [(split + timedelta(days=1), today), (INGESTION_DAYS.start.date(), split)]
 
 
-def refuse_unless_ready(connection: psycopg.Connection, instance: DagsterInstance) -> None:
-    """Refuse a database behind the latest migration, and a second flow while one is running."""
+def refuse_unless_ready(
+    connection: psycopg.Connection, instance: DagsterInstance, target: str
+) -> None:
+    """Refuse a database behind the latest migration, and a flow while another or dbt still runs."""
     head = ScriptDirectory.from_config(Config(str(ALEMBIC_INI))).get_current_head()
     current = None
     table = connection.execute("select to_regclass('alembic_version')").fetchone()
@@ -156,6 +166,12 @@ def refuse_unless_ready(connection: psycopg.Connection, instance: DagsterInstanc
     running = instance.get_runs(RunsFilter(tags={FLOW_TAG: [BOOTSTRAP, SYNC]}, statuses=UNFINISHED))
     if running:
         raise FlowRefused(f"flow run {running[0].run_id} is {running[0].status.value}")
+
+    sessions = [
+        pid for (pid,) in connection.execute(DBT_SESSIONS, (f'%"target_name": "{target}"%',))
+    ]
+    if sessions:
+        raise FlowRefused(f"dbt is still building {target}, database sessions {sessions}")
 
 
 @dataclass
@@ -303,7 +319,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"schema {settings.schema_name}, Dagster instance {instance.root_directory}")
     try:
         with Database().connect() as connection:
-            refuse_unless_ready(connection, instance)
+            refuse_unless_ready(connection, instance, settings.data_env)
     except FlowRefused as refusal:
         print(f"{args.flow} not started: {refusal}", file=sys.stderr)
         return 2

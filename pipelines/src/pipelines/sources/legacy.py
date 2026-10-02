@@ -14,10 +14,10 @@ from pipelines.sources.bhavcopy import BhavcopyRow, BlankAsNone, validated
 from pipelines.sources.errors import SchemaDrift, WrongDay
 from pipelines.sources.payload import decoded
 
-# BSE dates its legacy rows 15-Jan-24 and NSE dates its own 15-JAN-2024, except on
-# 13 July 2020, which NSE dated 13-Jul-20. Each venue's usual shape is tried first and the
-# other after. A two digit year is read only by the first and a four digit year only by the
-# second, so neither can be mistaken for the other.
+# BSE dates its legacy rows 15-Jan-24 and NSE dates its own 15-JAN-2024, though NSE has written a
+# two digit year on occasion. Each venue's usual shape is tried first and the other after. A two
+# digit year is read only by the first and a four digit year only by the second, so neither can be
+# mistaken for the other.
 DATE_FORMATS = ("%d-%b-%y", "%d-%b-%Y")
 BSE_DATE_FORMATS = DATE_FORMATS
 NSE_DATE_FORMATS = tuple(reversed(DATE_FORMATS))
@@ -172,9 +172,9 @@ BSE_LEGACY_COLUMNS = frozenset(
     field.alias for field in BseLegacyRow.model_fields.values() if field.alias
 )
 
-# BSE published this file without a trade date column until 23 June 2017, and once afterwards on
-# 14 December 2017. The layouts are otherwise the same, the column standing where TRADING_DATE
-# does now, so the day the file was asked for supplies what it does not carry.
+# BSE has published this file without a trade date column. The layouts are otherwise the same, the
+# column standing where TRADING_DATE does now, so the day the file was asked for supplies what it
+# does not carry.
 BSE_DATED_COLUMN = "TRADING_DATE"
 BSE_UNDATED_COLUMNS = BSE_LEGACY_COLUMNS - {BSE_DATED_COLUMN}
 BSE_SCRIP_COLUMNS = BSE_UNDATED_COLUMNS - {"ISIN_CODE"}
