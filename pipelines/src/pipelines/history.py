@@ -122,6 +122,17 @@ where trade_date = %(trade_date)s and as_of_date <= %(as_of)s
 order by isin, venue, as_of_date desc
 """
 
+# Delivery is read after the run's prices, so the days its own figures are stored for are the days
+# held before the run.
+LATEST_DAYS_HELD = {
+    table: f"""
+select distinct trade_date from {table}
+where venue = %(venue)s and trade_date between %(first)s and %(last)s
+order by trade_date desc
+"""
+    for table in ("price_daily", "delivery_daily")
+}
+
 # A day with no verdict has not been validated, and one validated before a correction arrived is
 # revalidated because the correction carries a later as-of date than the verdict standing.
 DAYS_AWAITING_A_VERDICT = """
@@ -193,6 +204,20 @@ order by venue, trade_date
 # against the nearest days after, and a history shorter still is not measured at all.
 NEIGHBOURS = 20
 MINIMUM_NEIGHBOURS = 10
+
+
+def latest_days_held(
+    connection: psycopg.Connection,
+    venue: str,
+    first: date,
+    last: date,
+    count: int,
+    facts: str = "price_daily",
+) -> list[date]:
+    """The most recent days within a range a venue's facts are stored for, the latest first."""
+    query = LATEST_DAYS_HELD[facts]
+    held = connection.execute(query, {"venue": venue, "first": first, "last": last})
+    return [row[0] for row in held.fetchmany(count)]
 
 
 def read_bars(

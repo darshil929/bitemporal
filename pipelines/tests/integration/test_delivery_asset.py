@@ -39,11 +39,14 @@ class RecordedDeliveries:
         self,
         payloads: dict[str, bytes | dict[date, bytes] | None],
         positions: dict[date, bytes] | None = None,
+        corrections: dict[date, list[tuple[date, bytes]]] | None = None,
     ) -> None:
         self._payloads = payloads
         self._positions = positions or {}
+        self._corrections = corrections or {}
         self._real = Deliveries()
         self.asked: list[tuple[date, str]] = []
+        self.rechecked: list[date] = []
 
     def definition(self, venue: str) -> SourceDefinition:
         return self._real.definition(venue)
@@ -63,6 +66,8 @@ class RecordedDeliveries:
             return served
 
         adapter.fetch = fetch  # type: ignore[method-assign]
+        adapter.recheck = lambda partition, noticed_on: self.rechecked.append(partition)  # type: ignore[method-assign]
+        adapter.corrections = lambda partition: self._corrections.get(partition, [])  # type: ignore[method-assign]
         return adapter
 
 
@@ -310,3 +315,33 @@ def test_a_run_whose_every_day_failed_finishes_and_counts_them(
     assert result.metadata["failed"] == 1
     assert result.metadata["published"] == 0
     assert rows(postgres_dsn, "select outcome from ingestion_log") == [("failed",)]
+
+
+def test_a_corrected_delivery_file_stores_what_it_changed_dated_the_day_noticed(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    day, noticed = date(2026, 8, 14), date(2026, 8, 16)
+    deliveries = RecordedDeliveries(
+        {"NSE": nse_day("14-Aug-2026", 109_556)},
+        corrections={day: [(noticed, nse_day("14-Aug-2026", 110_000))]},
+    )
+    context = build_asset_context(partition_key=TRADE_DATE)
+
+    first = ingest_delivery(context, "NSE", database, deliveries)
+    again = ingest_delivery(context, "NSE", database, deliveries)
+
+    assert (first.metadata["corrected"], again.metadata["corrected"]) == (1, 0)
+    assert rows(
+        postgres_dsn, "select as_of_date, delivery_quantity from delivery_daily order by 1"
+    ) == [(day, 109_556), (noticed, 110_000)]
+
+
+def test_a_sync_asks_again_only_for_delivery_held_before_it(database: PointedDatabase) -> None:
+    """Delivery is read after the run's prices; a file read for the first time is not asked twice."""
+    deliveries = RecordedDeliveries({"NSE": {date(2026, 8, 14): nse_day("14-Aug-2026", 109_556)}})
+    window = build_asset_context(partition_key_range=PartitionKeyRange("2026-08-13", TRADE_DATE))
+
+    ingest_delivery(window, "NSE", database, deliveries, recheck_on=date(2026, 8, 16))
+    ingest_delivery(window, "NSE", database, deliveries, recheck_on=date(2026, 8, 16))
+
+    assert deliveries.rechecked == [date(2026, 8, 14)]

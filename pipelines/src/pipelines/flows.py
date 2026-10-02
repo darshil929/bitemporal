@@ -51,13 +51,22 @@ UNFINISHED = [DagsterRunStatus.QUEUED, DagsterRunStatus.STARTING, DagsterRunStat
 # Dagster keeps its own telemetry in the instance's `logs` folder.
 LOG_FOLDER = "flow-logs"
 
-# The counts each source's result carries: days for prices and delivery, years of ex-dates for
-# corporate actions, statuses for a list of securities.
+# The counts each source's result carries: days for prices and delivery, with the rows a corrected
+# file changed and the days that could not be asked for again; years of ex-dates for corporate
+# actions; statuses for a list of securities.
+DAY_COUNTS = (
+    "published",
+    "unpublished",
+    "outside_coverage",
+    "failed",
+    "corrected",
+    "recheck_failed",
+)
 SOURCE_COUNTS = {
-    "bse_bhavcopy": ("published", "unpublished", "outside_coverage", "failed"),
-    "nse_bhavcopy": ("published", "unpublished", "outside_coverage", "failed"),
-    "bse_delivery": ("published", "unpublished", "outside_coverage", "failed"),
-    "nse_delivery": ("published", "unpublished", "outside_coverage", "failed"),
+    "bse_bhavcopy": DAY_COUNTS,
+    "nse_bhavcopy": DAY_COUNTS,
+    "bse_delivery": DAY_COUNTS,
+    "nse_delivery": DAY_COUNTS,
     "corporate_actions": ("ranges", "failed"),
     "nse_corporate_actions": ("ranges", "failed"),
     "bse_instrument_names": ("lists", "failed"),

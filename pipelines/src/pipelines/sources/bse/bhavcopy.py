@@ -63,6 +63,10 @@ class BseBhavcopy:
             self._cache.write_validators(SOURCE_ID, key, suffix, answer.validators)
         return payload
 
+    def corrections(self, partition: date) -> list[tuple[date, bytes]]:
+        """Each corrected file held for a day in the current format, with the day it was noticed."""
+        return self._cache.versions(SOURCE_ID, partition.isoformat(), CACHE_SUFFIX)
+
     def recheck(self, partition: date, noticed_on: date) -> bytes | None:
         """Ask again for a day's file in the current format, holding a corrected one beside it."""
         url = self.url_for(partition, UDIFF)

@@ -22,8 +22,15 @@ from dagster import (
     asset,
 )
 
-from pipelines.assets.ingestion.calendar import INGESTION_DAYS, calendar_days
+from pipelines.assets.ingestion.calendar import (
+    INGESTION_DAYS,
+    RECHECKED_DAYS,
+    calendar_days,
+    recheck_day,
+)
 from pipelines.facts import persist_delivery, record_ingestion
+from pipelines.history import latest_days_held
+from pipelines.models.market import DeliveryRecord
 from pipelines.resources import Bhavcopies, Database, Deliveries
 from pipelines.sources.delivery import DeliveryRow, held_to
 from pipelines.sources.errors import NotPublished, SourceError, WrongDay
@@ -53,6 +60,10 @@ limit 1
 
 class DayReader(Protocol):
     def fetch(self, partition: date, schema_version: str) -> bytes: ...
+
+    def recheck(self, partition: date, noticed_on: date) -> bytes | None: ...
+
+    def corrections(self, partition: date) -> list[tuple[date, bytes]]: ...
 
     def parse(self, payload: bytes, schema_version: str) -> Sequence[DeliveryRow]: ...
 
@@ -95,8 +106,36 @@ def priced(connection: psycopg.Connection, venue: str, day: date) -> set[str]:
     return {isin for (isin,) in connection.execute(PRICED, (venue, day))}
 
 
+STANDING = """
+select distinct on (isin) isin, delivery_quantity
+from delivery_daily
+where venue = %s and trade_date = %s
+order by isin, as_of_date desc
+"""
+
+
+def corrected_delivery(
+    connection: psycopg.Connection,
+    venue: str,
+    day: date,
+    records: Sequence[DeliveryRecord],
+    noticed: date,
+) -> list[DeliveryRecord]:
+    """The figures of a corrected file that differ from the version standing, dated the day noticed."""
+    standing: dict[str, int] = dict(connection.execute(STANDING, (venue, day)).fetchall())
+    return [
+        record.model_copy(update={"as_of_date": noticed})
+        for record in records
+        if standing.get(record.isin) != record.delivery_quantity
+    ]
+
+
 def ingest_delivery(
-    context: AssetExecutionContext, venue: str, database: Database, deliveries: Deliveries
+    context: AssetExecutionContext,
+    venue: str,
+    database: Database,
+    deliveries: Deliveries,
+    recheck_on: date | None = None,
 ) -> MaterializeResult[None]:
     window = context.partition_key_range
     definition = deliveries.definition(venue)
@@ -104,7 +143,7 @@ def ingest_delivery(
     prices = Bhavcopies().definition(venue)
     price_source = prices.source_id
 
-    published = unpublished = failed = written = unpriced = 0
+    published = unpublished = failed = written = unpriced = corrected = recheck_failed = 0
     days = list(calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)))
     # A delivery figure is stored only beside a bar, so a day the venue's prices are not registered
     # for is outside delivery's coverage too, however far back the delivery file reaches.
@@ -112,9 +151,24 @@ def ingest_delivery(
     outside_coverage = len(days) - len(covered)
 
     with database.connect() as connection:
+        rechecked = set()
+        if recheck_on is not None and days:
+            held = latest_days_held(
+                connection, venue, days[0], days[-1], RECHECKED_DAYS, "delivery_daily"
+            )
+            rechecked = set(held)
         for day in covered:
             partition = day.isoformat()
             version = definition.version_for(day)
+            if day in rechecked and recheck_on is not None:
+                try:
+                    adapter.recheck(day, recheck_on)
+                except SourceError as failure:
+                    recheck_failed += 1
+                    context.log.warning(
+                        "delivery could not be asked for again",
+                        extra={"venue": venue, "trade_date": partition, "detail": str(failure)},
+                    )
 
             failures: list[SourceError] = []
             rows: Sequence[DeliveryRow] = ()
@@ -168,6 +222,23 @@ def ingest_delivery(
             record_ingestion(
                 connection, definition.source_id, partition, version, "succeeded", len(records)
             )
+            # A corrected file is a version of the day's registered file, read whole before it was
+            # held; only what it changed is stored, dated the day it was noticed.
+            registered = definition.version_for(day)
+            for noticed, file in adapter.corrections(day):
+                read = held_to(adapter.parse(file, registered), day, venue)
+                resolved = adapter.normalize(read, resolver(connection, venue, day))
+                kept = [item for item in resolved if item.isin in with_bars]
+                changed = corrected_delivery(connection, venue, day, kept, noticed)
+                corrected += persist_delivery(connection, changed)
+                record_ingestion(
+                    connection,
+                    definition.source_id,
+                    f"{partition}.as-of-{noticed:%Y%m%d}",
+                    registered,
+                    "succeeded",
+                    len(changed),
+                )
             connection.commit()
             published += 1
 
@@ -180,6 +251,7 @@ def ingest_delivery(
             "outside_coverage": outside_coverage,
             "written": written,
             "unpriced": unpriced,
+            "corrected": corrected,
         },
     )
     return MaterializeResult(
@@ -193,6 +265,8 @@ def ingest_delivery(
             "outside_coverage": outside_coverage,
             "written": written,
             "unpriced": unpriced,
+            "corrected": corrected,
+            "recheck_failed": recheck_failed,
         }
     )
 
@@ -207,7 +281,7 @@ def ingest_delivery(
 def bse_delivery(
     context: AssetExecutionContext, database: Database, deliveries: Deliveries
 ) -> MaterializeResult[None]:
-    return ingest_delivery(context, "BSE", database, deliveries)
+    return ingest_delivery(context, "BSE", database, deliveries, recheck_day(context))
 
 
 @asset(
@@ -220,4 +294,4 @@ def bse_delivery(
 def nse_delivery(
     context: AssetExecutionContext, database: Database, deliveries: Deliveries
 ) -> MaterializeResult[None]:
-    return ingest_delivery(context, "NSE", database, deliveries)
+    return ingest_delivery(context, "NSE", database, deliveries, recheck_day(context))
