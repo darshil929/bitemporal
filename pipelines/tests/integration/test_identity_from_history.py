@@ -1,7 +1,7 @@
 """Identity rebuilt from stored bars, against the dataset the builder derived from the same days."""
 
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import date, timedelta
 
 import psycopg
 import pytest
@@ -23,6 +23,8 @@ BAJAJ_OLD = "INE296A01024"
 ETERNAL = "INE758T01015"
 # NSDL listed in August 2025, so its first stored bar is the day its history begins.
 NSDL = "INE301O01023"
+# BSE's files named no ticker before 8 July 2024 and report the scrip code as the symbol.
+TICKERS_FROM = date(2024, 7, 8)
 
 
 @pytest.fixture(scope="module")
@@ -208,6 +210,35 @@ def test_a_derivation_that_loses_stretches_outright_is_refused(
 
         stored = open_.execute("select count(*) from listing").fetchone()
         assert stored is not None and stored[0] > 0
+
+        for table in (
+            "price_daily",
+            "instrument_succession",
+            "listing",
+            "instrument_primary_venue",
+            "instrument_master",
+        ):
+            open_.execute(f"delete from {table}")
+        open_.commit()
+
+
+def test_history_read_before_bses_tickers_derives_the_same_listings(
+    seed: psycopg.Connection, seeded_postgres: str, migrated: Config, postgres_dsn: str
+) -> None:
+    """Stretches stored under BSE's scrip codes fold into the tickers read after them."""
+    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        open_.execute(
+            f"insert into instrument_master select * from {FIXTURE_SCHEMA}.instrument_master"
+        )
+        for bars in ("trade_date < %s", "trade_date >= %s"):
+            open_.execute(
+                f"insert into price_daily select * from {FIXTURE_SCHEMA}.price_daily where {bars}",
+                (TICKERS_FROM,),
+            )
+            open_.commit()
+            instrument_identity(build_asset_context(), PointedDatabase(dsn=postgres_dsn))
+
+        assert committed_listings(open_) == committed_listings(seed)
 
         for table in (
             "price_daily",
