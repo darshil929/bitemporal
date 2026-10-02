@@ -38,12 +38,43 @@ SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "instrument_name": NAMES,
 }
 
+# Folders dbt writes inside the project and never reads when parsing it.
+BUILD_FOLDERS = frozenset({"target", "logs", "dbt_packages"})
+
+
+def project_paths(project_dir: Path) -> Iterator[Path]:
+    """Every file and folder of the dbt project, leaving out what dbt writes there itself."""
+    for entry in project_dir.iterdir():
+        if entry.name in BUILD_FOLDERS or entry.name.startswith("."):
+            continue
+        yield entry
+        if entry.is_dir():
+            yield from entry.rglob("*")
+
+
+def manifest_is_current(project: DbtProject) -> bool:
+    """Whether the manifest exists and nothing in the project changed after it was parsed.
+
+    A folder's modification time moves when an entry is added to it or removed from it, so a
+    model deleted since the parse counts as a change.
+    """
+    if not project.manifest_path.exists():
+        return False
+    parsed_at = project.manifest_path.stat().st_mtime
+    return all(path.stat().st_mtime <= parsed_at for path in project_paths(project.project_dir))
+
+
+def prepare(project: DbtProject) -> None:
+    """Parse the project into its manifest unless the manifest is current."""
+    if not manifest_is_current(project):
+        project.preparer.prepare(project)
+
+
 dbt_project = DbtProject(project_dir=DBT_DIR, profiles_dir=DBT_DIR)
 
-# A manifest is what the models are read from, and it is a build artefact rather than a committed
-# file. Parsing when it is absent means a fresh checkout loads without a separate build step.
-if not dbt_project.manifest_path.exists():
-    dbt_project.preparer.prepare(dbt_project)
+# The models are read from the manifest, a build artefact rather than a committed file, so a
+# checkout that adds, changes or removes a model or test loads it only once the project is parsed.
+prepare(dbt_project)
 
 
 def table_assets() -> list[AssetsDefinition]:
