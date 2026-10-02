@@ -5,18 +5,23 @@ the models read is an asset of its own, run once every asset writing it has, so 
 models last.
 """
 
+import signal
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from dagster import AssetExecutionContext, AssetKey, AssetsDefinition, MaterializeResult, asset
-from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
+from dagster_dbt import DbtCliInvocation, DbtCliResource, DbtProject, dbt_assets
 from psycopg import sql
 
 from pipelines.config.settings import DatabaseSettings
 from pipelines.resources import Database
 
 DBT_DIR = Path(__file__).resolve().parents[4] / "dbt"
+
+# How long an interrupted dbt command has to cancel its queries and exit before it is killed.
+STOP_SECONDS = 30.0
 
 BSE = AssetKey("bse_bhavcopy")
 NSE = AssetKey("nse_bhavcopy")
@@ -116,7 +121,31 @@ def dbt_commands(target: str) -> list[list[str]]:
     ]
 
 
+def stop(process: subprocess.Popen[bytes]) -> None:
+    """Interrupt a dbt process still running, which cancels its queries, and kill it if it stays."""
+    if process.poll() is not None:
+        return
+    process.send_signal(signal.SIGINT)
+    try:
+        process.wait(timeout=STOP_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def stream(invocation: DbtCliInvocation) -> Iterator[Any]:
+    """The events of one dbt command, which ends with the step that reads them.
+
+    dagster-dbt stops dbt only when a run is cancelled; on any other failure the step exits and
+    dbt runs on, writing to the database with nothing reading its output.
+    """
+    try:
+        yield from invocation.stream()
+    finally:
+        stop(invocation.process)
+
+
 @dbt_assets(manifest=dbt_project.manifest_path, project=dbt_project)
 def dbt_models(context: AssetExecutionContext, dbt: DbtCliResource) -> Iterator[Any]:
     for command in dbt_commands(DatabaseSettings().data_env):
-        yield from dbt.cli(command, context=context).stream()
+        yield from stream(dbt.cli(command, context=context))

@@ -1,4 +1,4 @@
-"""Validate a commit message against the repository's commit conventions."""
+"""Checks a commit message against the repository's commit conventions."""
 
 import re
 import sys
@@ -50,7 +50,10 @@ def main() -> int:
 
     for error in errors:
         print(f"commit message: {error}", file=sys.stderr)
-    print("\nexample: feat(pipelines): add bse bhavcopy adapter with disk cache", file=sys.stderr)
+    print(
+        "\nexample: fix(pipelines): harden trading day validation against partial files",
+        file=sys.stderr,
+    )
     return 1
 
 

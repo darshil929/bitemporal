@@ -55,6 +55,7 @@ def test_the_terminal_returns_when_a_run_raises(
 class Settings:
     database_url = "postgresql+psycopg://smoke@localhost:5434/smoke"
     schema_name = "dev"
+    data_env = "dev"
 
 
 class Database:
