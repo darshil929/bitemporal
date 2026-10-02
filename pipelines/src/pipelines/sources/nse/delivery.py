@@ -1,11 +1,11 @@
 """NSE security-wise delivery, served as a bare CSV behind the same session cookie."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 
 from pipelines.models.market import DeliveryRecord
 from pipelines.sources.cache import DiskCache
-from pipelines.sources.client import ThrottledClient
+from pipelines.sources.client import Answer, ThrottledClient
 from pipelines.sources.delivery import (
     DeliveryRow,
     held_to,
@@ -15,6 +15,7 @@ from pipelines.sources.delivery import (
 )
 from pipelines.sources.errors import SourceUnavailable, UnknownSchemaVersion
 from pipelines.sources.nse.bhavcopy import COOKIE_SOURCE_URL
+from pipelines.sources.revalidation import recheck
 
 SOURCE_ID = "nse_delivery"
 VENUE = "NSE"
@@ -48,15 +49,30 @@ class NseDelivery:
     def fetch(self, partition: date, schema_version: str = FULL) -> bytes:
         url = self.url_for(partition, schema_version)
         key = partition.isoformat()
-        cached = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX[schema_version])
+        suffix = CACHE_SUFFIX[schema_version]
+        cached = self._cache.read(SOURCE_ID, key, suffix)
         if cached is not None:
             return cached
 
-        payload = self._read(url)
+        answer = self._through_cookie(lambda: self._client.get_answer(url))
         # A file describing another day is never held, or the day asked for could not be read again.
-        held_to(self.parse(payload, schema_version), partition, VENUE)
-        self._cache.write(SOURCE_ID, key, CACHE_SUFFIX[schema_version], payload)
-        return payload
+        held_to(self.parse(answer.content, schema_version), partition, VENUE)
+        self._cache.write(SOURCE_ID, key, suffix, answer.content)
+        self._cache.write_validators(SOURCE_ID, key, suffix, answer.validators)
+        return answer.content
+
+    def recheck(self, partition: date, noticed_on: date) -> bytes | None:
+        """Ask again for a day's full file, holding a corrected one beside it."""
+        url = self.url_for(partition, FULL)
+
+        def ask(held: Mapping[str, str]) -> Answer | None:
+            answer = self._through_cookie(lambda: self._client.get_if_changed(url, held))
+            if answer is not None:
+                held_to(self.parse(answer.content, FULL), partition, VENUE)
+            return answer
+
+        key = partition.isoformat()
+        return recheck(self._cache, SOURCE_ID, key, CACHE_SUFFIX[FULL], noticed_on, ask)
 
     def parse(self, payload: bytes, schema_version: str = FULL) -> Sequence[DeliveryRow]:
         if schema_version == FULL:
@@ -74,14 +90,14 @@ class NseDelivery:
     ) -> Sequence[DeliveryRecord]:
         return normalize(rows, VENUE, isin_for_symbol)
 
-    def _read(self, url: str) -> bytes:
+    def _through_cookie[T](self, request: Callable[[], T]) -> T:
         self._obtain_cookie()
         try:
-            return self._client.get(url)
+            return request()
         except SourceUnavailable:
             self._holds_cookie = False
             self._obtain_cookie()
-            return self._client.get(url)
+            return request()
 
     def _obtain_cookie(self) -> None:
         if self._holds_cookie:

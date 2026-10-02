@@ -1,15 +1,16 @@
 """NSE equity bhavcopy, served as a zipped CSV behind a session cookie."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 
 from pipelines.models.market import PriceBar
 from pipelines.sources.archive import extract_csv
 from pipelines.sources.bhavcopy import BhavcopyRow, normalize
 from pipelines.sources.cache import DiskCache
-from pipelines.sources.client import ThrottledClient
+from pipelines.sources.client import Answer, ThrottledClient
 from pipelines.sources.errors import SourceUnavailable, UnknownSchemaVersion
 from pipelines.sources.legacy import parse_nse_legacy
+from pipelines.sources.revalidation import recheck
 from pipelines.sources.udiff import parse_udiff
 
 SOURCE_ID = "nse_bhavcopy_equity"
@@ -51,24 +52,37 @@ class NseBhavcopy:
         archive = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX)
 
         if archive is None:
-            archive = self._read_archive(self.url_for(partition, schema_version))
+            url = self.url_for(partition, schema_version)
+            answer = self._through_cookie(lambda: self._client.get_answer(url))
+            archive = answer.content
             self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, archive)
+            self._cache.write_validators(SOURCE_ID, key, CACHE_SUFFIX, answer.validators)
 
         return extract_csv(archive)
 
-    def _read_archive(self, url: str) -> bytes:
-        """Fetch through the session cookie, collecting a fresh one if the held one has expired.
+    def recheck(self, partition: date, noticed_on: date) -> bytes | None:
+        """Ask again for a day's file in the current format, holding a corrected one beside it."""
+        url = self.url_for(partition, UDIFF)
+
+        def ask(held: Mapping[str, str]) -> Answer | None:
+            return self._through_cookie(lambda: self._client.get_if_changed(url, held))
+
+        key = partition.isoformat()
+        return recheck(self._cache, SOURCE_ID, key, CACHE_SUFFIX, noticed_on, ask, extract_csv)
+
+    def _through_cookie[T](self, request: Callable[[], T]) -> T:
+        """Send a request through the session cookie, collecting a fresh one if it has expired.
 
         A cookie outlives a single request but not a backfill, and the archive host answers an
         expired one the same way it answers none at all.
         """
         self._obtain_cookie()
         try:
-            return self._client.get(url)
+            return request()
         except SourceUnavailable:
             self._holds_cookie = False
             self._obtain_cookie()
-            return self._client.get(url)
+            return request()
 
     def parse(
         self, payload: bytes, schema_version: str, partition: date | None = None

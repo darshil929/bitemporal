@@ -1,14 +1,16 @@
 """BSE gross delivery, served as a zipped pipe delimited file to a plain client."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 
 from pipelines.models.market import DeliveryRecord
+from pipelines.sources.archive import contents
 from pipelines.sources.bse.bhavcopy import reject_error_page
 from pipelines.sources.cache import DiskCache
-from pipelines.sources.client import ThrottledClient
+from pipelines.sources.client import Answer, ThrottledClient
 from pipelines.sources.delivery import DeliveryRow, held_to, normalize, parse_bse_delivery
 from pipelines.sources.errors import UnknownSchemaVersion
+from pipelines.sources.revalidation import recheck
 
 SOURCE_ID = "bse_delivery"
 VENUE = "BSE"
@@ -41,11 +43,26 @@ class BseDelivery:
             return cached
 
         url = self.url_for(partition)
-        payload = self._client.get(url)
-        reject_error_page(payload, url)
-        held_to(self.parse(payload), partition, VENUE)
-        self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)
-        return payload
+        answer = self._client.get_answer(url)
+        reject_error_page(answer.content, url)
+        held_to(self.parse(answer.content), partition, VENUE)
+        self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, answer.content)
+        self._cache.write_validators(SOURCE_ID, key, CACHE_SUFFIX, answer.validators)
+        return answer.content
+
+    def recheck(self, partition: date, noticed_on: date) -> bytes | None:
+        """Ask again for a day's file, holding a corrected one beside it."""
+        url = self.url_for(partition)
+
+        def ask(held: Mapping[str, str]) -> Answer | None:
+            answer = self._client.get_if_changed(url, held)
+            if answer is not None:
+                reject_error_page(answer.content, url)
+                held_to(self.parse(answer.content), partition, VENUE)
+            return answer
+
+        key = partition.isoformat()
+        return recheck(self._cache, SOURCE_ID, key, CACHE_SUFFIX, noticed_on, ask, contents)
 
     def parse(self, payload: bytes, schema_version: str = GROSS) -> Sequence[DeliveryRow]:
         self._require(schema_version)

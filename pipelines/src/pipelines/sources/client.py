@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 import httpx
 from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
@@ -18,6 +19,17 @@ RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 MAX_ATTEMPTS = 5
 INITIAL_BACKOFF_SECONDS = 1.0
 MAX_BACKOFF_SECONDS = 60.0
+
+# Each validator a venue answers with, by the request header that sends it back.
+VALIDATORS = {"etag": "If-None-Match", "last-modified": "If-Modified-Since"}
+
+
+@dataclass(frozen=True)
+class Answer:
+    """A file as the venue served it, with the validators that identify this version of it."""
+
+    content: bytes
+    validators: dict[str, str]
 
 
 class Throttle:
@@ -69,12 +81,32 @@ class ThrottledClient:
         )
 
     def get(self, url: str, headers: Mapping[str, str] | None = None) -> bytes:
+        return self._respond(url, headers).content
+
+    def get_answer(self, url: str, headers: Mapping[str, str] | None = None) -> Answer:
+        """The file with the validators a later request can send back."""
+        return answer_of(self._respond(url, headers))
+
+    def get_if_changed(
+        self, url: str, held: Mapping[str, str], headers: Mapping[str, str] | None = None
+    ) -> Answer | None:
+        """The file again, or None where the venue answers that the version held is current."""
+        conditional = {
+            VALIDATORS[name]: value for name, value in held.items() if name in VALIDATORS
+        }
+        response = self._respond(url, {**(headers or {}), **conditional})
+        if response.status_code == httpx.codes.NOT_MODIFIED:
+            return None
+        return answer_of(response)
+
+    def _respond(self, url: str, headers: Mapping[str, str] | None) -> httpx.Response:
         try:
-            return self._retrying(self._request, url, headers)
+            response: httpx.Response = self._retrying(self._request, url, headers)
         except (httpx.HTTPStatusError, httpx.TransportError) as error:
             raise SourceUnavailable(f"{self.source_id} did not serve {url}") from error
+        return response
 
-    def _request(self, url: str, headers: Mapping[str, str] | None = None) -> bytes:
+    def _request(self, url: str, headers: Mapping[str, str] | None = None) -> httpx.Response:
         self._throttle.wait()
         response = self._client.get(url, headers=dict(headers) if headers else None)
 
@@ -91,5 +123,13 @@ class ThrottledClient:
                 },
             )
 
-        response.raise_for_status()
-        return response.content
+        if response.status_code != httpx.codes.NOT_MODIFIED:
+            response.raise_for_status()
+        return response
+
+
+def answer_of(response: httpx.Response) -> Answer:
+    return Answer(
+        response.content,
+        {name: response.headers[name] for name in VALIDATORS if name in response.headers},
+    )
