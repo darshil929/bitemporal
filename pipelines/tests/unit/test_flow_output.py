@@ -66,7 +66,7 @@ class Database:
 def run_window(*_: object) -> FlowReport:
     print(DBT_LINE)
     a_step_process(STEP_LINE)
-    return FlowReport(date(2026, 9, 25), date(2026, 9, 25), {}, [], 108, [], [], [])
+    return FlowReport(date(2026, 9, 25), date(2026, 9, 25), {}, [], 108, [], [], [], [])
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def test_the_terminal_shows_the_target_the_log_and_the_report(
         f"run output in {log}",
         "2026-09-25 to 2026-09-25",
     ]
-    assert "  checks 108 passed, 0 failed" in shown.out
+    assert "  checks 108 passed, 0 warned, 0 failed" in shown.out
     assert STEP_LINE not in shown.out + shown.err
     assert DBT_LINE not in shown.out
     assert DBT_LINE in log.read_text()

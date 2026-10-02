@@ -7,6 +7,7 @@ The bootstrap reads the two most recent years first, so the platform is usable b
 years arrive, and those in a second run. The sync reads the seven days ending on its day, today in
 India by default, so a file published late is asked for again. A flow finishes whatever a source
 answers; the launcher exits 1 where a day, a check or a step failed, and 2 where it did not start.
+A check of warning severity that does not pass is reported with the rows it found and fails nothing.
 
 The terminal shows where the flow writes and each run's report. Everything a run prints, Dagster's
 step log and dbt's output among it, goes to a file in the Dagster instance's `flow-logs` folder, or
@@ -27,6 +28,8 @@ import psycopg
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from dagster import (
+    AssetCheckEvaluation,
+    AssetCheckSeverity,
     DagsterInstance,
     DagsterRunStatus,
     Definitions,
@@ -72,6 +75,9 @@ SOURCE_COUNTS = {
     "bse_instrument_names": ("lists", "failed"),
     "nse_instrument_names": ("lists", "failed"),
 }
+
+# The rows a dbt test returned, as dagster-dbt records them on the check's evaluation.
+ROWS_FOUND = "dagster_dbt/failed_row_count"
 
 FAILED_ATTEMPTS = """
 select source_id, partition_key, detail
@@ -160,6 +166,7 @@ class FlowReport:
     counts: dict[str, dict[str, int]]
     failures: list[tuple[str, str, str]]
     checks_passed: int
+    warned_checks: list[tuple[str, int | None]]
     failed_checks: list[str]
     failed_steps: list[str]
     unmaterialized: list[str]
@@ -181,11 +188,44 @@ class FlowReport:
             read = "not run" if counts is None else "  ".join(f"{f} {counts[f]}" for f in fields)
             shown.append(f"  {source:<22} {read}")
         shown += [f"  failed {source} {key}: {detail}" for source, key, detail in self.failures]
-        shown.append(f"  checks {self.checks_passed} passed, {len(self.failed_checks)} failed")
+        shown.append(
+            f"  checks {self.checks_passed} passed, {len(self.warned_checks)} warned,"
+            f" {len(self.failed_checks)} failed"
+        )
+        shown += [
+            f"  check warned: {name}" + ("" if rows is None else f", {rows} rows")
+            for name, rows in self.warned_checks
+        ]
         shown += [f"  check failed: {name}" for name in self.failed_checks]
         shown += [f"  step failed: {name}" for name in self.failed_steps]
         shown += [f"  not materialized: {name}" for name in self.unmaterialized]
         return shown
+
+
+def rows_found(check: AssetCheckEvaluation) -> int | None:
+    value = check.metadata.get(ROWS_FOUND)
+    return value.value if value is not None and isinstance(value.value, int) else None
+
+
+def checks_by_outcome(
+    checks: Sequence[AssetCheckEvaluation],
+) -> tuple[int, list[tuple[str, int | None]], list[str]]:
+    """The checks passed, those of warning severity that did not pass, and those failed."""
+    passed = sum(1 for check in checks if check.passed)
+    warned = sorted(
+        (
+            (check.check_name, rows_found(check))
+            for check in checks
+            if not check.passed and check.severity == AssetCheckSeverity.WARN
+        ),
+        key=lambda warning: warning[0],
+    )
+    failed = sorted(
+        check.check_name
+        for check in checks
+        if not check.passed and check.severity != AssetCheckSeverity.WARN
+    )
+    return passed, warned, failed
 
 
 def run_window(
@@ -216,13 +256,15 @@ def run_window(
             for source, key, detail in connection.execute(FAILED_ATTEMPTS, (started, ended))
         ]
 
+    checks_passed, warned_checks, failed_checks = checks_by_outcome(checks)
     return FlowReport(
         first=first,
         last=last,
         counts=counts,
         failures=failures,
-        checks_passed=sum(1 for check in checks if check.passed),
-        failed_checks=sorted(check.check_name for check in checks if not check.passed),
+        checks_passed=checks_passed,
+        warned_checks=warned_checks,
+        failed_checks=failed_checks,
         failed_steps=failed_steps,
         unmaterialized=sorted(planned - set(counts)),
     )
