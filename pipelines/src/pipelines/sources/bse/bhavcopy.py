@@ -1,15 +1,16 @@
 """BSE equity bhavcopy, served to a plain client: bare CSV after the cutover, zipped before."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 
 from pipelines.models.market import PriceBar
 from pipelines.sources.archive import extract_csv
 from pipelines.sources.bhavcopy import BhavcopyRow, normalize
 from pipelines.sources.cache import DiskCache
-from pipelines.sources.client import ThrottledClient
+from pipelines.sources.client import Answer, ThrottledClient
 from pipelines.sources.errors import NotPublished, UnknownSchemaVersion
 from pipelines.sources.legacy import parse_bse_legacy, parse_bse_scrip
+from pipelines.sources.revalidation import recheck
 from pipelines.sources.udiff import parse_udiff
 
 SOURCE_ID = "bse_bhavcopy_equity"
@@ -52,12 +53,27 @@ class BseBhavcopy:
             return cached
 
         url = self.url_for(partition, schema_version)
-        payload = self._client.get(url)
+        answer = self._client.get_answer(url)
+        payload = answer.content
         reject_error_page(payload, url)
         if schema_version in ZIPPED:
             payload = extract_csv(payload)
         self._cache.write(SOURCE_ID, key, suffix, payload)
+        if schema_version == UDIFF:
+            self._cache.write_validators(SOURCE_ID, key, suffix, answer.validators)
         return payload
+
+    def recheck(self, partition: date, noticed_on: date) -> bytes | None:
+        """Ask again for a day's file in the current format, holding a corrected one beside it."""
+        url = self.url_for(partition, UDIFF)
+
+        def ask(held: Mapping[str, str]) -> Answer | None:
+            answer = self._client.get_if_changed(url, held)
+            if answer is not None:
+                reject_error_page(answer.content, url)
+            return answer
+
+        return recheck(self._cache, SOURCE_ID, partition.isoformat(), CACHE_SUFFIX, noticed_on, ask)
 
     def parse(
         self, payload: bytes, schema_version: str, partition: date | None = None

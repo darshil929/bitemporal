@@ -16,3 +16,13 @@ def extract_csv(archive: bytes) -> bytes:
             return opened.read(names[0])
     except zipfile.BadZipFile as error:
         raise SourceUnavailable("archive is not a zip file") from error
+
+
+def contents(archive: bytes) -> bytes:
+    """Every entry of an archive by name, so two archives compare by what they hold, not by how."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as opened:
+            names = sorted(opened.namelist())
+            return b"".join(name.encode() + b"\0" + opened.read(name) for name in names)
+    except zipfile.BadZipFile as error:
+        raise SourceUnavailable("archive is not a zip file") from error
