@@ -100,6 +100,27 @@ version = "bse_actions_json"
 effective_from = 1990-01-01
 
 [[source]]
+source_id = "bse_scrip_list"
+tier = 2
+base_url = "https://api.bseindia.com/BseIndiaAPI/api"
+requests_per_second = 0.2
+cache_policy = "daily"
+owner_notes = """
+The exchange's own endpoint behind its list of scrips page, undocumented, answering every equity
+security under one status, Active, Suspended or Delisted, with its scrip code, ISIN and name. The
+page asks ListofScripData_new; BseIndiaApi asks the older ListofScripData. The edge answers 403 to
+a client that does not present a current browser's headers, so the adapter sends the same headers
+as the corporate action adapter. A security listed before ISINs, and many delisted since, carry NA
+or nothing. An ISIN a buy-back window or a retired code carried appears again under that code.
+The list of securities sits outside the SEBI equity cash market curation, so no row there names
+it. The list carries no date a name was given, so a name carries the day it was read.
+"""
+
+[[source.schema_version]]
+version = "bse_scrip_list_json"
+effective_from = 2026-10-02
+
+[[source]]
 source_id = "nse_corporate_actions"
 tier = 2
 base_url = "https://www.nseindia.com/api"
