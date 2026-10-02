@@ -67,6 +67,39 @@ models:
         description: The ISIN it trades under now, after every change of face value.
         data_tests: [not_null]
 
+  - name: int_instrument_display_names
+    description: >
+      The name each instrument is shown under, one row per instrument: BSE's list of scrips, then
+      NSE's lists of equities, then either list's name for the ISIN the instrument trades under
+      now, then the name its venue's price file printed.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: display_name
+        description: The name to show, BSE's trailing "-$" marker removed.
+        data_tests: [not_null]
+      - name: named_by
+        description: Where the name comes from, a list's source id or the venue's price file.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [bse_scrip_list, nse_equity_list, price_file]
+      - name: named_isin
+        description: >
+          The ISIN the name was given to: the instrument's own, or the one it trades under now
+          where no list names a superseded ISIN.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The day the list giving the name was read, absent where the price file names it.
+
   - name: int_continuous_prices
     description: >
       A price series that spans a change of face value, keyed on the ISIN the instrument trades
@@ -739,3 +772,48 @@ unit_tests:
     expect:
       rows:
         - {isin: INE063E01053, ex_date: "2024-10-16", agreement: nse_only}
+
+  - name: an_instrument_is_named_by_the_first_list_that_names_it
+    description: >
+      BSE's list stands over NSE's, a superseded ISIN takes the name of the one it became, and an
+      instrument no list names keeps its venue's name.
+    model: int_instrument_display_names
+    given:
+      - input: ref('stg_instruments')
+        rows:
+          - {isin: INE002A01018, name: RELIANCE INDUSTRIES LTD}
+          - {isin: INE548C01032, name: EMAMI LTD}
+          - {isin: INE1C2Q01017, name: POOJALOGIS}
+          - {isin: INE721A01013, name: SHRIRAMFIN}
+          - {isin: INE211C01029, name: ARL}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE002A01018, current_isin: INE002A01018}
+          - {isin: INE548C01032, current_isin: INE548C01032}
+          - {isin: INE1C2Q01017, current_isin: INE1C2Q01017}
+          - {isin: INE721A01013, current_isin: INE721A01047}
+          - {isin: INE211C01029, current_isin: INE211C01029}
+      - input: ref('stg_instrument_names')
+        rows:
+          - {isin: INE002A01018, source_id: bse_scrip_list, as_of_date: "2026-10-02",
+             name: Reliance Industries Ltd}
+          - {isin: INE002A01018, source_id: nse_equity_list, as_of_date: "2026-10-02",
+             name: Reliance Industries Limited}
+          - {isin: INE548C01032, source_id: bse_scrip_list, as_of_date: "2026-10-02",
+             name: Emami Ltd-$}
+          - {isin: INE1C2Q01017, source_id: nse_equity_list, as_of_date: "2026-10-02",
+             name: Pooja Logistics Limited}
+          - {isin: INE721A01047, source_id: bse_scrip_list, as_of_date: "2026-10-02",
+             name: Shriram Finance Ltd}
+    expect:
+      rows:
+        - {isin: INE002A01018, display_name: Reliance Industries Ltd, named_by: bse_scrip_list,
+           named_isin: INE002A01018, as_of_date: "2026-10-02"}
+        - {isin: INE548C01032, display_name: Emami Ltd, named_by: bse_scrip_list,
+           named_isin: INE548C01032, as_of_date: "2026-10-02"}
+        - {isin: INE1C2Q01017, display_name: Pooja Logistics Limited, named_by: nse_equity_list,
+           named_isin: INE1C2Q01017, as_of_date: "2026-10-02"}
+        - {isin: INE721A01013, display_name: Shriram Finance Ltd, named_by: bse_scrip_list,
+           named_isin: INE721A01047, as_of_date: "2026-10-02"}
+        - {isin: INE211C01029, display_name: ARL, named_by: price_file,
+           named_isin: INE211C01029, as_of_date: }

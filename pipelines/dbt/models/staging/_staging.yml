@@ -226,6 +226,33 @@ models:
       - name: detail
         description: What the day failed on, absent when it passed.
 
+  - name: stg_instrument_names
+    description: >
+      The latest name each exchange list gives an instrument, known on the as-of date. One row
+      per instrument and list; `stg_instruments.name` stays what the venue's price file printed.
+    columns:
+      - name: isin
+        description: Canonical instrument identifier.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_instruments')
+                field: isin
+      - name: source_id
+        description: The list that gives the name.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [bse_scrip_list, nse_equity_list]
+      - name: as_of_date
+        description: The day the list was read and gave this name.
+        data_tests: [not_null]
+      - name: name
+        description: The name as the list writes it, spaces inside it collapsed.
+        data_tests: [not_null]
+
   - name: stg_successions
     description: >
       One row per change of face value, naming the ISIN that took the instrument over. Both
@@ -344,3 +371,22 @@ unit_tests:
     expect:
       rows:
         - {isin: INE002A01018, action_type: dividend, adjustment_factor: }
+
+  - name: a_renamed_instrument_is_named_as_its_list_reads_now
+    description: A list read after a company changed its name appends a name, and the later stands.
+    model: stg_instrument_names
+    given:
+      - input: source('market', 'instrument_name')
+        rows:
+          - {isin: INE002A01018, source_id: bse_scrip_list, as_of_date: "2026-10-02",
+             name: Reliance Industries Ltd}
+          - {isin: INE002A01018, source_id: bse_scrip_list, as_of_date: "2026-10-05",
+             name: Reliance Industries Limited}
+          - {isin: INE002A01018, source_id: nse_equity_list, as_of_date: "2026-10-02",
+             name: Reliance Industries Limited}
+    expect:
+      rows:
+        - {isin: INE002A01018, source_id: bse_scrip_list, as_of_date: "2026-10-05",
+           name: Reliance Industries Limited}
+        - {isin: INE002A01018, source_id: nse_equity_list, as_of_date: "2026-10-02",
+           name: Reliance Industries Limited}
