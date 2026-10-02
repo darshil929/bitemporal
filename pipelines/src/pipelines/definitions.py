@@ -16,6 +16,7 @@ from pipelines.resources import (
     Database,
     Deliveries,
     NseActions,
+    NseLists,
     ScripLists,
 )
 from pipelines.schedules import daily_sync_schedule
@@ -32,6 +33,7 @@ defs = Definitions(
         "nse_actions": NseActions(),
         "deliveries": Deliveries(),
         "scrip_lists": ScripLists(),
+        "nse_lists": NseLists(),
         "dbt": DbtCliResource(project_dir=dbt_project),
     },
 )

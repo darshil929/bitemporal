@@ -6,6 +6,7 @@ again.
 """
 
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from datetime import date, datetime
 
 import psycopg
@@ -14,9 +15,11 @@ from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
 from pipelines.facts import persist_names, record_ingestion
 from pipelines.models.identity import InstrumentNameRecord
-from pipelines.resources import Database, ScripLists
-from pipelines.sources.bse.scrip_list import STATUSES, ScripListing, names_by_isin
+from pipelines.resources import Database, NseLists, ScripLists
+from pipelines.sources.bse import scrip_list
 from pipelines.sources.errors import SourceError
+from pipelines.sources.nse import equity_list
+from pipelines.sources.registry import SourceDefinition
 
 GROUP = "ingestion"
 
@@ -52,41 +55,46 @@ def fresh_names(
     ]
 
 
-def ingest_bse_names(
+def ingest_names[T](
     context: AssetExecutionContext,
     database: Database,
-    lists: ScripLists,
+    definition: SourceDefinition,
+    parts: Sequence[str],
+    read: Callable[[str], Sequence[T]],
+    choose: Callable[[list[T], psycopg.Connection], dict[str, str]],
     collected_on: date,
 ) -> MaterializeResult[None]:
-    source_id = lists.definition().source_id
-    version = lists.definition().version_for(collected_on)
-    adapter = lists.adapter()
-    listings: list[ScripListing] = []
+    """Read every part of a source's list, then write the names `choose` draws from them."""
+    source_id = definition.source_id
+    version = definition.version_for(collected_on)
+    listings: list[T] = []
     failed = written = 0
 
     with database.connect() as connection:
-        for status in STATUSES:
-            partition = f"{status.lower()}-{collected_on:%Y%m%d}"
+        for part in parts:
+            partition = f"{part.lower()}-{collected_on:%Y%m%d}"
             try:
-                read = adapter.parse(adapter.fetch(status, collected_on), status)
+                listed = read(part)
             except SourceError as failure:
                 failed += 1
                 record_ingestion(
                     connection, source_id, partition, version, "failed", None, str(failure)
                 )
                 context.log.warning(
-                    "list of scrips could not be read",
-                    extra={"status": status, "detail": str(failure)},
+                    "list could not be read",
+                    extra={"source_id": source_id, "part": part, "detail": str(failure)},
                 )
             else:
-                record_ingestion(connection, source_id, partition, version, "succeeded", len(read))
-                listings.extend(read)
+                record_ingestion(
+                    connection, source_id, partition, version, "succeeded", len(listed)
+                )
+                listings.extend(listed)
             connection.commit()
 
-        # An ISIN a later status names is otherwise named from an earlier one, so a list read in
-        # part names nothing.
+        # An ISIN one part names is otherwise named from another, so a list read in part names
+        # nothing.
         if not failed:
-            names = names_by_isin(listings, held_bse_codes(connection))
+            names = choose(listings, connection)
             written = persist_names(
                 connection, fresh_names(connection, source_id, names, collected_on)
             )
@@ -98,11 +106,41 @@ def ingest_bse_names(
     )
     return MaterializeResult(
         metadata={
-            "lists": len(STATUSES) - failed,
+            "lists": len(parts) - failed,
             "failed": failed,
             "written": written,
             "collected_on": collected_on.isoformat(),
         }
+    )
+
+
+def ingest_bse_names(
+    context: AssetExecutionContext, database: Database, lists: ScripLists, collected_on: date
+) -> MaterializeResult[None]:
+    adapter = lists.adapter()
+    return ingest_names(
+        context,
+        database,
+        lists.definition(),
+        scrip_list.STATUSES,
+        lambda status: adapter.parse(adapter.fetch(status, collected_on), status),
+        lambda listings, connection: scrip_list.names_by_isin(listings, held_bse_codes(connection)),
+        collected_on,
+    )
+
+
+def ingest_nse_names(
+    context: AssetExecutionContext, database: Database, lists: NseLists, collected_on: date
+) -> MaterializeResult[None]:
+    adapter = lists.adapter()
+    return ingest_names(
+        context,
+        database,
+        lists.definition(),
+        tuple(equity_list.BOARDS),
+        lambda board: adapter.parse(adapter.fetch(board, collected_on), board),
+        lambda listings, _: equity_list.names_by_isin(listings),
+        collected_on,
     )
 
 
@@ -115,3 +153,14 @@ def bse_instrument_names(
     context: AssetExecutionContext, database: Database, scrip_lists: ScripLists
 ) -> MaterializeResult[None]:
     return ingest_bse_names(context, database, scrip_lists, datetime.now(VENUE_TIME).date())
+
+
+@asset(
+    deps=[AssetKey("instrument_identity")],
+    group_name=GROUP,
+    description="Instrument names from NSE's lists of equities, the main board and SME platform.",
+)
+def nse_instrument_names(
+    context: AssetExecutionContext, database: Database, nse_lists: NseLists
+) -> MaterializeResult[None]:
+    return ingest_nse_names(context, database, nse_lists, datetime.now(VENUE_TIME).date())

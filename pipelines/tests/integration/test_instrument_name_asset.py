@@ -9,13 +9,15 @@ from alembic.config import Config
 from dagster import build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
-from pipelines.assets.ingestion.instrument_names import ingest_bse_names
-from pipelines.resources import ScripLists
+from pipelines.assets.ingestion.instrument_names import ingest_bse_names, ingest_nse_names
+from pipelines.resources import NseLists, ScripLists
 from pipelines.sources.bse.scrip_list import BseScripList
 from pipelines.sources.errors import SourceUnavailable
+from pipelines.sources.nse.equity_list import NseEquityList
 from pipelines.sources.registry import SourceDefinition
 
 CASSETTES = Path(__file__).resolve().parents[1] / "fixtures" / "cassettes" / "bse_scrip_list"
+NSE_CASSETTES = CASSETTES.parent / "nse_equity_list"
 READ_ON = date(2026, 10, 2)
 NEXT_DAY = READ_ON + timedelta(days=1)
 
@@ -52,6 +54,28 @@ class RecordedScripLists:
             for before, after in self._renamed.items():
                 text = text.replace(f'"{before}"', f'"{after}"')
             return text.encode()
+
+        adapter.fetch = fetch  # type: ignore[method-assign]
+        return adapter
+
+
+class RecordedNseLists:
+    """The real adapter and registry entry, answering each board from its recorded response."""
+
+    def __init__(self, refused: frozenset[str] = frozenset()) -> None:
+        self._real = NseLists()
+        self._refused = refused
+
+    def definition(self) -> SourceDefinition:
+        return self._real.definition()
+
+    def adapter(self) -> NseEquityList:
+        adapter = self._real.adapter()
+
+        def fetch(board: str, collected_on: date) -> bytes:
+            if board in self._refused:
+                raise SourceUnavailable(f"the venue did not serve the {board} board's list")
+            return (NSE_CASSETTES / f"{board}.csv").read_bytes()
 
         adapter.fetch = fetch  # type: ignore[method-assign]
         return adapter
@@ -143,3 +167,22 @@ def test_a_list_read_in_part_names_nothing(database: PointedDatabase, postgres_d
         ("delisted-20261002", "succeeded"),
         ("suspended-20261002", "succeeded"),
     ]
+
+
+def test_an_instrument_held_is_named_by_nses_lists_beside_bses(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    read(database, RecordedScripLists())
+    result = ingest_nse_names(build_asset_context(), database, RecordedNseLists(), READ_ON)
+    assert dict(result.metadata)["written"] == 2
+    assert rows(
+        postgres_dsn,
+        "select isin, name from instrument_name where source_id = 'nse_equity_list' order by isin",
+    ) == [(RELIANCE[1], "Reliance Industries Limited"), (EMAMI[1], "Emami Limited")]
+
+
+def test_a_board_not_read_names_nothing(database: PointedDatabase, postgres_dsn: str) -> None:
+    refused = RecordedNseLists(refused=frozenset({"sme"}))
+    result = ingest_nse_names(build_asset_context(), database, refused, READ_ON)
+
+    assert (dict(result.metadata)["failed"], names(postgres_dsn)) == (1, [])

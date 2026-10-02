@@ -61,6 +61,7 @@ SOURCE_COUNTS = {
     "corporate_actions": ("ranges", "failed"),
     "nse_corporate_actions": ("ranges", "failed"),
     "bse_instrument_names": ("lists", "failed"),
+    "nse_instrument_names": ("lists", "failed"),
 }
 
 FAILED_ATTEMPTS = """

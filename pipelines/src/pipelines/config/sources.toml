@@ -121,6 +121,26 @@ version = "bse_scrip_list_json"
 effective_from = 2026-10-02
 
 [[source]]
+source_id = "nse_equity_list"
+tier = 2
+base_url = "https://nsearchives.nseindia.com/"
+requests_per_second = 0.5
+cache_policy = "daily"
+owner_notes = """
+The exchange's lists of equity securities listed today, EQUITY_L.csv for the main board and
+SME_EQUITY_L.csv for the SME platform, each naming a security's symbol, ISIN and company. The SME
+list joins its column names with underscores. The archive host drops a request carrying no
+cookie, so a page of the main site is read first, as for the bhavcopy. The delisted, name change
+and symbol change files are keyed by symbol and are not read.
+The lists sit outside the SEBI equity cash market curation, so no row there names them. A list
+carries no date a name was given, so a name carries the day it was read.
+"""
+
+[[source.schema_version]]
+version = "nse_equity_list_csv"
+effective_from = 2026-10-02
+
+[[source]]
 source_id = "nse_corporate_actions"
 tier = 2
 base_url = "https://www.nseindia.com/api"
