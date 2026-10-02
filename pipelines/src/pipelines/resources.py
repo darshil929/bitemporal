@@ -17,6 +17,7 @@ from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
 from pipelines.sources.nse.corporate_actions import NseCorporateActions
 from pipelines.sources.nse.delivery import NseDelivery
+from pipelines.sources.nse.equity_list import NseEquityList
 from pipelines.sources.registry import SourceDefinition, load_definitions
 
 # NSE's archive host drops a request that does not look like a browser, which the source registry
@@ -31,6 +32,7 @@ ACTIONS_SOURCE = "bse_corporate_actions"
 NSE_ACTIONS_SOURCE = "nse_corporate_actions"
 DELIVERY_SOURCES = {"BSE": "bse_delivery", "NSE": "nse_delivery"}
 SCRIP_LIST_SOURCE = "bse_scrip_list"
+NSE_LIST_SOURCE = "nse_equity_list"
 
 
 class Database(ConfigurableResource[None]):
@@ -103,6 +105,23 @@ class ScripLists(ConfigurableResource[None]):
             Throttle(1 / definition.requests_per_second),
         )
         return BseScripList(client, DiskCache(settings.source_cache_dir), definition.base_url)
+
+
+class NseLists(ConfigurableResource[None]):
+    """NSE's lists of equities, throttled at the rate its registry entry states."""
+
+    def definition(self) -> SourceDefinition:
+        return next(item for item in load_definitions() if item.source_id == NSE_LIST_SOURCE)
+
+    def adapter(self) -> NseEquityList:
+        settings = SourceSettings()
+        definition = self.definition()
+        client = ThrottledClient(
+            definition.source_id,
+            httpx.Client(headers={"User-Agent": BROWSER_USER_AGENT}, follow_redirects=True),
+            Throttle(1 / definition.requests_per_second),
+        )
+        return NseEquityList(client, DiskCache(settings.source_cache_dir), definition.base_url)
 
 
 class NseActions(ConfigurableResource[None]):
