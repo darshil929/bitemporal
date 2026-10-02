@@ -4,8 +4,8 @@ Every write here is an insert. A republished bar carries a later `as_of_date` an
 version it corrects, and rewriting a partition already stored changes nothing, so an asset can be
 re-run for a date without producing a different result.
 
-`price_daily`, `delivery_daily` and `corporate_action` all reference `instrument_master`, so
-identity is written before any of them.
+`price_daily`, `delivery_daily`, `corporate_action` and `instrument_name` all reference
+`instrument_master`, so identity is written before any of them.
 """
 
 import logging
@@ -14,6 +14,7 @@ from collections.abc import Sequence
 import psycopg
 
 from pipelines.models.corporate_action import CorporateActionRecord
+from pipelines.models.identity import InstrumentNameRecord
 from pipelines.models.market import DeliveryRecord, PriceBar
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,9 @@ ACTION_COLUMNS = (
     " dividend_amount, purpose"
 )
 ACTION_KEY = "(isin, action_type, ex_date, source_id, as_of_date, qualifier)"
+
+NAME_COLUMNS = "isin, source_id, as_of_date, name"
+NAME_KEY = "(isin, source_id, as_of_date)"
 
 
 def _append(
@@ -117,6 +121,14 @@ def persist_actions(
     written = _append(connection, "corporate_action", ACTION_COLUMNS, ACTION_KEY, rows)
 
     logger.info("corporate actions written", extra={"offered": len(rows), "written": written})
+    return written
+
+
+def persist_names(connection: psycopg.Connection, names: Sequence[InstrumentNameRecord]) -> int:
+    rows = [(name.isin, name.source_id, name.as_of_date, name.name) for name in names]
+    written = _append(connection, "instrument_name", NAME_COLUMNS, NAME_KEY, rows)
+
+    logger.info("instrument names written", extra={"offered": len(rows), "written": written})
     return written
 
 

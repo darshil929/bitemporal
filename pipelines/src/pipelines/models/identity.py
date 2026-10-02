@@ -45,3 +45,12 @@ class PrimaryVenueRecord(BaseModel):
     as_of_date: date
     effective_to: date | None
     venue: str
+
+
+class InstrumentNameRecord(BaseModel):
+    """A name a list of securities gives an instrument, on the day the list was read."""
+
+    isin: str
+    source_id: str
+    as_of_date: date
+    name: str

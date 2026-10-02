@@ -10,7 +10,7 @@ from conftest import MIGRATION_SCHEMA
 IDENTITY_TABLES = frozenset(
     {"instrument_master", "listing", "listing_suspension", "instrument_primary_venue"}
 )
-FACT_TABLES = frozenset({"price_daily", "corporate_action", "ingestion_log"})
+FACT_TABLES = frozenset({"price_daily", "corporate_action", "instrument_name", "ingestion_log"})
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
 MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES
 
@@ -166,6 +166,19 @@ def test_a_corporate_action_cannot_be_updated(migrated: Config, postgres_dsn: st
 
         with pytest.raises(psycopg.errors.RestrictViolation):
             connection.execute("update corporate_action set ratio_to = 10")
+
+
+def test_an_instrument_name_cannot_be_updated(migrated: Config, postgres_dsn: str) -> None:
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE002A01018")
+        connection.execute(
+            "insert into instrument_name (isin, source_id, as_of_date, name)"
+            " values (%s, %s, %s, %s)",
+            ("INE002A01018", "bse_scrip_list", "2026-10-02", "Reliance Industries Ltd"),
+        )
+
+        with pytest.raises(psycopg.errors.RestrictViolation):
+            connection.execute("update instrument_name set name = 'Reliance'")
 
 
 def test_a_bar_whose_high_is_below_its_open_is_rejected(

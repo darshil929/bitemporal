@@ -14,6 +14,7 @@ from dagster_dbt import DbtCliResource
 from test_corporate_action_asset import RecordedActions
 from test_delivery_asset import RecordedDeliveries
 from test_ingestion_assets import RecordedBhavcopies, payload, rows
+from test_instrument_name_asset import RecordedScripLists
 from test_nse_corporate_action_asset import RecordedActions as RecordedNseActions
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase, dbt_environment
@@ -47,6 +48,7 @@ def recorded(dsn: str) -> Definitions:
             ),
             "actions": RecordedActions(),
             "nse_actions": RecordedNseActions(),
+            "scrip_lists": RecordedScripLists(),
             "dbt": DbtCliResource(project_dir=dbt_project),
         },
     )

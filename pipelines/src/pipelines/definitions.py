@@ -10,7 +10,14 @@ from dagster_dbt import DbtCliResource
 from pipelines import assets, checks
 from pipelines.assets.transform.dbt import dbt_project, table_assets
 from pipelines.jobs import daily_sync, history_bootstrap
-from pipelines.resources import Bhavcopies, CorporateActions, Database, Deliveries, NseActions
+from pipelines.resources import (
+    Bhavcopies,
+    CorporateActions,
+    Database,
+    Deliveries,
+    NseActions,
+    ScripLists,
+)
 from pipelines.schedules import daily_sync_schedule
 
 defs = Definitions(
@@ -24,6 +31,7 @@ defs = Definitions(
         "actions": CorporateActions(),
         "nse_actions": NseActions(),
         "deliveries": Deliveries(),
+        "scrip_lists": ScripLists(),
         "dbt": DbtCliResource(project_dir=dbt_project),
     },
 )

@@ -11,6 +11,7 @@ from pipelines.config.settings import DatabaseSettings, SourceSettings
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.bse.corporate_actions import BseCorporateActions
 from pipelines.sources.bse.delivery import BseDelivery
+from pipelines.sources.bse.scrip_list import BseScripList
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.nse.bhavcopy import NseBhavcopy
@@ -29,6 +30,7 @@ BHAVCOPY_SOURCES = {"BSE": "bse_bhavcopy_equity", "NSE": "nse_bhavcopy_equity"}
 ACTIONS_SOURCE = "bse_corporate_actions"
 NSE_ACTIONS_SOURCE = "nse_corporate_actions"
 DELIVERY_SOURCES = {"BSE": "bse_delivery", "NSE": "nse_delivery"}
+SCRIP_LIST_SOURCE = "bse_scrip_list"
 
 
 class Database(ConfigurableResource[None]):
@@ -84,6 +86,23 @@ class CorporateActions(ConfigurableResource[None]):
         return BseCorporateActions(
             client, DiskCache(settings.source_cache_dir), definition.base_url
         )
+
+
+class ScripLists(ConfigurableResource[None]):
+    """BSE's list of scrips, throttled at the rate its registry entry states."""
+
+    def definition(self) -> SourceDefinition:
+        return next(item for item in load_definitions() if item.source_id == SCRIP_LIST_SOURCE)
+
+    def adapter(self) -> BseScripList:
+        settings = SourceSettings()
+        definition = self.definition()
+        client = ThrottledClient(
+            definition.source_id,
+            httpx.Client(headers={"User-Agent": settings.source_user_agent}, follow_redirects=True),
+            Throttle(1 / definition.requests_per_second),
+        )
+        return BseScripList(client, DiskCache(settings.source_cache_dir), definition.base_url)
 
 
 class NseActions(ConfigurableResource[None]):

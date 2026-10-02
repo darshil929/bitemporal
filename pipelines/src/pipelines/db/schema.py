@@ -157,6 +157,26 @@ class InstrumentSuccession(Base):
     )
 
 
+class InstrumentName(Base):
+    """A name an exchange's list of securities gives an instrument, as read on a given date.
+
+    A venue's price file names an instrument short, cut off or by its ticker, which
+    `instrument_master.name` keeps. A list names the company in full. A name is written when a list
+    first gives it or changes it, beside the names read before it.
+    """
+
+    __tablename__ = "instrument_name"
+
+    isin: Mapped[str] = mapped_column(
+        String(12), ForeignKey("instrument_master.isin"), primary_key=True
+    )
+    source_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+
+    __table_args__ = (CheckConstraint("name <> ''", name="name_is_not_empty"),)
+
+
 class InstrumentPrimaryVenue(Base):
     """The venue an instrument's series is computed from, over a span of dates.
 
