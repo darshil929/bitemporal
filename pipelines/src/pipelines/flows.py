@@ -52,7 +52,7 @@ UNFINISHED = [DagsterRunStatus.QUEUED, DagsterRunStatus.STARTING, DagsterRunStat
 LOG_FOLDER = "flow-logs"
 
 # The counts each source's result carries: days for prices and delivery, years of ex-dates for
-# corporate actions.
+# corporate actions, statuses for a list of securities.
 SOURCE_COUNTS = {
     "bse_bhavcopy": ("published", "unpublished", "outside_coverage", "failed"),
     "nse_bhavcopy": ("published", "unpublished", "outside_coverage", "failed"),
@@ -60,6 +60,7 @@ SOURCE_COUNTS = {
     "nse_delivery": ("published", "unpublished", "outside_coverage", "failed"),
     "corporate_actions": ("ranges", "failed"),
     "nse_corporate_actions": ("ranges", "failed"),
+    "bse_instrument_names": ("lists", "failed"),
 }
 
 FAILED_ATTEMPTS = """
