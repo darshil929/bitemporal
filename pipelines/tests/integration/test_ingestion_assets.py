@@ -5,6 +5,7 @@ import threading
 import zipfile
 from collections.abc import Iterator
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import psycopg
@@ -14,6 +15,7 @@ from dagster import PartitionKeyRange, build_asset_context
 
 from conftest import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.bhavcopy import ingest
+from pipelines.assets.ingestion.completeness import record_verdicts
 from pipelines.identity import INSTRUMENT_WRITES, isins_by_scrip_code
 from pipelines.resources import Bhavcopies
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
@@ -39,11 +41,14 @@ class RecordedBhavcopies:
         self,
         payloads: dict[str, bytes | dict[date, bytes] | None],
         unreadable: set[date] | None = None,
+        corrections: dict[date, list[tuple[date, bytes]]] | None = None,
     ) -> None:
         self._payloads = payloads
         self._unreadable = unreadable or set()
+        self._corrections = corrections or {}
         self._real = Bhavcopies()
         self.asked: list[date] = []
+        self.rechecked: list[date] = []
 
     def definition(self, venue: str) -> SourceDefinition:
         return self._real.definition(venue)
@@ -61,7 +66,13 @@ class RecordedBhavcopies:
                 raise NotPublished(f"{venue} published nothing for {partition}")
             return served
 
+        def recheck(partition: date, noticed_on: date) -> bytes | None:
+            self.rechecked.append(partition)
+            return None
+
         adapter.fetch = fetch  # type: ignore[method-assign]
+        adapter.recheck = recheck  # type: ignore[method-assign]
+        adapter.corrections = lambda partition: self._corrections.get(partition, [])  # type: ignore[method-assign]
         return adapter
 
 
@@ -496,3 +507,68 @@ def test_a_run_whose_every_day_failed_finishes_and_counts_them(
     assert result.metadata["failed"] == 2
     assert result.metadata["published"] == 0
     assert logged == [("failed", 2)]
+
+
+DAY = date.fromisoformat(TRADE_DATE)
+NOTICED_ON = date(2026, 8, 16)
+
+
+def corrected_abb() -> bytes:
+    """BSE's file of 14 August with ABB's close set to 7650.00 from 7645.00."""
+    original = payload("bse_bhavcopy_equity", "20260814.csv")
+    return original.replace(b",7640.20,7645.00,7645.00,", b",7640.20,7650.00,7645.00,")
+
+
+def abb_closes(dsn: str) -> list[tuple]:
+    return rows(dsn, f"select as_of_date, close from price_daily where isin = '{ABB}' order by 1")
+
+
+def test_a_corrected_file_stores_what_it_changed_dated_the_day_noticed(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    bhavcopies = RecordedBhavcopies(
+        {"BSE": payload("bse_bhavcopy_equity", "20260814.csv")},
+        corrections={DAY: [(NOTICED_ON, corrected_abb())]},
+    )
+    context = build_asset_context(partition_key=TRADE_DATE)
+
+    first = ingest(context, "BSE", database, bhavcopies)
+    again = ingest(context, "BSE", database, bhavcopies)
+
+    assert (first.metadata["corrected"], again.metadata["corrected"]) == (1, 0)
+    assert abb_closes(postgres_dsn) == [
+        (DAY, Decimal("7645.0000")),
+        (NOTICED_ON, Decimal("7650.0000")),
+    ]
+
+
+def test_a_sync_asks_again_for_the_days_already_held(database: PointedDatabase) -> None:
+    """A day read for the first time in the run is not asked for twice; a bootstrap asks for none."""
+    held = RecordedBhavcopies({"BSE": {DAY: payload("bse_bhavcopy_equity", "20260814.csv")}})
+    ingest(build_asset_context(partition_key=TRADE_DATE), "BSE", database, held)
+    window = build_asset_context(partition_key_range=PartitionKeyRange("2026-08-12", TRADE_DATE))
+
+    ingest(window, "BSE", database, held)
+    ingest(window, "BSE", database, held, recheck_on=NOTICED_ON)
+
+    assert held.rechecked == [DAY]
+
+
+def test_a_corrected_day_is_judged_again(database: PointedDatabase, postgres_dsn: str) -> None:
+    original = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20260814.csv")})
+    ingest(build_asset_context(partition_key=TRADE_DATE), "BSE", database, original)
+    with database.connect() as connection:
+        record_verdicts(connection, DAY)
+        connection.commit()
+
+    corrected = RecordedBhavcopies(
+        {"BSE": payload("bse_bhavcopy_equity", "20260814.csv")},
+        corrections={DAY: [(NOTICED_ON, corrected_abb())]},
+    )
+    ingest(build_asset_context(partition_key=TRADE_DATE), "BSE", database, corrected)
+    with database.connect() as connection:
+        record_verdicts(connection, NOTICED_ON)
+        connection.commit()
+
+    verdicts = rows(postgres_dsn, "select as_of_date from trading_day order by as_of_date")
+    assert verdicts == [(DAY,), (NOTICED_ON,)]

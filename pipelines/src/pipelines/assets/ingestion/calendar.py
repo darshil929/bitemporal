@@ -6,11 +6,12 @@ for, in India Standard Time. A source passes over a day it does not cover withou
 """
 
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from dagster import TimeWindowPartitionsDefinition
+from dagster import AssetExecutionContext, TimeWindowPartitionsDefinition
 
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
+from pipelines.jobs import FLOW_TAG, SYNC
 from pipelines.resources import BHAVCOPY_SOURCES
 from pipelines.sources.registry import load_definitions
 
@@ -39,3 +40,13 @@ def calendar_days(first: date, last: date) -> Iterator[date]:
     while day <= last:
         yield day
         day += timedelta(days=1)
+
+
+# Every daily file measured was last changed on the evening of the day it describes, the latest at
+# 23:55 in India, after the evening sync; the two most recent days held cover such a change.
+RECHECKED_DAYS = 2
+
+
+def recheck_day(context: AssetExecutionContext) -> date | None:
+    """Today in India for a daily sync, which asks again for the most recent days it holds."""
+    return datetime.now(VENUE_TIME).date() if context.run.tags.get(FLOW_TAG) == SYNC else None

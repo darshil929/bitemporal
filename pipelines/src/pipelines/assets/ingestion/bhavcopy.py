@@ -8,9 +8,10 @@ days it could read.
 A run covers a range of days, reading them through one throttled client and one venue session.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import date
 
+import psycopg
 from dagster import (
     AssetExecutionContext,
     AssetKey,
@@ -19,8 +20,14 @@ from dagster import (
     asset,
 )
 
-from pipelines.assets.ingestion.calendar import INGESTION_DAYS, calendar_days
+from pipelines.assets.ingestion.calendar import (
+    INGESTION_DAYS,
+    RECHECKED_DAYS,
+    calendar_days,
+    recheck_day,
+)
 from pipelines.facts import persist_bars, record_ingestion
+from pipelines.history import latest_days_held, read_bars
 from pipelines.identity import (
     derive_instruments,
     hold_instrument_writes,
@@ -29,9 +36,10 @@ from pipelines.identity import (
     persist_identity,
     resolvable,
 )
+from pipelines.models.market import PriceBar
 from pipelines.resources import Bhavcopies, Database
 from pipelines.sources.bhavcopy import names_by_isin, ordinary_lines
-from pipelines.sources.bse.bhavcopy import SCRIP
+from pipelines.sources.bse.bhavcopy import SCRIP, UDIFF
 from pipelines.sources.errors import NotPublished, SourceError
 from pipelines.sources.legacy import named_by_isin
 from pipelines.sources.registry import SourceDefinition
@@ -47,14 +55,32 @@ def reading_order(days: Iterable[date], definition: SourceDefinition) -> list[da
     return sorted(days, key=lambda day: definition.version_for(day) == SCRIP)
 
 
+def corrected_bars(
+    connection: psycopg.Connection, venue: str, day: date, bars: Sequence[PriceBar], noticed: date
+) -> list[PriceBar]:
+    """The bars of a corrected file that differ from the version standing, dated the day noticed."""
+    standing = {bar.isin: bar for bar in read_bars(connection, day) if bar.venue == venue}
+    dated = [bar.model_copy(update={"as_of_date": noticed}) for bar in bars]
+    return [
+        bar
+        for bar in dated
+        if (held := standing.get(bar.isin)) is None
+        or held.model_copy(update={"as_of_date": noticed}) != bar
+    ]
+
+
 def ingest(
-    context: AssetExecutionContext, venue: str, database: Database, bhavcopies: Bhavcopies
+    context: AssetExecutionContext,
+    venue: str,
+    database: Database,
+    bhavcopies: Bhavcopies,
+    recheck_on: date | None = None,
 ) -> MaterializeResult[None]:
     window = context.partition_key_range
     definition = bhavcopies.definition(venue)
     adapter = bhavcopies.adapter(venue)
 
-    published = unpublished = failed = written = 0
+    published = unpublished = failed = written = corrected = recheck_failed = 0
     bars_read = secondary_lines = 0
     days = list(calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)))
     # A day outside every format the registry holds for the venue is passed over without a request.
@@ -65,9 +91,22 @@ def ingest(
     read_names: dict[str, tuple[date, str]] = {}
 
     with database.connect() as connection:
+        rechecked = set()
+        if recheck_on is not None and days:
+            rechecked = set(latest_days_held(connection, venue, days[0], days[-1], RECHECKED_DAYS))
         for day in reading_order(covered, definition):
             partition = day.isoformat()
             version = definition.version_for(day)
+
+            if day in rechecked and version == UDIFF and recheck_on is not None:
+                try:
+                    adapter.recheck(day, recheck_on)
+                except SourceError as failure:
+                    recheck_failed += 1
+                    context.log.warning(
+                        "trading day could not be asked for again",
+                        extra={"venue": venue, "trade_date": partition, "detail": str(failure)},
+                    )
 
             try:
                 rows = adapter.parse(adapter.fetch(day, version), version, day)
@@ -77,6 +116,10 @@ def ingest(
                     rows = named_by_isin(rows, isins_by_scrip_code(connection, day))
                 lines = resolvable(adapter.normalize(rows))
                 bars = ordinary_lines(lines)
+                files = adapter.corrections(day) if version == UDIFF else []
+                corrections = [
+                    (noticed, adapter.parse(file, version, day)) for noticed, file in files
+                ]
             except NotPublished as absence:
                 record_ingestion(
                     connection,
@@ -127,6 +170,28 @@ def ingest(
             record_ingestion(
                 connection, definition.source_id, partition, version, "succeeded", len(bars)
             )
+            # A corrected file is read after the one it corrects, and only what it changed is
+            # stored, dated the day it was noticed.
+            for noticed, read in corrections:
+                changed = corrected_bars(
+                    connection,
+                    venue,
+                    day,
+                    ordinary_lines(resolvable(adapter.normalize(read))),
+                    noticed,
+                )
+                persist_identity(
+                    connection, derive_instruments(changed, names_by_isin(read, venue)), (), ()
+                )
+                corrected += persist_bars(connection, changed)
+                record_ingestion(
+                    connection,
+                    definition.source_id,
+                    f"{partition}.as-of-{noticed:%Y%m%d}",
+                    version,
+                    "succeeded",
+                    len(changed),
+                )
             # Each day stands on its own, so a run interrupted part way keeps what it read.
             connection.commit()
 
@@ -151,6 +216,8 @@ def ingest(
             "bars": bars_read,
             "secondary_lines": secondary_lines,
             "renamed": renamed,
+            "corrected": corrected,
+            "recheck_failed": recheck_failed,
         },
     )
     return MaterializeResult(
@@ -167,6 +234,8 @@ def ingest(
             "written": written,
             "instruments": len(read_names),
             "renamed": renamed,
+            "corrected": corrected,
+            "recheck_failed": recheck_failed,
         }
     )
 
@@ -181,7 +250,7 @@ def ingest(
 def bse_bhavcopy(
     context: AssetExecutionContext, database: Database, bhavcopies: Bhavcopies
 ) -> MaterializeResult[None]:
-    return ingest(context, "BSE", database, bhavcopies)
+    return ingest(context, "BSE", database, bhavcopies, recheck_day(context))
 
 
 @asset(
@@ -194,4 +263,4 @@ def bse_bhavcopy(
 def nse_bhavcopy(
     context: AssetExecutionContext, database: Database, bhavcopies: Bhavcopies
 ) -> MaterializeResult[None]:
-    return ingest(context, "NSE", database, bhavcopies)
+    return ingest(context, "NSE", database, bhavcopies, recheck_day(context))

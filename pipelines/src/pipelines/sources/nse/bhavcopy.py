@@ -60,6 +60,11 @@ class NseBhavcopy:
 
         return extract_csv(archive)
 
+    def corrections(self, partition: date) -> list[tuple[date, bytes]]:
+        """Each corrected file held for a day in the current format, with the day it was noticed."""
+        held = self._cache.versions(SOURCE_ID, partition.isoformat(), CACHE_SUFFIX)
+        return [(noticed, extract_csv(archive)) for noticed, archive in held]
+
     def recheck(self, partition: date, noticed_on: date) -> bytes | None:
         """Ask again for a day's file in the current format, holding a corrected one beside it."""
         url = self.url_for(partition, UDIFF)
