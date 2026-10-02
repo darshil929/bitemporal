@@ -143,7 +143,8 @@ def ingest_delivery(
     prices = Bhavcopies().definition(venue)
     price_source = prices.source_id
 
-    published = unpublished = failed = written = unpriced = corrected = recheck_failed = 0
+    published = unpublished = failed = written = unpriced = 0
+    rechecked = corrected = recheck_failed = 0
     days = list(calendar_days(date.fromisoformat(window.start), date.fromisoformat(window.end)))
     # A delivery figure is stored only beside a bar, so a day the venue's prices are not registered
     # for is outside delivery's coverage too, however far back the delivery file reaches.
@@ -151,18 +152,19 @@ def ingest_delivery(
     outside_coverage = len(days) - len(covered)
 
     with database.connect() as connection:
-        rechecked = set()
+        days_to_recheck = set()
         if recheck_on is not None and days:
             held = latest_days_held(
                 connection, venue, days[0], days[-1], RECHECKED_DAYS, "delivery_daily"
             )
-            rechecked = set(held)
+            days_to_recheck = set(held)
         for day in covered:
             partition = day.isoformat()
             version = definition.version_for(day)
-            if day in rechecked and recheck_on is not None:
+            if day in days_to_recheck and recheck_on is not None:
                 try:
                     adapter.recheck(day, recheck_on)
+                    rechecked += 1
                 except SourceError as failure:
                     recheck_failed += 1
                     context.log.warning(
@@ -251,6 +253,7 @@ def ingest_delivery(
             "outside_coverage": outside_coverage,
             "written": written,
             "unpriced": unpriced,
+            "rechecked": rechecked,
             "corrected": corrected,
         },
     )
@@ -265,6 +268,7 @@ def ingest_delivery(
             "outside_coverage": outside_coverage,
             "written": written,
             "unpriced": unpriced,
+            "rechecked": rechecked,
             "corrected": corrected,
             "recheck_failed": recheck_failed,
         }

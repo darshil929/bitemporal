@@ -22,6 +22,7 @@ def report(**changed: object) -> FlowReport:
                 "unpublished": 2,
                 "outside_coverage": 0,
                 "failed": 0,
+                "rechecked": 2,
                 "corrected": 1,
                 "recheck_failed": 0,
             }
@@ -54,7 +55,7 @@ def test_a_run_that_read_every_source_is_clean() -> None:
     assert report().is_clean
     assert (
         "  bse_bhavcopy           published 5  unpublished 2  outside_coverage 0  failed 0"
-        "  corrected 1  recheck_failed 0" in shown
+        "  rechecked 2  corrected 1  recheck_failed 0" in shown
     )
     assert "  corporate_actions      not run" in shown
 

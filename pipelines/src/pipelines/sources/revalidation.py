@@ -5,6 +5,7 @@ from datetime import date
 
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Answer
+from pipelines.sources.errors import NotHeld
 
 
 def unchanged(payload: bytes) -> bytes:
@@ -23,11 +24,12 @@ def recheck(
     """Ask again for a held file; a changed one is held dated `noticed_on` and returned.
 
     A file held without validators is asked for in full and compared by `content`, which reads
-    what a file holds, so an archive packed again around the same file is no change.
+    what a file holds, so an archive packed again around the same file is no change. A day whose
+    file the cache does not hold raises `NotHeld` without a request.
     """
     held = cache.latest(source_id, partition_key, suffix)
     if held is None:
-        return None
+        raise NotHeld(f"{source_id} {partition_key} is not held in the cache")
     answer = ask(cache.read_validators(source_id, partition_key, suffix))
     if answer is None:
         return None

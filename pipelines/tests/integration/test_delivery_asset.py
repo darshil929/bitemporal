@@ -341,7 +341,8 @@ def test_a_sync_asks_again_only_for_delivery_held_before_it(database: PointedDat
     deliveries = RecordedDeliveries({"NSE": {date(2026, 8, 14): nse_day("14-Aug-2026", 109_556)}})
     window = build_asset_context(partition_key_range=PartitionKeyRange("2026-08-13", TRADE_DATE))
 
-    ingest_delivery(window, "NSE", database, deliveries, recheck_on=date(2026, 8, 16))
-    ingest_delivery(window, "NSE", database, deliveries, recheck_on=date(2026, 8, 16))
+    first = ingest_delivery(window, "NSE", database, deliveries, recheck_on=date(2026, 8, 16))
+    second = ingest_delivery(window, "NSE", database, deliveries, recheck_on=date(2026, 8, 16))
 
     assert deliveries.rechecked == [date(2026, 8, 14)]
+    assert (first.metadata["rechecked"], second.metadata["rechecked"]) == (0, 1)

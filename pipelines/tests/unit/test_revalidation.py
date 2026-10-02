@@ -14,7 +14,7 @@ from pipelines.sources.archive import extract_csv
 from pipelines.sources.bse.bhavcopy import BseBhavcopy
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import Answer, Throttle, ThrottledClient
-from pipelines.sources.errors import SourceUnavailable, WrongDay
+from pipelines.sources.errors import NotHeld, SourceUnavailable, WrongDay
 from pipelines.sources.nse.bhavcopy import COOKIE_SOURCE_URL, NseBhavcopy
 from pipelines.sources.nse.delivery import NseDelivery
 from pipelines.sources.revalidation import recheck, unchanged
@@ -70,6 +70,13 @@ def test_a_file_held_without_validators_is_compared_in_full_once(tmp_path: Path)
     assert ask_again(cache, Answer(b"a,b\n1,2\n", {"etag": '"v1"'})) == (None, [{}])
     assert cache.read_validators("a_source", "2026-08-14", ".csv") == {"etag": '"v1"'}
     assert not list(tmp_path.rglob("*.as-of-*"))
+
+
+def test_a_day_whose_file_is_not_held_cannot_be_asked_for_again(tmp_path: Path) -> None:
+    """A day stored from a cache that no longer holds its file has nothing to compare against."""
+    with pytest.raises(NotHeld):
+        ask_again(DiskCache(tmp_path), Answer(b"a,b\n1,2\n", {"etag": '"v1"'}))
+    assert not list(tmp_path.rglob("*"))
 
 
 def test_a_corrected_file_is_held_beside_the_copy_it_corrects(tmp_path: Path) -> None:
