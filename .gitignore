@@ -42,6 +42,7 @@ pipelines/tests/fixtures/**/__pycache__/
 target/
 dbt_packages/
 logs/
+.user.yml
 .dagster_home/
 storage/
 

@@ -3,6 +3,10 @@ version: 0.0.0
 config-version: 2
 profile: bitemporal
 
+# dbt reports each invocation to dbt Labs unless this is false.
+flags:
+  send_anonymous_usage_stats: false
+
 model-paths: ["models"]
 test-paths: ["tests"]
 macro-paths: ["macros"]
