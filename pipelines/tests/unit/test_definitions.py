@@ -1,5 +1,6 @@
 """The Dagster entry point loads, carrying the assets and the resources they ask for."""
 
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -8,7 +9,7 @@ from dagster import AssetKey, AssetSelection, Definitions, define_asset_job
 from dagster._core.execution.api import create_execution_plan
 
 from pipelines.assets.ingestion.calendar import INGESTION_DAYS
-from pipelines.assets.transform.dbt import SOURCE_WRITERS
+from pipelines.assets.transform.dbt import SOURCE_WRITERS, dbt_project
 from pipelines.definitions import defs
 from pipelines.jobs import BOOTSTRAP, FLOW_TAG, SYNC
 
@@ -30,6 +31,15 @@ def test_each_dbt_model_is_its_own_asset() -> None:
     keys = {key.to_user_string() for key in defs.resolve_asset_graph().get_all_asset_keys()}
 
     assert {"stg_price_daily", "stg_listings", "int_venue_spread"} <= keys
+
+
+def test_every_dbt_test_is_a_check_the_report_names() -> None:
+    """A test reading several models names the one it checks, or a failure reports no name."""
+    manifest = json.loads(dbt_project.manifest_path.read_text())
+    tests = {node["name"] for key, node in manifest["nodes"].items() if key.startswith("test.")}
+    checks = {key.name for key in defs.resolve_asset_graph().asset_check_keys}
+
+    assert tests - checks == set()
 
 
 def test_the_models_wait_for_the_assets_that_fill_their_sources() -> None:

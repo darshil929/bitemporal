@@ -68,8 +68,12 @@ def test_a_run_that_read_every_source_is_clean() -> None:
             "  failed bse_corporate_actions 20260101-20261231: refused with 403",
         ),
         (
-            {"failed_checks": ["every_bar_sits_inside_a_listing"]},
+            {"failed_checks": [("every_bar_sits_inside_a_listing", None)]},
             "  check failed: every_bar_sits_inside_a_listing",
+        ),
+        (
+            {"failed_checks": [("assert_no_step_at_a_change_of_isin", 4)]},
+            "  check failed: assert_no_step_at_a_change_of_isin, 4 rows",
         ),
         ({"failed_steps": ["instrument_identity"]}, "  step failed: instrument_identity"),
         ({"unmaterialized": ["bse_delivery"]}, "  not materialized: bse_delivery"),
@@ -112,5 +116,5 @@ def test_checks_are_counted_by_their_outcome_and_severity() -> None:
     assert checks_by_outcome(checks) == (
         1,
         [(ONE_SIDED, 17)],
-        ["every_bar_sits_inside_a_listing"],
+        [("every_bar_sits_inside_a_listing", None)],
     )

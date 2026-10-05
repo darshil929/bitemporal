@@ -184,7 +184,7 @@ class FlowReport:
     failures: list[tuple[str, str, str]]
     checks_passed: int
     warned_checks: list[tuple[str, int | None]]
-    failed_checks: list[str]
+    failed_checks: list[tuple[str, int | None]]
     failed_steps: list[str]
     unmaterialized: list[str]
 
@@ -209,14 +209,15 @@ class FlowReport:
             f"  checks {self.checks_passed} passed, {len(self.warned_checks)} warned,"
             f" {len(self.failed_checks)} failed"
         )
-        shown += [
-            f"  check warned: {name}" + ("" if rows is None else f", {rows} rows")
-            for name, rows in self.warned_checks
-        ]
-        shown += [f"  check failed: {name}" for name in self.failed_checks]
+        shown += [f"  check warned: {found(name, rows)}" for name, rows in self.warned_checks]
+        shown += [f"  check failed: {found(name, rows)}" for name, rows in self.failed_checks]
         shown += [f"  step failed: {name}" for name in self.failed_steps]
         shown += [f"  not materialized: {name}" for name in self.unmaterialized]
         return shown
+
+
+def found(name: str, rows: int | None) -> str:
+    return name if rows is None else f"{name}, {rows} rows"
 
 
 def rows_found(check: AssetCheckEvaluation) -> int | None:
@@ -226,8 +227,11 @@ def rows_found(check: AssetCheckEvaluation) -> int | None:
 
 def checks_by_outcome(
     checks: Sequence[AssetCheckEvaluation],
-) -> tuple[int, list[tuple[str, int | None]], list[str]]:
-    """The checks passed, those of warning severity that did not pass, and those failed."""
+) -> tuple[int, list[tuple[str, int | None]], list[tuple[str, int | None]]]:
+    """The checks passed, then those not passed at warning severity and at error severity.
+
+    Each check that did not pass carries the rows it found, where the check records them.
+    """
     passed = sum(1 for check in checks if check.passed)
     warned = sorted(
         (
@@ -235,12 +239,15 @@ def checks_by_outcome(
             for check in checks
             if not check.passed and check.severity == AssetCheckSeverity.WARN
         ),
-        key=lambda warning: warning[0],
+        key=lambda outcome: outcome[0],
     )
     failed = sorted(
-        check.check_name
-        for check in checks
-        if not check.passed and check.severity != AssetCheckSeverity.WARN
+        (
+            (check.check_name, rows_found(check))
+            for check in checks
+            if not check.passed and check.severity != AssetCheckSeverity.WARN
+        ),
+        key=lambda outcome: outcome[0],
     )
     return passed, warned, failed
 

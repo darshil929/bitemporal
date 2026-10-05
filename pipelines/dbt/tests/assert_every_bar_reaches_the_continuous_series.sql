@@ -1,3 +1,5 @@
+{{ config(meta = {'dagster': {'ref': {'name': 'int_continuous_prices'}}}) }}
+
 -- A bar the lineage drops would shorten a history silently, which is the failure a continuous
 -- series exists to prevent. Every published bar belongs to exactly one continuous series.
 select

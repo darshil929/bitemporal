@@ -1,3 +1,5 @@
+{{ config(meta = {'dagster': {'ref': {'name': 'venue_delivery_discrepancies'}}}) }}
+
 -- A reviewed venue day inside the stored history must be a day the venue traded, dated as
 -- stg_trading_day dates it, or the delivery check passes over a day that is not there.
 with held as (
