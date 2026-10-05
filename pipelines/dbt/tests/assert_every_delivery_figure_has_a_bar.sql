@@ -1,3 +1,5 @@
+{{ config(meta = {'dagster': {'ref': {'name': 'stg_delivery_daily'}}}) }}
+
 -- A delivery figure is part of a bar's day. One stored where the instrument has no bar at the
 -- venue that day resolved through a listing the price file does not bear out, and the delivery
 -- check, which reads delivery joined to bars, never sees it.

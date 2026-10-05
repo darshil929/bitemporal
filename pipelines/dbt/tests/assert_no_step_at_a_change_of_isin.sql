@@ -1,3 +1,5 @@
+{{ config(meta = {'dagster': {'ref': {'name': 'int_continuous_prices'}}}) }}
+
 -- A change of face value moves the traded price by the whole ratio, a one for five split by
 -- eighty percent. Adjustment exists to remove that step, so on the continuous series the day
 -- either side of a succession must move no more than an ordinary day does. A step surviving

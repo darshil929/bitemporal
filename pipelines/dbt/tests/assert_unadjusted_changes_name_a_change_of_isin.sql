@@ -1,3 +1,5 @@
+{{ config(meta = {'dagster': {'ref': {'name': 'unadjusted_changes_of_isin'}}}) }}
+
 -- A reviewed change of ISIN for an instrument the history holds must be one of its changes, dated
 -- as stg_successions dates it, or the step check passes over a change that is not there. A
 -- succession is drawn from the predecessor's last days, so a change is asked for only where the
