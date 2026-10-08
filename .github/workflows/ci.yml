@@ -106,12 +106,15 @@ jobs:
           brew install ninja make
           echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
 
-      # vcpkg runs the system CMake and Ninja on arm64 Linux.
+      # vcpkg runs the system CMake and Ninja on arm64 Linux, and its port scripts need CMake 4,
+      # where the image carries 3.31.
       - name: Install build tools
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build
+          pipx install "cmake>=4,<5"
+          echo "$(pipx environment --value PIPX_BIN_DIR)" >> "$GITHUB_PATH"
           echo "CXX=${{ matrix.compiler }}" >> "$GITHUB_ENV"
           echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> "$GITHUB_ENV"
 
