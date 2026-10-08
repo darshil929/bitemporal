@@ -13,8 +13,11 @@ target_link_libraries(btcore_golden_table PRIVATE btcore_warnings)
 
 add_executable(btcore_unit_tests
   golden/test_golden_table.cpp
+  golden/test_moving_average_golden.cpp
+  property/test_moving_average_properties.cpp
   property/test_series_generators.cpp
   unit/test_arithmetic.cpp
+  unit/test_moving_average.cpp
   unit/test_parallel.cpp
   unit/test_types.cpp
   unit/test_version.cpp
@@ -23,7 +26,7 @@ target_link_libraries(btcore_unit_tests
   PRIVATE btcore btcore_golden_table btcore_series_generators btcore_warnings GTest::gtest_main
 )
 
-add_executable(btcore_benchmarks bench/bench_parallel.cpp)
+add_executable(btcore_benchmarks bench/bench_moving_average.cpp bench/bench_parallel.cpp)
 target_link_libraries(btcore_benchmarks
   PRIVATE btcore btcore_series_generators btcore_warnings benchmark::benchmark_main
 )

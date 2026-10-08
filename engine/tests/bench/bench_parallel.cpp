@@ -5,19 +5,11 @@
 #include <cstdint>
 #include <vector>
 
-#include "series_generators.hpp"
+#include "full_history.hpp"
 
 namespace {
 
-// The size of the full history: about six thousand series of ten years of trading days.
-constexpr std::size_t kSeries = 6'000;
-constexpr std::size_t kBars = 2'500;
-constexpr std::uint64_t kSeed = 2'500;
-
-const btcore::testing::Universe& full_history() {
-  static const auto history = btcore::testing::universe(kSeries, kBars, kSeed);
-  return history;
-}
+using btcore::testing::full_history;
 
 // One pass over every series with a computation as light as a sum, which leaves the pool's own
 // cost and the memory bandwidth in view.
