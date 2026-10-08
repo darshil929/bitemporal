@@ -9,20 +9,36 @@ option(BTCORE_BUILD_TESTS "Build the test suite" ON)
 option(BTCORE_BUILD_PYTHON "Build the nanobind module" OFF)
 set(BTCORE_SANITIZER "" CACHE STRING "Sanitizer to enable: address, undefined or thread")
 
+find_program(BTCORE_CCACHE ccache)
+if(BTCORE_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+  set(CMAKE_CXX_COMPILER_LAUNCHER ${BTCORE_CCACHE})
+endif()
+
 if(BTCORE_SANITIZER)
   add_compile_options(-fsanitize=${BTCORE_SANITIZER} -fno-omit-frame-pointer -g)
   add_link_options(-fsanitize=${BTCORE_SANITIZER})
 endif()
 
-# libc++ names its hardened mode differently from libstdc++, which uses _GLIBCXX_ASSERTIONS.
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_definitions(_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
-endif()
+# Left to itself a compiler fuses a * b + c into a single rounding wherever it chooses, and clang
+# and GCC choose differently. A fused multiply-add happens only where the code calls std::fma.
+add_compile_options(-ffp-contract=off)
+
+# libc++ and libstdc++ each read their own hardening macro and ignore the other's.
+add_compile_definitions(
+  _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE
+  _GLIBCXX_ASSERTIONS
+)
+
+# Warnings for the engine's own sources, which code built against the library does not inherit.
+add_library(btcore_warnings INTERFACE)
+target_compile_options(btcore_warnings INTERFACE
+  -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wdouble-promotion -Werror
+)
 
 add_library(btcore src/version.cpp)
 target_include_directories(btcore PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_compile_definitions(btcore PRIVATE BTCORE_VERSION="${PROJECT_VERSION}")
-target_compile_options(btcore PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_link_libraries(btcore PRIVATE btcore_warnings)
 
 if(BTCORE_BUILD_TESTS)
   enable_testing()
