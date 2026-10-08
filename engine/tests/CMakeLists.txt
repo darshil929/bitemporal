@@ -5,7 +5,14 @@ add_library(btcore_series_generators STATIC property/series_generators.cpp)
 target_include_directories(btcore_series_generators PUBLIC property)
 target_link_libraries(btcore_series_generators PRIVATE btcore_warnings)
 
+# The golden data: real adjusted series, and the values each computation must reproduce from them.
+add_library(btcore_golden_table STATIC golden/golden_table.cpp)
+target_include_directories(btcore_golden_table PUBLIC golden)
+target_compile_definitions(btcore_golden_table PRIVATE BTCORE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
+target_link_libraries(btcore_golden_table PRIVATE btcore_warnings)
+
 add_executable(btcore_unit_tests
+  golden/test_golden_table.cpp
   property/test_series_generators.cpp
   unit/test_arithmetic.cpp
   unit/test_parallel.cpp
@@ -13,7 +20,7 @@ add_executable(btcore_unit_tests
   unit/test_version.cpp
 )
 target_link_libraries(btcore_unit_tests
-  PRIVATE btcore btcore_series_generators btcore_warnings GTest::gtest_main
+  PRIVATE btcore btcore_golden_table btcore_series_generators btcore_warnings GTest::gtest_main
 )
 
 add_executable(btcore_benchmarks bench/bench_parallel.cpp)
