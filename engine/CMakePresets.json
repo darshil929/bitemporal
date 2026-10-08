@@ -16,7 +16,7 @@
       "name": "sanitizer",
       "displayName": "Sanitizer build",
       "inherits": "default",
-      "binaryDir": "${sourceParentDir}/build/engine-sanitizer",
+      "binaryDir": "${sourceParentDir}/build/engine-$env{SANITIZER}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "BTCORE_SANITIZER": "$env{SANITIZER}"
