@@ -35,10 +35,12 @@ target_compile_options(btcore_warnings INTERFACE
   -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wdouble-promotion -Werror
 )
 
-add_library(btcore src/version.cpp)
+find_package(Threads REQUIRED)
+
+add_library(btcore src/parallel.cpp src/types.cpp src/version.cpp)
 target_include_directories(btcore PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_compile_definitions(btcore PRIVATE BTCORE_VERSION="${PROJECT_VERSION}")
-target_link_libraries(btcore PRIVATE btcore_warnings)
+target_link_libraries(btcore PUBLIC Threads::Threads PRIVATE btcore_warnings)
 
 if(BTCORE_BUILD_TESTS)
   enable_testing()
