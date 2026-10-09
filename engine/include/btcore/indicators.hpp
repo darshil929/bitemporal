@@ -141,4 +141,38 @@ class BollingerState {
   double width_;
 };
 
+/// The fractional return over `bars` values ending `skip` values back, computed as
+/// (later - earlier) / earlier: nearby prices subtract exactly, so a small return keeps its
+/// precision. The first `bars + skip` outputs are missing, and so is every output where either
+/// value is missing. A return over 231 bars skipping 21 is the 12-1 momentum.
+void simple_return(std::span<const double> values, int bars, int skip, std::span<double> out);
+
+void simple_return(const SeriesBatch& values, int bars, int skip, std::span<double> out,
+                   unsigned threads);
+
+/// The value a fixed number of values back, one value at a time.
+class Lookback {
+ public:
+  explicit Lookback(std::size_t distance);
+
+  /// Records `value` and returns the value `distance` before it, missing until there is one.
+  [[nodiscard]] double push(double value);
+
+ private:
+  std::vector<double> values_;
+  std::size_t next_ = 0;
+};
+
+/// The fractional return one value at a time, equal bit for bit to the batch form.
+class ReturnState {
+ public:
+  ReturnState(int bars, int skip);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  Lookback later_;
+  Lookback earlier_;
+};
+
 }  // namespace btcore
