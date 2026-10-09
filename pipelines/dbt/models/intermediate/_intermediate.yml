@@ -144,6 +144,10 @@ models:
         description: >
           Shares that settled, divided by the same factor as volume. Null on a day the venue
           published no delivery figure for the instrument.
+      - name: turnover
+        description: >
+          Value traded in rupees, as published. A change in the count of shares leaves a value
+          unchanged, so no factor applies.
 
   - name: int_capital_action_factors
     description: >
@@ -329,10 +333,10 @@ unit_tests:
         rows:
           - {isin: INE721A01013, venue: NSE, trade_date: "2025-01-09",
              as_of_date: "2025-01-09", open: 2800, high: 2820, low: 2790, close: 2809.85,
-             volume: 1000}
+             volume: 1000, turnover: 2809850}
           - {isin: INE721A01047, venue: NSE, trade_date: "2025-01-10",
              as_of_date: "2025-01-10", open: 560, high: 565, low: 530, close: 532,
-             volume: 5000}
+             volume: 5000, turnover: 2660000}
       - input: ref('stg_delivery_daily')
         rows:
           - {isin: INE721A01013, venue: NSE, trade_date: "2025-01-09",
@@ -342,10 +346,10 @@ unit_tests:
         - {isin: INE721A01047, source_isin: INE721A01013, venue: NSE,
            trade_date: "2025-01-09", adjustment_factor: "0.2000000000",
            close_as_traded: "2809.85", close: "561.9700", volume: "5000",
-           delivery_quantity: "2000"}
+           delivery_quantity: "2000", turnover: "2809850.00"}
         - {isin: INE721A01047, source_isin: INE721A01047, venue: NSE,
            trade_date: "2025-01-10", adjustment_factor: "1", close_as_traded: "532",
-           close: "532.0000", volume: "5000", delivery_quantity: null}
+           close: "532.0000", volume: "5000", delivery_quantity: null, turnover: "2660000.00"}
 
   - name: a_bar_carries_the_product_of_the_actions_still_ahead_of_it
     description: >

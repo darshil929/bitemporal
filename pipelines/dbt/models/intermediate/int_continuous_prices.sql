@@ -2,7 +2,8 @@
 -- instrument trades under now. A split issues a new ISIN carrying no earlier bars, so the
 -- predecessor's bars are drawn in through the lineage and scaled by the actions that followed
 -- them. Read this rather than stg_price_daily wherever a series must span a split. Delivery is
--- a count of shares like volume, so it is divided by the same factor.
+-- a count of shares like volume, so it is divided by the same factor. Turnover is a value in
+-- rupees, which no change in the count of shares alters, so it is carried as traded.
 with lineage as (
     select
         isin,
@@ -52,6 +53,7 @@ bars as (
         prices.low,
         prices.close,
         prices.volume,
+        prices.turnover,
         delivery.delivery_quantity,
         greatest(prices.as_of_date, delivery.as_of_date) as as_of_date
     from {{ ref('stg_price_daily') }} as prices
@@ -70,6 +72,7 @@ select
     bars.trade_date,
     bars.as_of_date,
     bars.close as close_as_traded,
+    bars.turnover,
     coalesce(applicable.factor, 1) as adjustment_factor,
     round(bars.open * coalesce(applicable.factor, 1), 4) as open,
     round(bars.high * coalesce(applicable.factor, 1), 4) as high,
