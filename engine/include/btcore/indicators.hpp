@@ -215,4 +215,40 @@ class VolatilityState {
   double annualiser_;
 };
 
+/// Which end of a window a rolling extreme keeps.
+enum class Extreme { maximum, minimum };
+
+/// The largest or smallest of the last `period` values. The first `period - 1` outputs are missing,
+/// and so is every output whose window holds a missing value. A queue holds only the values that
+/// could still become the extreme, so each value costs constant time on average.
+void rolling_extreme(std::span<const double> values, int period, Extreme extreme,
+                     std::span<double> out);
+
+void rolling_extreme(const SeriesBatch& values, int period, Extreme extreme, std::span<double> out,
+                     unsigned threads);
+
+/// The rolling extreme one value at a time, equal bit for bit to the batch form.
+class RollingExtremeState {
+ public:
+  RollingExtremeState(int period, Extreme extreme);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  [[nodiscard]] bool keeps(double held, double arriving) const;
+  [[nodiscard]] std::size_t wrapped(std::size_t index) const;
+
+  // The queue's values and their positions, oldest first from `head_`, in rings of `period`.
+  std::vector<double> held_;
+  std::vector<std::size_t> held_at_;
+  std::vector<unsigned char> was_missing_;
+  std::size_t period_;
+  Extreme extreme_;
+  std::size_t head_ = 0;
+  std::size_t size_ = 0;
+  std::size_t slot_ = 0;
+  std::size_t seen_ = 0;
+  std::size_t missing_ = 0;
+};
+
 }  // namespace btcore

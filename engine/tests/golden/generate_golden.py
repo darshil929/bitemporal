@@ -257,6 +257,37 @@ def price_changes() -> Family:
     )
 
 
+def numpy_extreme(
+    values: np.ndarray, period: int, pick: Callable[[np.ndarray], float]
+) -> np.ndarray:
+    out = np.full(values.shape, np.nan)
+    for end in range(period, values.size + 1):
+        out[end - 1] = pick(values[end - period : end])
+    return out
+
+
+def range_extremes() -> Family:
+    return Family(
+        "golden_range_extremes.csv",
+        1e-12,
+        [
+            *(
+                Expected(
+                    f"maximum_{period}",
+                    numpy=lambda c, p=period: numpy_extreme(c["high"], p, np.max),
+                    talib=lambda c, p=period: talib.MAX(c["high"], timeperiod=p),
+                )
+                for period in (20, 252)
+            ),
+            Expected(
+                "minimum_20",
+                numpy=lambda c: numpy_extreme(c["low"], 20, np.min),
+                talib=lambda c: talib.MIN(c["low"], timeperiod=20),
+            ),
+        ],
+    )
+
+
 def volatilities() -> Family:
     """NumPy alone: TA-Lib has no realised volatility."""
     return Family(
@@ -274,6 +305,7 @@ FAMILIES = [
     returns(),
     price_changes(),
     volatilities(),
+    range_extremes(),
 ]
 
 

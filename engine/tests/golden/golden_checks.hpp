@@ -16,15 +16,16 @@ namespace btcore::testing {
 // another; the engine is held to the same.
 inline constexpr double kGoldenTolerance = 1e-12;
 
-/// Runs `compute(batch, out)` over the closes of every golden series and compares the output with
-/// one column of a family's expected file.
+/// Runs `compute(batch, out)` over one input column of every golden series, the close unless
+/// another is named, and compares the output with one column of a family's expected file.
 template <typename Compute>
 void expect_matches_golden(const std::string& file, const std::string& column, Compute compute,
-                           double tolerance = kGoldenTolerance) {
+                           double tolerance = kGoldenTolerance,
+                           const std::string& input_column = "close") {
   const auto input = GoldenTable::read("golden_ohlcv.csv");
   const auto expected = GoldenTable::read(file);
   const auto offsets = input.series_offsets();
-  const SeriesBatch batch(input.numbers("close"), offsets);
+  const SeriesBatch batch(input.numbers(input_column), offsets);
   std::vector<double> out(input.rows());
   compute(batch, std::span<double>(out));
   const auto& reference = expected.numbers(column);
