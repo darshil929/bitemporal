@@ -40,8 +40,8 @@ models:
       - name: close
         description: >
           Closing price, computed by the venue from the last half hour rather than traded, so on
-          a thin day it sits outside the day's high and low.
-        data_tests: [not_null]
+          a thin day it sits outside the day's high and low. Missing where the venue published 0,
+          as BSE does for some funds traded in special sessions.
       - name: previous_close
         description: The venue's own prior close, which spans a change of ISIN at a split.
       - name: volume
@@ -330,6 +330,19 @@ unit_tests:
       rows:
         - {isin: INE002A01018, venue: BSE, trade_date: "2025-01-02", close: "106.0000"}
         - {isin: INE002A01018, venue: NSE, trade_date: "2025-01-02", close: "105.0000"}
+
+  - name: a_close_published_as_zero_is_missing
+    description: A close of 0 is no price, so the bar keeps its trades and loses its close.
+    model: stg_price_daily
+    given:
+      - input: source('market', 'price_daily')
+        rows:
+          - {isin: INF732E01102, venue: BSE, trade_date: "2017-10-17", as_of_date: "2017-10-17",
+             open: 2703.78, high: 2710, low: 2675, close: 0, volume: 3150, turnover: 8448157}
+    expect:
+      rows:
+        - {isin: INF732E01102, venue: BSE, trade_date: "2017-10-17", close: null,
+           volume: 3150, turnover: "8448157.00"}
 
   - name: a_split_reads_a_factor_a_price_is_multiplied_by
     description: A one for five split takes a price before the ex-date to a fifth.

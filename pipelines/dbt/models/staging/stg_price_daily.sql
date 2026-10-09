@@ -1,5 +1,7 @@
 -- The latest version of each bar known on the as-of date. A venue republishing a corrected file
--- appends a row, so without this a bar appears once per correction.
+-- appends a row, so without this a bar appears once per correction. BSE publishes a close of 0 for
+-- some funds traded in special sessions; it is no price, so the close is missing while the bar's
+-- trades still count.
 select distinct on (isin, venue, trade_date)
     isin,
     venue,
@@ -10,11 +12,11 @@ select distinct on (isin, venue, trade_date)
     open,
     high,
     low,
-    close,
     previous_close,
     volume,
     turnover,
-    trade_count
+    trade_count,
+    nullif(close, 0) as close
 from {{ source('market', 'price_daily') }}
 where as_of_date <= '{{ var("as_of_date", "9999-12-31") }}'
 order by isin asc, venue asc, trade_date asc, as_of_date desc

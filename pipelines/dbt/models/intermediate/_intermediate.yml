@@ -3,8 +3,9 @@ version: 2
 models:
   - name: int_venue_spread
     description: >
-      One row per dual-listed instrument and trading day, carrying each venue's close and the
-      gap between them. Indicators run on one venue; this measures how far the other sits.
+      One row per dual-listed instrument and trading day on which both venues published a close,
+      carrying each venue's close and the gap between them. Indicators run on one venue; this
+      measures how far the other sits.
     columns:
       - name: isin
         description: Canonical instrument identifier.
@@ -126,14 +127,16 @@ models:
         description: The day the bar became knowable.
         data_tests: [not_null]
       - name: close_as_traded
-        description: The close the venue published, carrying no adjustment.
-        data_tests: [not_null]
+        description: >
+          The close the venue published, carrying no adjustment; missing where the venue published
+          0.
       - name: adjustment_factor
         description: Product of every factor applied after this bar.
         data_tests: [not_null]
       - name: close
-        description: The close scaled by that factor, which is what a series is drawn from.
-        data_tests: [not_null]
+        description: >
+          The close scaled by that factor, which is what a series is drawn from; missing with the
+          published close.
       - name: volume
         description: Shares traded, divided by the factor, since a bonus multiplies the count.
         data_tests: [not_null]
