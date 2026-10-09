@@ -20,7 +20,7 @@ CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 SQL_SOURCES = $(shell find infra pipelines -name '*.sql' -not -path '*/target/*' 2>/dev/null)
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill bootstrap sync pgadmin
+.PHONY: setup lint test-engine bench-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill bootstrap sync pgadmin
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -60,6 +60,12 @@ test-engine:
 	cd engine && cmake --preset $(PRESET)
 	cd engine && cmake --build --preset $(PRESET)
 	cd engine && ctest --preset $(PRESET)
+
+# Runs the engine's benchmarks in the default build; BENCH_ARGS passes Google Benchmark's flags.
+bench-engine:
+	cd engine && cmake --preset default
+	cd engine && cmake --build --preset default --target btcore_benchmarks
+	build/engine/tests/btcore_benchmarks $(BENCH_ARGS)
 
 test-python:
 	uv run pytest
