@@ -24,8 +24,10 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY api api
+COPY engine/pyproject.toml engine/pyproject.toml
 COPY pipelines pipelines
-RUN uv sync --no-dev --frozen
+# The engine comes from the wheel built above, so the runtime image carries no compiler.
+RUN uv sync --no-dev --frozen --no-install-package btcore
 
 COPY --from=engine-build /wheels /wheels
 RUN uv pip install /wheels/*.whl

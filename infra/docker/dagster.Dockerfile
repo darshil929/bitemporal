@@ -1,4 +1,17 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS engine-build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential cmake ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /src
+COPY engine engine
+# The wheel build compiles the library and the nanobind module only, so it needs no vcpkg.
+RUN uv build --wheel engine --out-dir /wheels
+
+FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -12,8 +25,13 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY api api
+COPY engine/pyproject.toml engine/pyproject.toml
 COPY pipelines pipelines
-RUN uv sync --no-dev --frozen
+# The engine comes from the wheel built above, so the runtime image carries no compiler.
+RUN uv sync --no-dev --frozen --no-install-package btcore
+
+COPY --from=engine-build /wheels /wheels
+RUN uv pip install /wheels/*.whl
 
 RUN useradd --create-home --uid 1000 app \
     && mkdir -p "$DAGSTER_HOME" \
