@@ -4,6 +4,7 @@
 #include <btcore/types.hpp>
 #include <cmath>
 #include <cstdlib>
+#include <optional>
 #include <string>
 
 #include "series_generators.hpp"
@@ -97,12 +98,20 @@ TEST(Universe, LaysSeriesEndToEndAsTheEngineTakesThem) {
   }
 }
 
+// A seed the run was started with is put back for the tests after this one.
 TEST(PropertySeed, ReadsTheEnvironmentWhenSet) {
+  const char* configured = std::getenv("BTCORE_PROPERTY_SEED");
+  const std::optional<std::string> original =
+      configured != nullptr ? std::optional<std::string>(configured) : std::nullopt;
+  ASSERT_EQ(unsetenv("BTCORE_PROPERTY_SEED"), 0);
   const auto fixed = btcore::testing::property_seed();
   ASSERT_EQ(setenv("BTCORE_PROPERTY_SEED", "123456789", 1), 0);
   EXPECT_EQ(btcore::testing::property_seed(), 123456789U);
   ASSERT_EQ(unsetenv("BTCORE_PROPERTY_SEED"), 0);
   EXPECT_EQ(btcore::testing::property_seed(), fixed);
+  if (original) {
+    ASSERT_EQ(setenv("BTCORE_PROPERTY_SEED", original->c_str(), 1), 0);
+  }
 }
 
 }  // namespace

@@ -25,3 +25,51 @@ jobs:
       - run: uv sync
       - name: Read each source and assert its columns
         run: uv run pytest -m contract -v
+
+  # Pull requests run the property tests from one fixed seed; each night draws a fresh one.
+  engine-properties:
+    runs-on: xcode-27
+    timeout-minutes: 25
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-archives
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: brew install ninja
+
+      - name: Read vcpkg baseline
+        id: vcpkg
+        run: echo "baseline=$(jq -r '."builtin-baseline"' engine/vcpkg.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache vcpkg
+        id: vcpkg-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.VCPKG_ROOT }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-xcode-27-apple-clang-${{ steps.vcpkg.outputs.baseline }}-${{ hashFiles('engine/vcpkg.json') }}
+
+      - name: Bootstrap vcpkg
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git init "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$VCPKG_ROOT" fetch --depth 1 origin "${{ steps.vcpkg.outputs.baseline }}"
+          git -C "$VCPKG_ROOT" checkout FETCH_HEAD
+          "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Build the engine tests
+        working-directory: engine
+        run: |
+          cmake --preset default
+          cmake --build --preset default
+
+      - name: Run the property tests from a fresh seed
+        working-directory: engine
+        run: |
+          seed=$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')
+          echo "BTCORE_PROPERTY_SEED=$seed" | tee -a "$GITHUB_STEP_SUMMARY"
+          BTCORE_PROPERTY_SEED=$seed ctest --preset default -R 'Properties\.'
