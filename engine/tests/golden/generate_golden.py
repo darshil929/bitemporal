@@ -26,8 +26,7 @@ import numpy as np
 import talib
 
 HERE = Path(__file__).resolve().parent
-INPUT = HERE / "golden_ohlcv.csv"
-NUMERIC = ["open", "high", "low", "close", "volume", "turnover", "delivery", "factor"]
+TEXT = {"series", "isin", "venue", "trade_date"}
 
 type Columns = dict[str, np.ndarray]
 type Computation = Callable[[Columns], np.ndarray]
@@ -51,6 +50,7 @@ class Family:
     file: str
     tolerance: float
     columns: list[Expected]
+    source: str = "golden_ohlcv.csv"
 
 
 def numpy_sma(close: np.ndarray, period: int) -> np.ndarray:
@@ -391,6 +391,38 @@ def volatilities() -> Family:
     )
 
 
+def month_start(days: np.ndarray) -> np.ndarray:
+    return days.astype("datetime64[D]").astype("datetime64[M]").astype("datetime64[D]").astype(int)
+
+
+def numpy_primary_venue(c: Columns) -> np.ndarray:
+    """ADR 0042: 1 for NSE, 0 for BSE, the engine's codes."""
+    days = c["day"].astype(np.int64)
+    bse = np.nan_to_num(c["bse_turnover"])
+    nse = np.nan_to_num(c["nse_turnover"])
+    months = month_start(days)
+    out = np.empty(days.shape)
+    for index in range(days.size):
+        window = (days >= months[index] - 90) & (days <= months[index] - 1)
+        is_empty = bse[window].sum() == 0 and nse[window].sum() == 0
+        if months[index] == months[0] or is_empty:
+            chosen = (days >= months[index]) & (days <= days[index])
+        else:
+            chosen = window
+        out[index] = 1.0 if nse[chosen].sum() > bse[chosen].sum() else 0.0
+    return out
+
+
+def venues() -> Family:
+    """NumPy alone: the designation is the platform's own rule."""
+    return Family(
+        "golden_primary_venue.csv",
+        0.0,
+        [Expected("primary_venue", numpy=numpy_primary_venue)],
+        source="golden_venue_turnover.csv",
+    )
+
+
 FAMILIES = [
     moving_averages(),
     relative_strength(),
@@ -403,6 +435,7 @@ FAMILIES = [
     range_positions(),
     traded_value(),
     volume_flow(),
+    venues(),
 ]
 
 
@@ -410,17 +443,21 @@ class ReferencesDisagree(Exception):
     """TA-Lib and the plain implementation give different values for one column of one series."""
 
 
-def read_series() -> list[tuple[str, list[str], Columns]]:
-    """Each series in file order, with its trade dates and numeric columns."""
-    with INPUT.open(newline="") as handle:
+def read_series(source: str) -> list[tuple[str, list[str], Columns]]:
+    """Each series of an input file in file order, with its trade dates, its numeric columns and
+    `day`, the trade date counted in days from 1970-01-01."""
+    with (HERE / source).open(newline="") as handle:
         rows = list(csv.DictReader(handle))
+    numeric = [column for column in rows[0] if column not in TEXT]
     series = []
     for name in dict.fromkeys(row["series"] for row in rows):
         own = [row for row in rows if row["series"] == name]
         columns = {
             column: np.array([float(row[column]) if row[column] else math.nan for row in own])
-            for column in NUMERIC
+            for column in numeric
         }
+        dates = np.array([row["trade_date"] for row in own], dtype="datetime64[D]")
+        columns["day"] = dates.astype(np.int64).astype(float)
         series.append((name, [row["trade_date"] for row in own], columns))
     return series
 
@@ -446,12 +483,12 @@ def written(value: float) -> str:
 
 
 def main() -> None:
-    series = read_series()
+    sources = {family.source: read_series(family.source) for family in FAMILIES}
     for family in FAMILIES:
         with (HERE / family.file).open("w", newline="") as handle:
             writer = csv.writer(handle, lineterminator="\n")
             writer.writerow(["series", "trade_date", *(column.name for column in family.columns)])
-            for name, dates, inputs in series:
+            for name, dates, inputs in sources[family.source]:
                 values = [agreed(family, column, name, inputs) for column in family.columns]
                 for index, date in enumerate(dates):
                     writer.writerow([name, date, *(written(column[index]) for column in values)])

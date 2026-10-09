@@ -49,6 +49,15 @@ class SeriesBatch {
   [[nodiscard]] std::span<const double> input_series(std::span<const double> input,
                                                      std::size_t index) const;
 
+  /// The part of `laid_out`, an array of any element laid out like the values, that belongs to
+  /// series `index`.
+  template <typename Element>
+  [[nodiscard]] std::span<Element> slice(std::span<Element> laid_out, std::size_t index) const {
+    require_same_length(values_.size(), laid_out.size());
+    const std::size_t first = start(index);
+    return laid_out.subspan(first, static_cast<std::size_t>(offsets_[index + 1]) - first);
+  }
+
  private:
   [[nodiscard]] std::size_t start(std::size_t index) const;
 
