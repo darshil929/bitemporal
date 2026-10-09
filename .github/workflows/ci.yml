@@ -149,6 +149,73 @@ jobs:
 
       - run: make test-engine
 
+  # The change and its base are built and measured on one runner, alternating, so a busy machine
+  # slows both alike.
+  engine-bench:
+    needs: detect-changes
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.engine == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-archives
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build tools
+        run: |
+          brew install ninja make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Read vcpkg baseline
+        id: vcpkg
+        run: echo "baseline=$(jq -r '."builtin-baseline"' engine/vcpkg.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache vcpkg
+        id: vcpkg-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.VCPKG_ROOT }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-xcode-27-apple-clang-${{ steps.vcpkg.outputs.baseline }}-${{ hashFiles('engine/vcpkg.json') }}
+
+      - name: Bootstrap vcpkg
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git init "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$VCPKG_ROOT" fetch --depth 1 origin "${{ steps.vcpkg.outputs.baseline }}"
+          git -C "$VCPKG_ROOT" checkout FETCH_HEAD
+          "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: engine-bench
+
+      - name: Build the change and its base
+        run: |
+          git fetch --depth 1 origin "${{ github.event.pull_request.base.sha }}"
+          git worktree add "$RUNNER_TEMP/base" FETCH_HEAD
+          make bench-engine BENCH_ARGS=--benchmark_list_tests
+          if grep -q '^bench-engine:' "$RUNNER_TEMP/base/Makefile"; then
+            make -C "$RUNNER_TEMP/base" bench-engine BENCH_ARGS=--benchmark_list_tests
+          else
+            touch no-base
+          fi
+
+      - name: Compare benchmarks with the base
+        run: |
+          if [ -e no-base ]; then
+            echo "The base branch holds no engine benchmarks." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          for round in 1 2 3 4 5; do
+            "$RUNNER_TEMP/base/build/engine/tests/btcore_benchmarks" --benchmark_out="base-$round.json" > /dev/null
+            build/engine/tests/btcore_benchmarks --benchmark_out="change-$round.json" > /dev/null
+          done
+          python3 scripts/compare_benchmarks.py --base base-*.json --change change-*.json | tee -a "$GITHUB_STEP_SUMMARY"
+
   python-test:
     needs: detect-changes
     if: needs.detect-changes.outputs.python == 'true'
@@ -216,7 +283,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [detect-changes, lint, engine-test, python-test, dbt-check, web-test]
+    needs: [detect-changes, lint, engine-test, engine-bench, python-test, dbt-check, web-test]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
