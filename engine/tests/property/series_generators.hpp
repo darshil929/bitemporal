@@ -17,6 +17,9 @@ class SeriesGenerator {
  public:
   explicit SeriesGenerator(std::uint64_t seed) : engine_(seed) {}
 
+  /// A value drawn evenly from [0, 1), from 53 bits of the engine.
+  [[nodiscard]] double uniform();
+
   /// A price between 0.5 and 1,00,000, the range listed shares trade in: one of six spans, 0.5 to
   /// 5 up to 50,000 to 1,00,000, chosen evenly, then a point within it.
   [[nodiscard]] double price();
@@ -28,7 +31,6 @@ class SeriesGenerator {
   void punch_gaps(std::vector<double>& values, std::size_t count);
 
  private:
-  [[nodiscard]] double uniform();
   [[nodiscard]] double normal();
 
   std::mt19937_64 engine_;

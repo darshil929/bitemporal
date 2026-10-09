@@ -42,6 +42,7 @@ add_library(btcore
   src/indicators/price_bands.cpp
   src/indicators/relative_strength.cpp
   src/indicators/variance.cpp
+  src/maths/log1p.cpp
   src/parallel.cpp
   src/types.cpp
   src/version.cpp

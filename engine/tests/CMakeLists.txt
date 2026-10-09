@@ -17,12 +17,14 @@ add_executable(btcore_unit_tests
   golden/test_price_bands_golden.cpp
   golden/test_relative_strength_golden.cpp
   golden/test_variance_golden.cpp
+  property/test_log1p_properties.cpp
   property/test_moving_average_properties.cpp
   property/test_price_bands_properties.cpp
   property/test_relative_strength_properties.cpp
   property/test_series_generators.cpp
   property/test_variance_properties.cpp
   unit/test_arithmetic.cpp
+  unit/test_log1p.cpp
   unit/test_moving_average.cpp
   unit/test_parallel.cpp
   unit/test_price_bands.cpp
