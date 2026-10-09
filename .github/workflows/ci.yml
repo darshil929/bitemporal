@@ -147,6 +147,13 @@ jobs:
         with:
           key: engine-${{ matrix.leg }}
 
+      # The default build also tests the Python bindings, in an environment uv builds for them.
+      - uses: astral-sh/setup-uv@v9.0.0
+        if: ${{ !matrix.sanitizer }}
+        with:
+          enable-cache: true
+          cache-dependency-glob: engine/pyproject.toml
+
       - run: make test-engine
 
   # The change and its base are built and measured on one runner, alternating, so a busy machine
