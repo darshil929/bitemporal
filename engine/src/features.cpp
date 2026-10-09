@@ -44,6 +44,13 @@ void compute(const DailyBars& bars, Column column) {
   simple_return(close, kYear - kMonth, kMonth, column(Feature::momentum_12_1));
   realised_volatility(close, kShortWindow, kYear, column(Feature::volatility_20d));
   rsi(close, kRsiPeriod, column(Feature::rsi_14));
+  sma(bars.turnover, kShortWindow, column(Feature::adtv_20d));
+  ratio_to_prior_mean(bars.volume, kShortWindow, column(Feature::volume_ratio_20d));
+  percentage_of(bars.delivery, bars.volume, column(Feature::delivery_pct_1d));
+  sma(column(Feature::delivery_pct_1d), kShortWindow, column(Feature::delivery_pct_20d));
+  distance_from_high(close, bars.high, kYear, column(Feature::from_52w_high));
+  new_extreme(bars.high, kYear, Extreme::maximum, column(Feature::is_52w_high));
+  new_extreme(bars.low, kYear, Extreme::minimum, column(Feature::is_52w_low));
   sma(close, kShortWindow, column(Feature::sma_20));
   sma(close, kMediumWindow, column(Feature::sma_50));
   sma(close, kLongWindow, column(Feature::sma_200));
@@ -58,6 +65,13 @@ void compute(const DailyBars& bars, Column column) {
   }
 }
 
+void require_laid_out(const DailyBars& bars) {
+  for (const std::span<const double> input :
+       {bars.high, bars.low, bars.volume, bars.delivery, bars.turnover, bars.adjustment_factor}) {
+    require_same_length(bars.close.size(), input.size());
+  }
+}
+
 std::span<double> column_of(std::span<double> out, std::size_t length, Feature feature) {
   return out.subspan(static_cast<std::size_t>(feature) * length, length);
 }
@@ -65,8 +79,8 @@ std::span<double> column_of(std::span<double> out, std::size_t length, Feature f
 }  // namespace
 
 void daily_features(const DailyBars& bars, std::span<double> out) {
+  require_laid_out(bars);
   const std::size_t length = bars.close.size();
-  require_same_length(length, bars.adjustment_factor.size());
   require_same_length(length * feature_count, out.size());
   compute(bars, [&](Feature feature) { return column_of(out, length, feature); });
 }
@@ -77,7 +91,15 @@ void daily_features(const DailyBars& bars, std::span<const std::int64_t> offsets
   require_same_length(length * feature_count, out.size());
   const SeriesBatch batch(bars.close, offsets);
   parallel_for(batch.size(), threads, [&](std::size_t index) {
-    const DailyBars series{batch.series(index), batch.input_series(bars.adjustment_factor, index)};
+    const DailyBars series{
+        batch.series(index),
+        batch.input_series(bars.high, index),
+        batch.input_series(bars.low, index),
+        batch.input_series(bars.volume, index),
+        batch.input_series(bars.delivery, index),
+        batch.input_series(bars.turnover, index),
+        batch.input_series(bars.adjustment_factor, index),
+    };
     compute(series,
             [&](Feature feature) { return batch.series(column_of(out, length, feature), index); });
   });

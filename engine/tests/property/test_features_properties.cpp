@@ -14,8 +14,8 @@ namespace {
 
 using btcore::testing::expect_identical;
 
-// Drawn series past every window with closes missing, under a factor that steps halfway through
-// each series as a bonus does.
+// Drawn series past every window with values missing, read as every input, under a factor that
+// steps halfway through each series as a bonus does.
 TEST(FeaturesProperties, UniverseEqualsEachSeriesAloneOnAnyThreadCount) {
   constexpr std::size_t kLength = 300;
   const auto seed = btcore::testing::property_seed();
@@ -27,7 +27,7 @@ TEST(FeaturesProperties, UniverseEqualsEachSeriesAloneOnAnyThreadCount) {
   for (auto start = factor.begin(); start != factor.end(); start += kLength) {
     std::fill_n(start, kLength / 2, 0.5);
   }
-  const btcore::DailyBars bars{values, factor};
+  const btcore::DailyBars bars{values, values, values, values, values, values, factor};
   const std::size_t rows = values.size();
   std::vector<double> alone(rows * btcore::feature_count);
   std::vector<double> spread(rows * btcore::feature_count);
@@ -35,7 +35,13 @@ TEST(FeaturesProperties, UniverseEqualsEachSeriesAloneOnAnyThreadCount) {
   btcore::daily_features(bars, drawn.offsets, spread, 8);
   expect_identical(spread, alone);
   for (std::size_t first = 0; first < rows; first += kLength) {
-    const btcore::DailyBars single_bars{values.subspan(first, kLength),
+    const auto series = values.subspan(first, kLength);
+    const btcore::DailyBars single_bars{series,
+                                        series,
+                                        series,
+                                        series,
+                                        series,
+                                        series,
                                         std::span<const double>(factor).subspan(first, kLength)};
     std::vector<double> single(kLength * btcore::feature_count);
     btcore::daily_features(single_bars, single);

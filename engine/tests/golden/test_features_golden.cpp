@@ -28,6 +28,13 @@ constexpr Reference kReferences[] = {
     {Feature::momentum_12_1, "golden_returns.csv", "momentum_12_1", false},
     {Feature::volatility_20d, "golden_volatility.csv", "volatility_20", false},
     {Feature::rsi_14, "golden_relative_strength.csv", "rsi_14", false},
+    {Feature::adtv_20d, "golden_traded_value.csv", "adtv_20", false},
+    {Feature::volume_ratio_20d, "golden_traded_value.csv", "volume_ratio_20", false},
+    {Feature::delivery_pct_1d, "golden_traded_value.csv", "delivery_pct_1", false},
+    {Feature::delivery_pct_20d, "golden_traded_value.csv", "delivery_pct_20", false},
+    {Feature::from_52w_high, "golden_range_positions.csv", "from_52w_high", false},
+    {Feature::is_52w_high, "golden_range_positions.csv", "is_52w_high", false},
+    {Feature::is_52w_low, "golden_range_positions.csv", "is_52w_low", false},
     {Feature::sma_20, "golden_moving_averages.csv", "sma_20", true},
     {Feature::sma_50, "golden_moving_averages.csv", "sma_50", true},
     {Feature::sma_200, "golden_moving_averages.csv", "sma_200", true},
@@ -41,7 +48,13 @@ constexpr Reference kReferences[] = {
 TEST(FeaturesGolden, EveryColumnMatchesItsFamily) {
   const auto input = btcore::testing::GoldenTable::read("golden_ohlcv.csv");
   const auto& factor = input.numbers("factor");
-  const btcore::DailyBars bars{input.numbers("close"), factor};
+  const btcore::DailyBars bars{input.numbers("close"),
+                               input.numbers("high"),
+                               input.numbers("low"),
+                               input.numbers("volume"),
+                               input.numbers("delivery"),
+                               input.numbers("turnover"),
+                               factor};
   const std::size_t rows = input.rows();
   std::vector<double> features(rows * btcore::feature_count);
   btcore::daily_features(bars, input.series_offsets(), features, 0);
