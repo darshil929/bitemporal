@@ -1,3 +1,3 @@
-from btcore._btcore import version
+from btcore._btcore import ema, sma, version
 
-__all__ = ["version"]
+__all__ = ["ema", "sma", "version"]
