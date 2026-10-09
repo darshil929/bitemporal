@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <btcore/indicators.hpp>
 #include <btcore/types.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -100,5 +101,49 @@ void daily_features(const DailyBars& bars, std::span<double> out);
 /// bar `i` at `out[f * n + i]`, `n` counting the bars of every series.
 void daily_features(const DailyBars& bars, std::span<const std::int64_t> offsets,
                     std::span<double> out, unsigned threads);
+
+/// One day's bar at one venue, each value as `DailyBars` holds it.
+struct DailyBar {
+  double close;
+  double high;
+  double low;
+  double volume;
+  double delivery;
+  double turnover;
+  double adjustment_factor;
+};
+
+/// The daily features one bar at a time, equal bit for bit to the batch form.
+class DailyFeatureState {
+ public:
+  DailyFeatureState();
+
+  /// Every column of `bar`, indexed by `Feature`.
+  [[nodiscard]] std::array<double, feature_count> update(const DailyBar& bar);
+
+ private:
+  ChangeState change_;
+  ReturnState return_1d_;
+  ReturnState return_1w_;
+  ReturnState return_1m_;
+  ReturnState return_3m_;
+  ReturnState return_6m_;
+  ReturnState return_1y_;
+  ReturnState momentum_;
+  VolatilityState volatility_;
+  RsiState rsi_;
+  SmaState turnover_average_;
+  PriorMeanRatioState volume_ratio_;
+  SmaState delivery_average_;
+  HighDistanceState from_high_;
+  NewExtremeState new_high_;
+  NewExtremeState new_low_;
+  SmaState sma_20_;
+  SmaState sma_50_;
+  SmaState sma_200_;
+  EmaState ema_20_;
+  EmaState ema_50_;
+  BollingerState bands_;
+};
 
 }  // namespace btcore
