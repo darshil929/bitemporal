@@ -44,9 +44,11 @@ double interleaved_sum(std::span<const double> window, Term term) {
   return (first + second) + (third + fourth);
 }
 
+}  // namespace
+
 // Deviations are taken from the window's newest value, so equal values contribute exact zeros, and
 // the mean deviation is removed in a second pass.
-double window_variance(std::span<const double> window, double divisor) {
+double detail::window_variance(std::span<const double> window, double divisor) {
   const double anchor = window.back();
   const double mean = interleaved_sum(window, [anchor](double value) { return value - anchor; }) /
                       static_cast<double>(window.size());
@@ -57,8 +59,6 @@ double window_variance(std::span<const double> window, double divisor) {
                          }) /
          divisor;
 }
-
-}  // namespace
 
 void variance(std::span<const double> values, int period, Estimator estimator,
               std::span<double> out) {
@@ -73,9 +73,10 @@ void variance(std::span<const double> values, int period, Estimator estimator,
     if (index >= window && is_missing(values[index - window])) {
       --missing_count;
     }
-    out[index] = index + 1 < window || missing_count > 0
-                     ? missing
-                     : window_variance(values.subspan(index + 1 - window, window), divide_by);
+    out[index] =
+        index + 1 < window || missing_count > 0
+            ? missing
+            : detail::window_variance(values.subspan(index + 1 - window, window), divide_by);
   }
 }
 
@@ -106,7 +107,8 @@ double VarianceState::update(double value) {
   if (seen_ < period_ || missing_ > 0) {
     return missing;
   }
-  return window_variance(std::span<const double>(window_).subspan(next_, period_), divisor_);
+  return detail::window_variance(std::span<const double>(window_).subspan(next_, period_),
+                                 divisor_);
 }
 
 }  // namespace btcore

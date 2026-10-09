@@ -131,6 +131,19 @@ Output return_binding(const Values& values, int bars, int skip,
       });
 }
 
+Output volatility_binding(const Values& values, int period, int periods_per_year,
+                          const std::optional<Offsets>& offsets, unsigned threads,
+                          std::optional<Output> out) {
+  return computed(
+      values, offsets, std::move(out),
+      [=](auto input, auto output) {
+        btcore::realised_volatility(input, period, periods_per_year, output);
+      },
+      [=](const auto& batch, auto output) {
+        btcore::realised_volatility(batch, period, periods_per_year, output, threads);
+      });
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -183,5 +196,14 @@ NB_MODULE(_btcore, m) {
         "Fractional return over bars values ending skip values back, (later - earlier) / earlier. "
         "The first bars + skip values of a series are NaN, and so is every value where either end "
         "is NaN.\n\n"
+        "offsets, threads and out are as for sma.");
+
+  m.def("realised_volatility", &volatility_binding, "values"_a.noconvert(), "period"_a,
+        nb::kw_only(), "periods_per_year"_a = 252, "offsets"_a.noconvert() = nb::none(),
+        "threads"_a = 0, "out"_a.noconvert() = nb::none(),
+        "Realised volatility of each series: the sample standard deviation of its last period "
+        "daily log returns, times the square root of periods_per_year. The logarithm returns the "
+        "same bits on every platform. The first period values of a series are NaN, and so is every "
+        "value whose window holds a NaN return.\n\n"
         "offsets, threads and out are as for sma.");
 }
