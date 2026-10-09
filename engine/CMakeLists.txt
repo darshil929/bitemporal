@@ -50,6 +50,7 @@ add_library(btcore
   src/maths/log1p.cpp
   src/parallel.cpp
   src/types.cpp
+  src/venues.cpp
   src/version.cpp
 )
 target_include_directories(btcore PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
