@@ -42,9 +42,12 @@ void require_disjoint(std::span<const double> input, std::span<const double> out
   }
 }
 
-template <SeriesForm series_form, UniverseForm universe_form>
-Output windowed(const Values& values, int period, const std::optional<Offsets>& offsets,
-                unsigned threads, std::optional<Output> out) {
+// Runs `series_form(input, output)` on one series, or `universe_form(batch, output)` on every
+// series the offsets mark, with the GIL released.
+template <typename SeriesCompute, typename UniverseCompute>
+Output computed(const Values& values, const std::optional<Offsets>& offsets,
+                std::optional<Output> out, SeriesCompute series_form,
+                UniverseCompute universe_form) {
   Output result = out ? *std::move(out) : allocate(values.size());
   const std::span<const double> input(values.data(), values.size());
   const std::span<double> output(result.data(), result.size());
@@ -53,12 +56,35 @@ Output windowed(const Values& values, int period, const std::optional<Offsets>& 
     const nb::gil_scoped_release release;
     if (offsets) {
       const btcore::SeriesBatch batch(input, {offsets->data(), offsets->size()});
-      universe_form(batch, period, output, threads);
+      universe_form(batch, output);
     } else {
-      series_form(input, period, output);
+      series_form(input, output);
     }
   }
   return result;
+}
+
+template <SeriesForm series_form, UniverseForm universe_form>
+Output windowed(const Values& values, int period, const std::optional<Offsets>& offsets,
+                unsigned threads, std::optional<Output> out) {
+  return computed(
+      values, offsets, std::move(out),
+      [period](auto input, auto output) { series_form(input, period, output); },
+      [period, threads](const auto& batch, auto output) {
+        universe_form(batch, period, output, threads);
+      });
+}
+
+Output variance_binding(const Values& values, int period, bool sample,
+                        const std::optional<Offsets>& offsets, unsigned threads,
+                        std::optional<Output> out) {
+  const auto estimator = sample ? btcore::Estimator::sample : btcore::Estimator::population;
+  return computed(
+      values, offsets, std::move(out),
+      [=](auto input, auto output) { btcore::variance(input, period, estimator, output); },
+      [=](const auto& batch, auto output) {
+        btcore::variance(batch, period, estimator, output, threads);
+      });
 }
 
 template <SeriesForm series_form, UniverseForm universe_form>
@@ -97,4 +123,12 @@ NB_MODULE(_btcore, m) {
       "warm-up "
       "starts again after it.\n\n"
       "offsets, threads and out are as for sma.");
+
+  m.def("variance", &variance_binding, "values"_a.noconvert(), "period"_a, nb::kw_only(),
+        "sample"_a = false, "offsets"_a.noconvert() = nb::none(), "threads"_a = 0,
+        "out"_a.noconvert() = nb::none(),
+        "Variance of the last period values of each series, dividing by period, or by period - 1 "
+        "when sample is true. The first period - 1 values of a series are NaN, and so is every "
+        "value whose window holds a NaN; a window of equal values gives exactly 0.\n\n"
+        "offsets, threads and out are as for sma.");
 }
