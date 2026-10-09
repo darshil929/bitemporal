@@ -54,4 +54,32 @@ class EmaState {
   double average_ = 0.0;
 };
 
+/// Relative strength index, 100 * gain / (gain + loss) over Wilder's averages of the gains and
+/// losses between successive values. Each average is seeded with the mean of the first `period`
+/// changes, then updated as (average * (period - 1) + change) / period with the division taken as a
+/// multiplication by 1 / period, in TA-Lib 0.8.1's order. The first `period` outputs are missing.
+/// Where TA-Lib gives 0 for a series unchanged since its first value, the output stays missing
+/// until the series moves. A missing value yields a missing output, and the warm-up starts again
+/// after it.
+void rsi(std::span<const double> values, int period, std::span<double> out);
+
+void rsi(const SeriesBatch& values, int period, std::span<double> out, unsigned threads);
+
+/// The relative strength index one value at a time, equal bit for bit to the batch form.
+class RsiState {
+ public:
+  explicit RsiState(int period);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  int period_;
+  double inverse_period_;
+  bool has_previous_ = false;
+  double previous_ = 0.0;
+  int changes_ = 0;
+  double gain_ = 0.0;
+  double loss_ = 0.0;
+};
+
 }  // namespace btcore

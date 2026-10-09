@@ -10,6 +10,10 @@ the family's tolerance or nothing is written, and the file holds TA-Lib's value.
 pinned here and in generate_golden.py.lock, so the files change only when this file or the input does:
 
     uv run --script engine/tests/golden/generate_golden.py
+
+Where a pinned definition departs from TA-Lib 0.8.1, those rows hold the NumPy value alone:
+
+- RSI is blank while the close has not changed since the series' first bar, where TA-Lib gives 0
 """
 
 import csv
@@ -36,6 +40,8 @@ class Expected:
     name: str
     numpy: Computation
     talib: Computation | None = None
+    departs: Computation | None = None
+    """The rows where the pinned definition departs from TA-Lib."""
 
 
 @dataclass(frozen=True)
@@ -104,7 +110,46 @@ def moving_averages() -> Family:
     return Family("golden_moving_averages.csv", 1e-12, columns)
 
 
-FAMILIES = [moving_averages()]
+def numpy_rsi(close: np.ndarray, period: int) -> np.ndarray:
+    """Wilder's averages seeded with the mean of the first period changes, blank while both are 0."""
+    out = np.full(close.shape, np.nan)
+    change = np.diff(close)
+    gain = np.maximum(change, 0.0)
+    loss = np.maximum(-change, 0.0)
+    if change.size < period:
+        return out
+    average_gain = gain[:period].mean()
+    average_loss = loss[:period].mean()
+    for index in range(period, close.size):
+        if index > period:
+            average_gain = (average_gain * (period - 1) + gain[index - 1]) / period
+            average_loss = (average_loss * (period - 1) + loss[index - 1]) / period
+        movement = average_gain + average_loss
+        out[index] = 100 * average_gain / movement if movement > 0 else np.nan
+    return out
+
+
+def unchanged_since_first_bar(close: np.ndarray) -> np.ndarray:
+    return ~np.logical_or.accumulate(close != close[0])
+
+
+def relative_strength() -> Family:
+    return Family(
+        "golden_relative_strength.csv",
+        1e-12,
+        [
+            Expected(
+                f"rsi_{period}",
+                numpy=lambda c, p=period: numpy_rsi(c["close"], p),
+                talib=lambda c, p=period: talib.RSI(c["close"], timeperiod=p),
+                departs=lambda c: unchanged_since_first_bar(c["close"]),
+            )
+            for period in (2, 14)
+        ],
+    )
+
+
+FAMILIES = [moving_averages(), relative_strength()]
 
 
 class ReferencesDisagree(Exception):
@@ -131,6 +176,8 @@ def agreed(family: Family, expected: Expected, series: str, inputs: Columns) -> 
     if expected.talib is None:
         return plain
     reference = np.asarray(expected.talib(inputs), dtype=float)
+    if expected.departs is not None:
+        reference = np.where(expected.departs(inputs), plain, reference)
     if not np.allclose(reference, plain, rtol=family.tolerance, atol=0.0, equal_nan=True):
         worst = int(np.nanargmax(np.abs(reference - plain) / np.abs(plain)))
         raise ReferencesDisagree(
