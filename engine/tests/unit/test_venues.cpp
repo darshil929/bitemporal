@@ -64,4 +64,38 @@ TEST(PrimaryVenue, RefusesDaysThatDoNotRise) {
                btcore::InvalidArgument);
 }
 
+std::vector<std::uint8_t> flags(const std::vector<std::int64_t>& days,
+                                const std::vector<double>& turnover,
+                                const std::vector<std::int64_t>& offsets) {
+  std::vector<std::uint8_t> out(days.size());
+  btcore::designated_bars(days, turnover, offsets, out, 0);
+  return out;
+}
+
+// NSE alone, its BSE series empty: every bar is designated, July's after a five-month break too.
+TEST(DesignatedBars, DesignatesEveryBarOfASingleVenue) {
+  EXPECT_EQ(flags({on(2024, 1, 2), on(2024, 1, 3), on(2024, 7, 1)}, {5, 6, 7}, {0, 0, 3}),
+            (std::vector<std::uint8_t>{1, 1, 1}));
+}
+
+// January's running totals pass from NSE, 7 to 5, to BSE, 15 to 7, and February reads them as its
+// 90 days: BSE's February bars are designated, and NSE's 2 February, traded there alone, is not.
+TEST(DesignatedBars, FlagsTheBarsOfTheDesignatedVenue) {
+  const std::vector<std::int64_t> days{on(2024, 1, 2), on(2024, 1, 3), on(2024, 2, 1),
+                                       on(2024, 1, 2), on(2024, 2, 1), on(2024, 2, 2)};
+  EXPECT_EQ(flags(days, {5, 10, 1, 7, 9, 9}, {0, 3, 6}),
+            (std::vector<std::uint8_t>{0, 1, 1, 1, 0, 0}));
+}
+
+TEST(DesignatedBars, RefusesUnpairedSeriesAndFallingDays) {
+  std::vector<std::uint8_t> out(2);
+  const std::vector<double> turnover{1, 1};
+  EXPECT_THROW(btcore::designated_bars(std::vector<std::int64_t>{5, 6}, turnover,
+                                       std::vector<std::int64_t>{0, 2}, out, 0),
+               btcore::InvalidArgument);
+  EXPECT_THROW(btcore::designated_bars(std::vector<std::int64_t>{6, 5}, turnover,
+                                       std::vector<std::int64_t>{0, 2, 2}, out, 0),
+               btcore::InvalidArgument);
+}
+
 }  // namespace
