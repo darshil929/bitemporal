@@ -45,6 +45,7 @@ add_library(btcore
   src/indicators/returns.cpp
   src/indicators/traded_value.cpp
   src/indicators/variance.cpp
+  src/indicators/volume_flow.cpp
   src/indicators/volatility.cpp
   src/maths/log1p.cpp
   src/parallel.cpp

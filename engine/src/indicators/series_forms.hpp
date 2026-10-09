@@ -2,10 +2,23 @@
 
 #include <btcore/parallel.hpp>
 #include <btcore/types.hpp>
+#include <cmath>
 #include <cstddef>
 #include <span>
 
 namespace btcore::detail {
+
+/// Neumaier's compensated summation: the rounding error of each addition is carried separately and
+/// added back when the total is read.
+inline void accumulate(double& total, double& compensation, double value) {
+  const double sum = total + value;
+  if (std::fabs(total) >= std::fabs(value)) {
+    compensation += (total - sum) + value;
+  } else {
+    compensation += (value - sum) + total;
+  }
+  total = sum;
+}
 
 /// The variance of one window: its squared deviations summed and divided by `divisor`. A window of
 /// equal values gives exactly 0.
