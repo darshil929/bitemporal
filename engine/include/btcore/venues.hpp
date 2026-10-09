@@ -10,7 +10,7 @@ namespace btcore {
 /// The venues an instrument trades on, BSE first since a tie goes to it.
 enum class Venue : std::int8_t { bse = 0, nse = 1 };
 
-/// The primary venue of each day (ADR 0042). A month's venue is the one with the larger turnover
+/// The primary venue of each day. A month's venue is the one with the larger turnover
 /// over the 90 calendar days ending on the last day of the month before. In the series' first
 /// month, and in a month whose 90 days hold no turnover at either venue, it is the one with the
 /// larger turnover from the month's first day through the day. A tie goes to BSE. `days` count
