@@ -39,6 +39,7 @@ jobs:
             python:
               - *shared
               - 'api/**'
+              - 'engine/**'
               - 'pipelines/**'
               - 'scripts/**'
               - 'pyproject.toml'
@@ -53,6 +54,9 @@ jobs:
   lint:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
+    # uv sync compiles the engine, with the GCC its Linux leg is checked against.
+    env:
+      CXX: g++-14
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
@@ -228,6 +232,8 @@ jobs:
     if: needs.detect-changes.outputs.python == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
+    env:
+      CXX: g++-14
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
@@ -256,6 +262,7 @@ jobs:
           --health-cmd "pg_isready -U bitemporal -d bitemporal"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
+      CXX: g++-14
       DATABASE_URL: postgresql+psycopg://bitemporal:bitemporal@localhost:5432/bitemporal
       DATA_ENV: fixture
       POSTGRES_HOST: localhost

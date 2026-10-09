@@ -12,11 +12,12 @@ dependencies = [
 package = false
 
 [tool.uv.workspace]
-members = ["api", "pipelines"]
+members = ["api", "engine", "pipelines"]
 
 [tool.uv.sources]
 bitemporal-api = { workspace = true }
 bitemporal-pipelines = { workspace = true }
+btcore = { workspace = true, editable = false }
 
 [dependency-groups]
 dev = [

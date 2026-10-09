@@ -4,8 +4,10 @@
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/string_view.h>
 
+#include <algorithm>
 #include <btcore/indicators.hpp>
 #include <btcore/types.hpp>
+#include <btcore/venues.hpp>
 #include <btcore/version.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -14,6 +16,7 @@
 #include <optional>
 #include <span>
 #include <utility>
+#include <vector>
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -25,6 +28,8 @@ namespace {
 using Values = nb::ndarray<const double, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 using Offsets = nb::ndarray<const std::int64_t, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 using Output = nb::ndarray<double, nb::numpy, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+using Days = nb::ndarray<const std::int64_t, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+using VenueCodes = nb::ndarray<std::int8_t, nb::numpy, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 
 using SeriesForm = void (*)(std::span<const double>, int, std::span<double>);
 using UniverseForm = void (*)(const btcore::SeriesBatch&, int, std::span<double>, unsigned);
@@ -213,6 +218,29 @@ Output volume_flow_binding(const Values& closes, const Values& volumes,
       });
 }
 
+VenueCodes venue_binding(const Days& days, const Values& bse_turnover, const Values& nse_turnover,
+                         const std::optional<Offsets>& offsets, unsigned threads) {
+  const std::span<const std::int64_t> day_line(days.data(), days.size());
+  const std::span<const double> bse_line(bse_turnover.data(), bse_turnover.size());
+  const std::span<const double> nse_line(nse_turnover.data(), nse_turnover.size());
+  std::vector<btcore::Venue> venues(days.size());
+  {
+    const nb::gil_scoped_release release;
+    if (offsets) {
+      btcore::primary_venue(day_line, bse_line, nse_line, {offsets->data(), offsets->size()},
+                            venues, threads);
+    } else {
+      btcore::primary_venue(day_line, bse_line, nse_line, venues);
+    }
+  }
+  auto codes = nb::cast<VenueCodes>(
+      nb::module_::import_("numpy").attr("empty")(venues.size(), "dtype"_a = "int8"), false);
+  const std::span<std::int8_t> code_line(codes.data(), codes.size());
+  std::transform(venues.begin(), venues.end(), code_line.begin(),
+                 [](btcore::Venue venue) { return static_cast<std::int8_t>(venue); });
+  return codes;
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -334,4 +362,16 @@ NB_MODULE(_btcore, m) {
       "close, subtracted on a lower one and held on an unchanged one. A NaN close or volume gives "
       "NaN, and the total starts again after it.\n\n"
       "volumes is laid out like closes; offsets, threads and out are as for sma.");
+
+  m.def(
+      "primary_venue", &venue_binding, "days"_a.noconvert(), "bse_turnover"_a.noconvert(),
+      "nse_turnover"_a.noconvert(), nb::kw_only(), "offsets"_a.noconvert() = nb::none(),
+      "threads"_a = 0,
+      "Primary venue of each day as int8, 0 for BSE and 1 for NSE: the larger "
+      "turnover over the 90 calendar days ending on the last day of the month before, or, in the "
+      "first month and in a month whose 90 days hold no turnover, from the month's first day "
+      "through the day; a tie goes to BSE. days counts days from 1970-01-01, as "
+      "datetime64[D].view('int64') gives them, and rises strictly; a venue's turnover is NaN on a "
+      "day it did not trade.\n\n"
+      "offsets and threads are as for sma.");
 }
