@@ -19,6 +19,8 @@ COMPUTATIONS = [
     btcore.simple_return,
     btcore.realised_volatility,
     btcore.change,
+    btcore.rolling_maximum,
+    btcore.rolling_minimum,
 ]
 
 type Computation = Callable[..., np.ndarray]
@@ -37,6 +39,11 @@ def test_a_series_is_averaged_over_its_window() -> None:
     np.testing.assert_allclose(
         btcore.variance(CLOSES, 3, sample=True), [NAN, NAN, 1.0, 13 / 3, 13 / 3]
     )
+
+
+def test_rolling_extremes_keep_the_ends_of_each_window() -> None:
+    np.testing.assert_array_equal(btcore.rolling_maximum(CLOSES, 2), [NAN, 12, 12, 15, 15])
+    np.testing.assert_array_equal(btcore.rolling_minimum(CLOSES, 2), [NAN, 10, 11, 11, 14])
 
 
 def test_a_change_subtracts_the_value_bars_before() -> None:

@@ -40,6 +40,7 @@ find_package(Threads REQUIRED)
 add_library(btcore
   src/indicators/moving_average.cpp
   src/indicators/price_bands.cpp
+  src/indicators/range_extremes.cpp
   src/indicators/relative_strength.cpp
   src/indicators/returns.cpp
   src/indicators/variance.cpp

@@ -145,6 +145,17 @@ Output volatility_binding(const Values& values, int period, int periods_per_year
       });
 }
 
+template <btcore::Extreme extreme>
+void extreme_of(std::span<const double> values, int period, std::span<double> out) {
+  btcore::rolling_extreme(values, period, extreme, out);
+}
+
+template <btcore::Extreme extreme>
+void extreme_of(const btcore::SeriesBatch& values, int period, std::span<double> out,
+                unsigned threads) {
+  btcore::rolling_extreme(values, period, extreme, out, threads);
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -214,4 +225,15 @@ NB_MODULE(_btcore, m) {
       "is every value where either end is NaN.\n\n"
       "offsets, threads and out are as for sma.",
       "bars");
+
+  def_windowed<extreme_of<btcore::Extreme::maximum>, extreme_of<btcore::Extreme::maximum>>(
+      m, "rolling_maximum",
+      "Largest of the last period values of each series. The first period - 1 values of a series "
+      "are NaN, and so is every value whose window holds a NaN.\n\n"
+      "offsets, threads and out are as for sma.");
+
+  def_windowed<extreme_of<btcore::Extreme::minimum>, extreme_of<btcore::Extreme::minimum>>(
+      m, "rolling_minimum",
+      "Smallest of the last period values of each series, as for rolling_maximum.\n\n"
+      "offsets, threads and out are as for sma.");
 }
