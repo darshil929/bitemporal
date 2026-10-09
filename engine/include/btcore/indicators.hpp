@@ -112,4 +112,33 @@ class VarianceState {
   std::size_t missing_ = 0;
 };
 
+/// The two lines of a price band on one bar.
+struct Band {
+  double upper;
+  double lower;
+};
+
+/// Bollinger bands: the simple moving average plus and minus `width` population standard
+/// deviations of the same `period` values. The first `period - 1` outputs are missing, and so is
+/// every output whose window holds a missing value. A window of equal values puts both lines on the
+/// average. `width` is finite and not negative.
+void bollinger_bands(std::span<const double> values, int period, double width,
+                     std::span<double> upper, std::span<double> lower);
+
+void bollinger_bands(const SeriesBatch& values, int period, double width, std::span<double> upper,
+                     std::span<double> lower, unsigned threads);
+
+/// Bollinger bands one value at a time, equal bit for bit to the batch form.
+class BollingerState {
+ public:
+  BollingerState(int period, double width);
+
+  [[nodiscard]] Band update(double value);
+
+ private:
+  SmaState average_;
+  VarianceState variance_;
+  double width_;
+};
+
 }  // namespace btcore

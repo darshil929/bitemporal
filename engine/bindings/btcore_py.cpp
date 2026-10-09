@@ -1,6 +1,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/optional.h>
+#include <nanobind/stl/pair.h>
 #include <nanobind/stl/string_view.h>
 
 #include <btcore/indicators.hpp>
@@ -38,7 +39,7 @@ void require_disjoint(std::span<const double> input, std::span<const double> out
   const std::less<const double*> before;
   if (before(input.data(), std::to_address(output.end())) &&
       before(output.data(), std::to_address(input.end()))) {
-    throw btcore::InvalidArgument("out shares memory with values");
+    throw btcore::InvalidArgument("out shares memory with values or another output");
   }
 }
 
@@ -94,6 +95,31 @@ void def_windowed(nb::module_& module, const char* name, const char* doc) {
              "out"_a.noconvert() = nb::none(), doc);
 }
 
+using Lines = std::pair<Output, Output>;
+
+Lines bollinger_binding(const Values& values, int period, double width,
+                        const std::optional<Offsets>& offsets, unsigned threads,
+                        std::optional<Lines> out) {
+  Output upper = out ? out->first : allocate(values.size());
+  Output lower = out ? out->second : allocate(values.size());
+  const std::span<const double> input(values.data(), values.size());
+  const std::span<double> upper_line(upper.data(), upper.size());
+  const std::span<double> lower_line(lower.data(), lower.size());
+  require_disjoint(input, upper_line);
+  require_disjoint(input, lower_line);
+  require_disjoint(upper_line, lower_line);
+  {
+    const nb::gil_scoped_release release;
+    if (offsets) {
+      const btcore::SeriesBatch batch(input, {offsets->data(), offsets->size()});
+      btcore::bollinger_bands(batch, period, width, upper_line, lower_line, threads);
+    } else {
+      btcore::bollinger_bands(input, period, width, upper_line, lower_line);
+    }
+  }
+  return {upper, lower};
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -131,4 +157,12 @@ NB_MODULE(_btcore, m) {
         "when sample is true. The first period - 1 values of a series are NaN, and so is every "
         "value whose window holds a NaN; a window of equal values gives exactly 0.\n\n"
         "offsets, threads and out are as for sma.");
+
+  m.def("bollinger_bands", &bollinger_binding, "values"_a.noconvert(), "period"_a, nb::kw_only(),
+        "width"_a = 2.0, "offsets"_a.noconvert() = nb::none(), "threads"_a = 0,
+        "out"_a.noconvert() = nb::none(),
+        "Bollinger bands of each series, returned as (upper, lower): the simple moving average "
+        "plus and minus width population standard deviations of the same period values. The first "
+        "period - 1 values of a series are NaN, and so is every value whose window holds a NaN.\n\n"
+        "out is a pair of arrays receiving (upper, lower); offsets and threads are as for sma.");
 }
