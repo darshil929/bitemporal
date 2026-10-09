@@ -40,6 +40,7 @@ find_package(Threads REQUIRED)
 add_library(btcore
   src/indicators/moving_average.cpp
   src/indicators/relative_strength.cpp
+  src/indicators/variance.cpp
   src/parallel.cpp
   src/types.cpp
   src/version.cpp

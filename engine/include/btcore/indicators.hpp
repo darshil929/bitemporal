@@ -82,4 +82,34 @@ class RsiState {
   double loss_ = 0.0;
 };
 
+/// Whether a variance divides the squared deviations by the number of values or by one less.
+enum class Estimator { population, sample };
+
+/// Variance of the last `period` values. The first `period - 1` outputs are missing, and so is
+/// every output whose window holds a missing value. Each window is computed afresh from deviations
+/// from its newest value, so a window of equal values gives exactly 0. A sample variance needs a
+/// period of at least 2.
+void variance(std::span<const double> values, int period, Estimator estimator,
+              std::span<double> out);
+
+void variance(const SeriesBatch& values, int period, Estimator estimator, std::span<double> out,
+              unsigned threads);
+
+/// The variance one value at a time, equal bit for bit to the batch form.
+class VarianceState {
+ public:
+  VarianceState(int period, Estimator estimator);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  // Each value is written twice, a period apart, so the last `period` values sit side by side.
+  std::vector<double> window_;
+  std::size_t period_;
+  double divisor_;
+  std::size_t next_ = 0;
+  std::size_t seen_ = 0;
+  std::size_t missing_ = 0;
+};
+
 }  // namespace btcore
