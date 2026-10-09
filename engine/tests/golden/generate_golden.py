@@ -327,6 +327,35 @@ def range_positions() -> Family:
     )
 
 
+def numpy_prior_mean_ratio(values: np.ndarray, period: int) -> np.ndarray:
+    out = np.full(values.shape, np.nan)
+    for index in range(period, values.size):
+        out[index] = values[index] / values[index - period : index].mean()
+    return out
+
+
+def traded_value() -> Family:
+    """NumPy alone beyond the average traded value: TA-Lib has no ratio or share."""
+
+    def delivery_share(c: Columns) -> np.ndarray:
+        return c["delivery"] / c["volume"] * 100
+
+    return Family(
+        "golden_traded_value.csv",
+        1e-12,
+        [
+            Expected(
+                "adtv_20",
+                numpy=lambda c: numpy_sma(c["turnover"], 20),
+                talib=lambda c: talib.SMA(c["turnover"], timeperiod=20),
+            ),
+            Expected("volume_ratio_20", numpy=lambda c: numpy_prior_mean_ratio(c["volume"], 20)),
+            Expected("delivery_pct_1", numpy=delivery_share),
+            Expected("delivery_pct_20", numpy=lambda c: numpy_sma(delivery_share(c), 20)),
+        ],
+    )
+
+
 def volatilities() -> Family:
     """NumPy alone: TA-Lib has no realised volatility."""
     return Family(
@@ -346,6 +375,7 @@ FAMILIES = [
     volatilities(),
     range_extremes(),
     range_positions(),
+    traded_value(),
 ]
 
 

@@ -43,6 +43,7 @@ add_library(btcore
   src/indicators/range_extremes.cpp
   src/indicators/relative_strength.cpp
   src/indicators/returns.cpp
+  src/indicators/traded_value.cpp
   src/indicators/variance.cpp
   src/indicators/volatility.cpp
   src/maths/log1p.cpp

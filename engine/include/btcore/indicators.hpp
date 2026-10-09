@@ -292,4 +292,31 @@ class NewExtremeState {
   RollingExtremeState extreme_;
 };
 
+/// Each value over the mean of the `period` values before it. The first `period` outputs are
+/// missing, and so is every output where the value or one of those before it is missing.
+void ratio_to_prior_mean(std::span<const double> values, int period, std::span<double> out);
+
+void ratio_to_prior_mean(const SeriesBatch& values, int period, std::span<double> out,
+                         unsigned threads);
+
+/// The ratio to the prior mean one value at a time, equal bit for bit to the batch form.
+class PriorMeanRatioState {
+ public:
+  explicit PriorMeanRatioState(int period);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  SmaState mean_;
+  double prior_mean_ = missing;
+};
+
+/// A part as a percentage of its whole, part / whole * 100; missing where either is missing.
+[[nodiscard]] inline double percentage(double part, double whole) { return part / whole * 100.0; }
+
+/// `percentage` value by value. It reads no window, so one call covers any number of series laid
+/// end to end.
+void percentage_of(std::span<const double> parts, std::span<const double> wholes,
+                   std::span<double> out);
+
 }  // namespace btcore
