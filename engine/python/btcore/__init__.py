@@ -1,5 +1,6 @@
 from btcore._btcore import (
     bollinger_bands,
+    change,
     ema,
     realised_volatility,
     rsi,
@@ -11,6 +12,7 @@ from btcore._btcore import (
 
 __all__ = [
     "bollinger_bands",
+    "change",
     "ema",
     "realised_volatility",
     "rsi",
