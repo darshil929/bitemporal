@@ -132,7 +132,7 @@ def test_the_instruments_a_day_introduces_are_written_first(
 def test_reading_the_same_day_twice_stores_it_once(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """The phase closes on a partition that produces the same result however often it runs."""
+    """A partition read a second time writes nothing and reports the same bars."""
     bhavcopies = RecordedBhavcopies({"BSE": payload("bse_bhavcopy_equity", "20260814.csv")})
     context = build_asset_context(partition_key=TRADE_DATE)
 

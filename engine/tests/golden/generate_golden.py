@@ -396,7 +396,7 @@ def month_start(days: np.ndarray) -> np.ndarray:
 
 
 def numpy_primary_venue(c: Columns) -> np.ndarray:
-    """ADR 0042: 1 for NSE, 0 for BSE, the engine's codes."""
+    """1 for NSE, 0 for BSE, the engine's codes."""
     days = c["day"].astype(np.int64)
     bse = np.nan_to_num(c["bse_turnover"])
     nse = np.nan_to_num(c["nse_turnover"])
