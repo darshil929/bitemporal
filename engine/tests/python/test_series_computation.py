@@ -11,7 +11,7 @@ import btcore
 
 NAN = np.nan
 CLOSES = np.array([10.0, 12.0, 11.0, 15.0, 14.0])
-COMPUTATIONS = [btcore.sma, btcore.ema, btcore.rsi, btcore.variance]
+COMPUTATIONS = [btcore.sma, btcore.ema, btcore.rsi, btcore.variance, btcore.simple_return]
 
 type Computation = Callable[..., np.ndarray]
 
@@ -29,6 +29,12 @@ def test_a_series_is_averaged_over_its_window() -> None:
     np.testing.assert_allclose(
         btcore.variance(CLOSES, 3, sample=True), [NAN, NAN, 1.0, 13 / 3, 13 / 3]
     )
+
+
+def test_a_return_measures_from_the_value_bars_before() -> None:
+    returns = [NAN, 0.2, -1 / 12, 4 / 11, -1 / 15]
+    np.testing.assert_allclose(btcore.simple_return(CLOSES, 1), returns)
+    np.testing.assert_allclose(btcore.simple_return(CLOSES, 1, skip=1), [NAN, *returns[:-1]])
 
 
 @pytest.mark.parametrize("computation", COMPUTATIONS)

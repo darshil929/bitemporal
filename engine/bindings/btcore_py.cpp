@@ -120,6 +120,17 @@ Lines bollinger_binding(const Values& values, int period, double width,
   return {upper, lower};
 }
 
+Output return_binding(const Values& values, int bars, int skip,
+                      const std::optional<Offsets>& offsets, unsigned threads,
+                      std::optional<Output> out) {
+  return computed(
+      values, offsets, std::move(out),
+      [=](auto input, auto output) { btcore::simple_return(input, bars, skip, output); },
+      [=](const auto& batch, auto output) {
+        btcore::simple_return(batch, bars, skip, output, threads);
+      });
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -165,4 +176,12 @@ NB_MODULE(_btcore, m) {
         "plus and minus width population standard deviations of the same period values. The first "
         "period - 1 values of a series are NaN, and so is every value whose window holds a NaN.\n\n"
         "out is a pair of arrays receiving (upper, lower); offsets and threads are as for sma.");
+
+  m.def("simple_return", &return_binding, "values"_a.noconvert(), "bars"_a, nb::kw_only(),
+        "skip"_a = 0, "offsets"_a.noconvert() = nb::none(), "threads"_a = 0,
+        "out"_a.noconvert() = nb::none(),
+        "Fractional return over bars values ending skip values back, (later - earlier) / earlier. "
+        "The first bars + skip values of a series are NaN, and so is every value where either end "
+        "is NaN.\n\n"
+        "offsets, threads and out are as for sma.");
 }
