@@ -16,3 +16,14 @@ wheel.packages = ["python/btcore"]
 [tool.scikit-build.cmake.define]
 BTCORE_BUILD_PYTHON = "ON"
 BTCORE_BUILD_TESTS = "OFF"
+
+# uv reuses a built package until one of these files changes.
+[tool.uv]
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "CMakeLists.txt" },
+  { file = "bindings/**" },
+  { file = "include/**" },
+  { file = "src/**" },
+  { file = "python/**" },
+]

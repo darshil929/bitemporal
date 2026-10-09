@@ -19,7 +19,7 @@ CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 	\( -name '*.cpp' -o -name '*.hpp' \) -print)
 SQL_SOURCES = $(shell find infra pipelines -name '*.sql' -not -path '*/target/*' 2>/dev/null)
 # The bindings build and run in a throwaway environment, outside the workspace lock.
-ENGINE_PYTHON := uv run --no-project --managed-python --python 3.12 --reinstall-package btcore \
+ENGINE_PYTHON := uv run --no-project --managed-python --python 3.12 \
 	--with ./engine --with "numpy>=2,<3" --with "pytest>=8.3"
 
 .DEFAULT_GOAL := ci
