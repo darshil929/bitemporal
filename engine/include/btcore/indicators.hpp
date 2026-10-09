@@ -251,4 +251,45 @@ class RollingExtremeState {
   std::size_t missing_ = 0;
 };
 
+/// The fractional distance of each value from the highest of the last `period` highs, the day's own
+/// among them: (value - highest) / highest, 0 on the day of a new high. The first `period - 1`
+/// outputs are missing, and so is every output where the value or a high in the window is missing.
+void distance_from_high(std::span<const double> values, std::span<const double> highs, int period,
+                        std::span<double> out);
+
+/// The batch form over every series of `values`, with `highs` laid out like them.
+void distance_from_high(const SeriesBatch& values, std::span<const double> highs, int period,
+                        std::span<double> out, unsigned threads);
+
+/// 1 where a value is the extreme of the last `period` values, at or beyond every one of the
+/// `period - 1` before it, and 0 where it is not. The first `period - 1` outputs are missing, and
+/// so is every output whose window holds a missing value.
+void new_extreme(std::span<const double> values, int period, Extreme extreme,
+                 std::span<double> out);
+
+void new_extreme(const SeriesBatch& values, int period, Extreme extreme, std::span<double> out,
+                 unsigned threads);
+
+/// The distance from the high one value at a time, equal bit for bit to the batch form.
+class HighDistanceState {
+ public:
+  explicit HighDistanceState(int period);
+
+  [[nodiscard]] double update(double value, double high);
+
+ private:
+  RollingExtremeState highest_;
+};
+
+/// The new extreme flag one value at a time, equal bit for bit to the batch form.
+class NewExtremeState {
+ public:
+  NewExtremeState(int period, Extreme extreme);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  RollingExtremeState extreme_;
+};
+
 }  // namespace btcore

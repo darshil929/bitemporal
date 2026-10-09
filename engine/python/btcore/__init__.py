@@ -1,7 +1,10 @@
 from btcore._btcore import (
     bollinger_bands,
     change,
+    distance_from_high,
     ema,
+    new_high,
+    new_low,
     realised_volatility,
     rolling_maximum,
     rolling_minimum,
@@ -15,7 +18,10 @@ from btcore._btcore import (
 __all__ = [
     "bollinger_bands",
     "change",
+    "distance_from_high",
     "ema",
+    "new_high",
+    "new_low",
     "realised_volatility",
     "rolling_maximum",
     "rolling_minimum",

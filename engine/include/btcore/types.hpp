@@ -45,6 +45,10 @@ class SeriesBatch {
   /// The part of `output`, laid out like the values, that belongs to series `index`.
   [[nodiscard]] std::span<double> series(std::span<double> output, std::size_t index) const;
 
+  /// The part of `input`, another array laid out like the values, that belongs to series `index`.
+  [[nodiscard]] std::span<const double> input_series(std::span<const double> input,
+                                                     std::size_t index) const;
+
  private:
   [[nodiscard]] std::size_t start(std::size_t index) const;
 

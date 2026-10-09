@@ -21,6 +21,8 @@ COMPUTATIONS = [
     btcore.change,
     btcore.rolling_maximum,
     btcore.rolling_minimum,
+    btcore.new_high,
+    btcore.new_low,
 ]
 
 type Computation = Callable[..., np.ndarray]
@@ -44,6 +46,16 @@ def test_a_series_is_averaged_over_its_window() -> None:
 def test_rolling_extremes_keep_the_ends_of_each_window() -> None:
     np.testing.assert_array_equal(btcore.rolling_maximum(CLOSES, 2), [NAN, 12, 12, 15, 15])
     np.testing.assert_array_equal(btcore.rolling_minimum(CLOSES, 2), [NAN, 10, 11, 11, 14])
+
+
+def test_range_positions_measure_against_the_window() -> None:
+    np.testing.assert_array_equal(btcore.new_high(CLOSES, 2), [NAN, 1.0, 0.0, 1.0, 0.0])
+    np.testing.assert_array_equal(btcore.new_low(CLOSES, 2), [NAN, 0.0, 1.0, 0.0, 1.0])
+    distance = btcore.distance_from_high(CLOSES, CLOSES + 1, 2)
+    np.testing.assert_allclose(distance, [NAN, -1 / 13, -2 / 13, -1 / 16, -2 / 16])
+    highs = CLOSES + 1
+    with pytest.raises(ValueError, match="shares memory"):
+        btcore.distance_from_high(CLOSES, highs, 2, out=highs)
 
 
 def test_a_change_subtracts_the_value_bars_before() -> None:

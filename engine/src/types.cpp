@@ -53,4 +53,11 @@ std::span<double> SeriesBatch::series(std::span<double> output, std::size_t inde
   return output.subspan(first, static_cast<std::size_t>(offsets_[index + 1]) - first);
 }
 
+std::span<const double> SeriesBatch::input_series(std::span<const double> input,
+                                                  std::size_t index) const {
+  require_same_length(values_.size(), input.size());
+  const std::size_t first = start(index);
+  return input.subspan(first, static_cast<std::size_t>(offsets_[index + 1]) - first);
+}
+
 }  // namespace btcore
