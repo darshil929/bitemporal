@@ -288,6 +288,45 @@ def range_extremes() -> Family:
     )
 
 
+def numpy_new_extreme(
+    values: np.ndarray, period: int, pick: Callable[[np.ndarray], float]
+) -> np.ndarray:
+    extremes = numpy_extreme(values, period, pick)
+    return np.where(np.isnan(extremes), np.nan, (values == extremes).astype(float))
+
+
+def talib_new_extreme(values: np.ndarray, extremes: np.ndarray) -> np.ndarray:
+    return np.where(np.isnan(extremes), np.nan, (values == extremes).astype(float))
+
+
+def range_positions() -> Family:
+    def numpy_distance(c: Columns) -> np.ndarray:
+        highest = numpy_extreme(c["high"], 252, np.max)
+        return (c["close"] - highest) / highest
+
+    def talib_distance(c: Columns) -> np.ndarray:
+        highest = talib.MAX(c["high"], timeperiod=252)
+        return (c["close"] - highest) / highest
+
+    return Family(
+        "golden_range_positions.csv",
+        1e-12,
+        [
+            Expected("from_52w_high", numpy=numpy_distance, talib=talib_distance),
+            Expected(
+                "is_52w_high",
+                numpy=lambda c: numpy_new_extreme(c["high"], 252, np.max),
+                talib=lambda c: talib_new_extreme(c["high"], talib.MAX(c["high"], timeperiod=252)),
+            ),
+            Expected(
+                "is_52w_low",
+                numpy=lambda c: numpy_new_extreme(c["low"], 252, np.min),
+                talib=lambda c: talib_new_extreme(c["low"], talib.MIN(c["low"], timeperiod=252)),
+            ),
+        ],
+    )
+
+
 def volatilities() -> Family:
     """NumPy alone: TA-Lib has no realised volatility."""
     return Family(
@@ -306,6 +345,7 @@ FAMILIES = [
     price_changes(),
     volatilities(),
     range_extremes(),
+    range_positions(),
 ]
 
 

@@ -156,6 +156,33 @@ void extreme_of(const btcore::SeriesBatch& values, int period, std::span<double>
   btcore::rolling_extreme(values, period, extreme, out, threads);
 }
 
+template <btcore::Extreme extreme>
+void new_extreme_of(std::span<const double> values, int period, std::span<double> out) {
+  btcore::new_extreme(values, period, extreme, out);
+}
+
+template <btcore::Extreme extreme>
+void new_extreme_of(const btcore::SeriesBatch& values, int period, std::span<double> out,
+                    unsigned threads) {
+  btcore::new_extreme(values, period, extreme, out, threads);
+}
+
+Output distance_binding(const Values& values, const Values& highs, int period,
+                        const std::optional<Offsets>& offsets, unsigned threads,
+                        std::optional<Output> out) {
+  const std::span<const double> high_line(highs.data(), highs.size());
+  return computed(
+      values, offsets, std::move(out),
+      [=](auto input, auto output) {
+        require_disjoint(high_line, output);
+        btcore::distance_from_high(input, high_line, period, output);
+      },
+      [=](const auto& batch, auto output) {
+        require_disjoint(high_line, output);
+        btcore::distance_from_high(batch, high_line, period, output, threads);
+      });
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -235,5 +262,26 @@ NB_MODULE(_btcore, m) {
   def_windowed<extreme_of<btcore::Extreme::minimum>, extreme_of<btcore::Extreme::minimum>>(
       m, "rolling_minimum",
       "Smallest of the last period values of each series, as for rolling_maximum.\n\n"
+      "offsets, threads and out are as for sma.");
+
+  m.def("distance_from_high", &distance_binding, "values"_a.noconvert(), "highs"_a.noconvert(),
+        "period"_a, nb::kw_only(), "offsets"_a.noconvert() = nb::none(), "threads"_a = 0,
+        "out"_a.noconvert() = nb::none(),
+        "Fractional distance of each value from the highest of the last period highs, the day's "
+        "own among them: (value - highest) / highest. The first period - 1 values of a series are "
+        "NaN, and so is every value where it or a high in the window is NaN.\n\n"
+        "highs is laid out like values; offsets, threads and out are as for sma.");
+
+  def_windowed<new_extreme_of<btcore::Extreme::maximum>, new_extreme_of<btcore::Extreme::maximum>>(
+      m, "new_high",
+      "1.0 where a value is at or above every one of the period - 1 values before it, 0.0 where "
+      "not. The first period - 1 values of a series are NaN, and so is every value whose window "
+      "holds a NaN.\n\n"
+      "offsets, threads and out are as for sma.");
+
+  def_windowed<new_extreme_of<btcore::Extreme::minimum>, new_extreme_of<btcore::Extreme::minimum>>(
+      m, "new_low",
+      "1.0 where a value is at or below every one of the period - 1 values before it, as for "
+      "new_high.\n\n"
       "offsets, threads and out are as for sma.");
 }
