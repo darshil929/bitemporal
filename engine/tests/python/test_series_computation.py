@@ -80,6 +80,19 @@ def test_on_balance_volume_follows_the_direction_of_the_close() -> None:
     )
 
 
+def test_primary_venue_designates_each_day_from_turnover() -> None:
+    days = np.array(["2024-03-04", "2024-03-05", "2024-04-01", "2024-05-02"], dtype="datetime64[D]")
+    bse = np.array([40.0, NAN, 1.0, 1.0])
+    nse = np.array([30.0, 5.0, 50.0, 1.0])
+    venues = btcore.primary_venue(days.view(np.int64), bse, nse)
+    assert venues.dtype == np.int8
+    np.testing.assert_array_equal(venues, [0, 0, 0, 1])
+    with pytest.raises(TypeError):
+        btcore.primary_venue(days, bse, nse)
+    with pytest.raises(ValueError, match="days must rise"):
+        btcore.primary_venue(days.view(np.int64)[::-1].copy(), bse, nse)
+
+
 def test_a_change_subtracts_the_value_bars_before() -> None:
     np.testing.assert_array_equal(btcore.change(CLOSES, 1), [NAN, 2.0, -1.0, 4.0, -1.0])
 
