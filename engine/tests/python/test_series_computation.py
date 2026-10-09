@@ -18,6 +18,7 @@ COMPUTATIONS = [
     btcore.variance,
     btcore.simple_return,
     btcore.realised_volatility,
+    btcore.change,
 ]
 
 type Computation = Callable[..., np.ndarray]
@@ -36,6 +37,10 @@ def test_a_series_is_averaged_over_its_window() -> None:
     np.testing.assert_allclose(
         btcore.variance(CLOSES, 3, sample=True), [NAN, NAN, 1.0, 13 / 3, 13 / 3]
     )
+
+
+def test_a_change_subtracts_the_value_bars_before() -> None:
+    np.testing.assert_array_equal(btcore.change(CLOSES, 1), [NAN, 2.0, -1.0, 4.0, -1.0])
 
 
 def test_a_return_measures_from_the_value_bars_before() -> None:

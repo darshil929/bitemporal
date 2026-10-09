@@ -23,6 +23,19 @@ double fractional_return(double later, double earlier) { return (later - earlier
 
 }  // namespace
 
+void change(std::span<const double> values, int bars, std::span<double> out) {
+  const auto distance = checked_bars(bars);
+  require_same_length(values.size(), out.size());
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    out[index] = index < distance ? missing : values[index] - values[index - distance];
+  }
+}
+
+void change(const SeriesBatch& values, int bars, std::span<double> out, unsigned threads) {
+  detail::over_series(values, bars, out, threads,
+                      [](auto series, int b, auto result) { change(series, b, result); });
+}
+
 void simple_return(std::span<const double> values, int bars, int skip, std::span<double> out) {
   const auto distance = checked_bars(bars);
   const auto lag = checked_skip(skip);
@@ -53,6 +66,10 @@ double Lookback::push(double value) {
   next_ = (next_ + 1) % values_.size();
   return earlier;
 }
+
+ChangeState::ChangeState(int bars) : earlier_(checked_bars(bars)) {}
+
+double ChangeState::update(double value) { return value - earlier_.push(value); }
 
 ReturnState::ReturnState(int bars, int skip)
     : later_(checked_skip(skip)), earlier_(checked_bars(bars)) {}

@@ -28,6 +28,12 @@ std::vector<double> simple_return(const std::vector<double>& values, int bars, i
   return out;
 }
 
+TEST(Change, SubtractsTheValueBarsBefore) {
+  std::vector<double> out(5);
+  btcore::change(std::vector<double>{10, 12, 9, 15, 15}, 2, out);
+  expect_series(out, {missing, missing, -1, 3, 6});
+}
+
 // 100 to 110 is 0.1, 110 to 99 is -0.1, 99 to 99 is 0; two bars from 100 to 99 is -0.01.
 TEST(SimpleReturn, DividesTheChangeByTheEarlierValue) {
   const std::vector<double> values{100, 110, 99, 99};
@@ -52,6 +58,7 @@ TEST(SimpleReturn, RefusesABarCountBelowOneANegativeSkipAndAMismatchedOutput) {
   EXPECT_THROW(btcore::simple_return(values, 1, -1, values), btcore::InvalidArgument);
   EXPECT_THROW(btcore::simple_return(values, 1, 0, short_out), btcore::InvalidArgument);
   EXPECT_THROW(btcore::ReturnState(1, -2), btcore::InvalidArgument);
+  EXPECT_THROW(btcore::ChangeState(0), btcore::InvalidArgument);
 }
 
 }  // namespace

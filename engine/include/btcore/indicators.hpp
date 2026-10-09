@@ -175,6 +175,23 @@ class ReturnState {
   Lookback earlier_;
 };
 
+/// The value less the value `bars` before it. The first `bars` outputs are missing, and so is every
+/// output where either value is missing.
+void change(std::span<const double> values, int bars, std::span<double> out);
+
+void change(const SeriesBatch& values, int bars, std::span<double> out, unsigned threads);
+
+/// The change one value at a time, equal bit for bit to the batch form.
+class ChangeState {
+ public:
+  explicit ChangeState(int bars);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  Lookback earlier_;
+};
+
 /// Realised volatility: the sample standard deviation of the last `period` daily log returns, each
 /// `log1p` of the fractional return from one value to the next, times the square root of
 /// `periods_per_year`. The first `period` outputs are missing, and so is every output whose window

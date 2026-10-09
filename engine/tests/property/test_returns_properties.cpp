@@ -21,6 +21,9 @@ struct SkippingReturnState : btcore::ReturnState {
 };
 
 TEST(ReturnsProperties, BatchEqualsStreaming) {
+  expect_batch_equals_streaming<btcore::ChangeState>(
+      [](std::span<const double> v, int b, std::span<double> o) { btcore::change(v, b, o); },
+      kLeadingBars);
   expect_batch_equals_streaming<SkippingReturnState<0>>(
       [](std::span<const double> v, int b, std::span<double> o) {
         btcore::simple_return(v, b, 0, o);

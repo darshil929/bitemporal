@@ -243,6 +243,20 @@ def numpy_volatility(close: np.ndarray, period: int, periods_per_year: int) -> n
     return out
 
 
+def price_changes() -> Family:
+    return Family(
+        "golden_price_changes.csv",
+        1e-12,
+        [
+            Expected(
+                "change_1",
+                numpy=lambda c: np.concatenate([[np.nan], np.diff(c["close"])]),
+                talib=lambda c: talib.MOM(c["close"], timeperiod=1),
+            )
+        ],
+    )
+
+
 def volatilities() -> Family:
     """NumPy alone: TA-Lib has no realised volatility."""
     return Family(
@@ -258,6 +272,7 @@ FAMILIES = [
     variances(),
     price_bands(),
     returns(),
+    price_changes(),
     volatilities(),
 ]
 

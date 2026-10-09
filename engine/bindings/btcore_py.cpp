@@ -89,8 +89,9 @@ Output variance_binding(const Values& values, int period, bool sample,
 }
 
 template <SeriesForm series_form, UniverseForm universe_form>
-void def_windowed(nb::module_& module, const char* name, const char* doc) {
-  module.def(name, &windowed<series_form, universe_form>, "values"_a.noconvert(), "period"_a,
+void def_windowed(nb::module_& module, const char* name, const char* doc,
+                  const char* length = "period") {
+  module.def(name, &windowed<series_form, universe_form>, "values"_a.noconvert(), nb::arg(length),
              nb::kw_only(), "offsets"_a.noconvert() = nb::none(), "threads"_a = 0,
              "out"_a.noconvert() = nb::none(), doc);
 }
@@ -206,4 +207,11 @@ NB_MODULE(_btcore, m) {
         "same bits on every platform. The first period values of a series are NaN, and so is every "
         "value whose window holds a NaN return.\n\n"
         "offsets, threads and out are as for sma.");
+
+  def_windowed<btcore::change, btcore::change>(
+      m, "change",
+      "Each value less the value bars before it. The first bars values of a series are NaN, and so "
+      "is every value where either end is NaN.\n\n"
+      "offsets, threads and out are as for sma.",
+      "bars");
 }
