@@ -183,6 +183,20 @@ Output distance_binding(const Values& values, const Values& highs, int period,
       });
 }
 
+Output percentage_binding(const Values& parts, const Values& wholes, std::optional<Output> out) {
+  Output result = out ? *std::move(out) : allocate(parts.size());
+  const std::span<const double> part_line(parts.data(), parts.size());
+  const std::span<const double> whole_line(wholes.data(), wholes.size());
+  const std::span<double> output(result.data(), result.size());
+  require_disjoint(part_line, output);
+  require_disjoint(whole_line, output);
+  {
+    const nb::gil_scoped_release release;
+    btcore::percentage_of(part_line, whole_line, output);
+  }
+  return result;
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -284,4 +298,15 @@ NB_MODULE(_btcore, m) {
       "1.0 where a value is at or below every one of the period - 1 values before it, as for "
       "new_high.\n\n"
       "offsets, threads and out are as for sma.");
+
+  def_windowed<btcore::ratio_to_prior_mean, btcore::ratio_to_prior_mean>(
+      m, "ratio_to_prior_mean",
+      "Each value over the mean of the period values before it. The first period values of a "
+      "series are NaN, and so is every value where it or one of those before it is NaN.\n\n"
+      "offsets, threads and out are as for sma.");
+
+  m.def("percentage_of", &percentage_binding, "parts"_a.noconvert(), "wholes"_a.noconvert(),
+        nb::kw_only(), "out"_a.noconvert() = nb::none(),
+        "Each part as a percentage of its whole, part / whole * 100; NaN where either is NaN. It "
+        "reads no window, so one call covers any number of series laid end to end.");
 }

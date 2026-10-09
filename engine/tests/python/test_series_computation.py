@@ -23,6 +23,7 @@ COMPUTATIONS = [
     btcore.rolling_minimum,
     btcore.new_high,
     btcore.new_low,
+    btcore.ratio_to_prior_mean,
 ]
 
 type Computation = Callable[..., np.ndarray]
@@ -56,6 +57,16 @@ def test_range_positions_measure_against_the_window() -> None:
     highs = CLOSES + 1
     with pytest.raises(ValueError, match="shares memory"):
         btcore.distance_from_high(CLOSES, highs, 2, out=highs)
+
+
+def test_traded_value_compares_volume_and_delivery() -> None:
+    np.testing.assert_allclose(
+        btcore.ratio_to_prior_mean(CLOSES, 2), [NAN, NAN, 1.0, 15 / 11.5, 14 / 13]
+    )
+    delivered = np.array([5.0, NAN, 11.0, 3.0, 7.0])
+    np.testing.assert_allclose(btcore.percentage_of(delivered, CLOSES), delivered / CLOSES * 100)
+    with pytest.raises(ValueError, match="shares memory"):
+        btcore.percentage_of(delivered, CLOSES, out=delivered)
 
 
 def test_a_change_subtracts_the_value_bars_before() -> None:

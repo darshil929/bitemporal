@@ -19,6 +19,7 @@ add_executable(btcore_unit_tests
   golden/test_range_positions_golden.cpp
   golden/test_relative_strength_golden.cpp
   golden/test_returns_golden.cpp
+  golden/test_traded_value_golden.cpp
   golden/test_variance_golden.cpp
   golden/test_volatility_golden.cpp
   property/test_log1p_properties.cpp
@@ -29,6 +30,7 @@ add_executable(btcore_unit_tests
   property/test_relative_strength_properties.cpp
   property/test_returns_properties.cpp
   property/test_series_generators.cpp
+  property/test_traded_value_properties.cpp
   property/test_variance_properties.cpp
   property/test_volatility_properties.cpp
   unit/test_arithmetic.cpp
@@ -40,6 +42,7 @@ add_executable(btcore_unit_tests
   unit/test_range_positions.cpp
   unit/test_relative_strength.cpp
   unit/test_returns.cpp
+  unit/test_traded_value.cpp
   unit/test_types.cpp
   unit/test_variance.cpp
   unit/test_volatility.cpp
@@ -56,6 +59,7 @@ add_executable(btcore_benchmarks
   bench/bench_range_extremes.cpp
   bench/bench_relative_strength.cpp
   bench/bench_returns.cpp
+  bench/bench_traded_value.cpp
   bench/bench_variance.cpp
   bench/bench_volatility.cpp
 )
