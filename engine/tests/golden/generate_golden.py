@@ -172,7 +172,35 @@ def variances() -> Family:
     )
 
 
-FAMILIES = [moving_averages(), relative_strength(), variances()]
+def numpy_bollinger(close: np.ndarray, period: int, width: float, sign: int) -> np.ndarray:
+    return numpy_sma(close, period) + sign * width * np.sqrt(numpy_variance(close, period, ddof=0))
+
+
+def price_bands() -> Family:
+    def talib_band(line: int) -> Computation:
+        return lambda c: talib.BBANDS(c["close"], timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)[
+            line
+        ]
+
+    return Family(
+        "golden_price_bands.csv",
+        1e-12,
+        [
+            Expected(
+                "bollinger_20_upper",
+                numpy=lambda c: numpy_bollinger(c["close"], 20, 2.0, 1),
+                talib=talib_band(0),
+            ),
+            Expected(
+                "bollinger_20_lower",
+                numpy=lambda c: numpy_bollinger(c["close"], 20, 2.0, -1),
+                talib=talib_band(2),
+            ),
+        ],
+    )
+
+
+FAMILIES = [moving_averages(), relative_strength(), variances(), price_bands()]
 
 
 class ReferencesDisagree(Exception):

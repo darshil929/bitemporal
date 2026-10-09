@@ -100,6 +100,34 @@ def test_an_out_sharing_memory_with_values_is_refused() -> None:
         btcore.sma(values[:4], 3, out=values[1:])
 
 
+def test_bollinger_bands_lie_width_deviations_from_the_average() -> None:
+    upper, lower = btcore.bollinger_bands(CLOSES, 3)
+    deviation = np.sqrt(btcore.variance(CLOSES, 3))
+    np.testing.assert_array_equal(upper, btcore.sma(CLOSES, 3) + 2 * deviation)
+    np.testing.assert_array_equal(lower, btcore.sma(CLOSES, 3) - 2 * deviation)
+
+
+def test_bollinger_bands_fill_out_and_spread_over_threads() -> None:
+    out = (np.empty(CLOSES.size), np.empty(CLOSES.size))
+    upper, lower = btcore.bollinger_bands(CLOSES, 3, out=out)
+    assert upper is out[0] and lower is out[1]
+    values = walk(1_000, seed=7)
+    offsets = np.array([0, 300, 300, 750, 1_000], dtype=np.int64)
+    pieces = [btcore.bollinger_bands(values[a:b], 20) for a, b in itertools.pairwise(offsets)]
+    for threads in (1, 8):
+        spread = btcore.bollinger_bands(values, 20, offsets=offsets, threads=threads)
+        for line in (0, 1):
+            np.testing.assert_array_equal(spread[line], np.concatenate([p[line] for p in pieces]))
+
+
+def test_bollinger_bands_refuse_overlapping_lines_and_a_negative_width() -> None:
+    line = np.empty(CLOSES.size)
+    with pytest.raises(ValueError, match="shares memory"):
+        btcore.bollinger_bands(CLOSES, 3, out=(line, line))
+    with pytest.raises(ValueError, match="width"):
+        btcore.bollinger_bands(CLOSES, 3, width=-1.0)
+
+
 def test_the_package_reports_its_version_and_ships_type_stubs() -> None:
     assert btcore.version() == importlib.metadata.version("btcore")
     package = importlib.resources.files("btcore")
