@@ -356,6 +356,32 @@ def traded_value() -> Family:
     )
 
 
+def numpy_obv(close: np.ndarray, volume: np.ndarray) -> np.ndarray:
+    out = np.full(close.shape, np.nan)
+    if close.size == 0:
+        return out
+    total = volume[0]
+    out[0] = total
+    for index in range(1, close.size):
+        total += np.sign(close[index] - close[index - 1]) * volume[index]
+        out[index] = total
+    return out
+
+
+def volume_flow() -> Family:
+    return Family(
+        "golden_volume_flow.csv",
+        1e-12,
+        [
+            Expected(
+                "obv",
+                numpy=lambda c: numpy_obv(c["close"], c["volume"]),
+                talib=lambda c: talib.OBV(c["close"], c["volume"]),
+            )
+        ],
+    )
+
+
 def volatilities() -> Family:
     """NumPy alone: TA-Lib has no realised volatility."""
     return Family(
@@ -376,6 +402,7 @@ FAMILIES = [
     range_extremes(),
     range_positions(),
     traded_value(),
+    volume_flow(),
 ]
 
 

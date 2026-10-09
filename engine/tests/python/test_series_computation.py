@@ -69,6 +69,17 @@ def test_traded_value_compares_volume_and_delivery() -> None:
         btcore.percentage_of(delivered, CLOSES, out=delivered)
 
 
+def test_on_balance_volume_follows_the_direction_of_the_close() -> None:
+    volumes = np.array([100.0, 50.0, 60.0, 70.0, 20.0])
+    np.testing.assert_array_equal(
+        btcore.on_balance_volume(CLOSES, volumes), [100, 150, 90, 160, 140]
+    )
+    offsets = np.array([0, 2, 5], dtype=np.int64)
+    np.testing.assert_array_equal(
+        btcore.on_balance_volume(CLOSES, volumes, offsets=offsets), [100, 150, 60, 130, 110]
+    )
+
+
 def test_a_change_subtracts_the_value_bars_before() -> None:
     np.testing.assert_array_equal(btcore.change(CLOSES, 1), [NAN, 2.0, -1.0, 4.0, -1.0])
 

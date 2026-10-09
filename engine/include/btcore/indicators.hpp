@@ -319,4 +319,27 @@ class PriorMeanRatioState {
 void percentage_of(std::span<const double> parts, std::span<const double> wholes,
                    std::span<double> out);
 
+/// On-balance volume: a running total that starts at the first volume, then adds each volume on a
+/// close above the one before it, subtracts it on a close below and holds on an unchanged close, as
+/// TA-Lib 0.8.1 does. The total is compensated, so a long series accumulates no rounding drift. A
+/// missing close or volume yields a missing output, and the total starts again after it.
+void on_balance_volume(std::span<const double> closes, std::span<const double> volumes,
+                       std::span<double> out);
+
+/// The batch form over every series of `closes`, with `volumes` laid out like them.
+void on_balance_volume(const SeriesBatch& closes, std::span<const double> volumes,
+                       std::span<double> out, unsigned threads);
+
+/// On-balance volume one bar at a time, equal bit for bit to the batch form.
+class OnBalanceVolumeState {
+ public:
+  [[nodiscard]] double update(double close, double volume);
+
+ private:
+  bool started_ = false;
+  double previous_close_ = 0.0;
+  double total_ = 0.0;
+  double compensation_ = 0.0;
+};
+
 }  // namespace btcore

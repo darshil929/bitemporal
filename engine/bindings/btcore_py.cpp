@@ -197,6 +197,22 @@ Output percentage_binding(const Values& parts, const Values& wholes, std::option
   return result;
 }
 
+Output volume_flow_binding(const Values& closes, const Values& volumes,
+                           const std::optional<Offsets>& offsets, unsigned threads,
+                           std::optional<Output> out) {
+  const std::span<const double> volume_line(volumes.data(), volumes.size());
+  return computed(
+      closes, offsets, std::move(out),
+      [=](auto input, auto output) {
+        require_disjoint(volume_line, output);
+        btcore::on_balance_volume(input, volume_line, output);
+      },
+      [=](const auto& batch, auto output) {
+        require_disjoint(volume_line, output);
+        btcore::on_balance_volume(batch, volume_line, output, threads);
+      });
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -309,4 +325,13 @@ NB_MODULE(_btcore, m) {
         nb::kw_only(), "out"_a.noconvert() = nb::none(),
         "Each part as a percentage of its whole, part / whole * 100; NaN where either is NaN. It "
         "reads no window, so one call covers any number of series laid end to end.");
+
+  m.def(
+      "on_balance_volume", &volume_flow_binding, "closes"_a.noconvert(), "volumes"_a.noconvert(),
+      nb::kw_only(), "offsets"_a.noconvert() = nb::none(), "threads"_a = 0,
+      "out"_a.noconvert() = nb::none(),
+      "On-balance volume of each series: from the first volume, each volume added on a higher "
+      "close, subtracted on a lower one and held on an unchanged one. A NaN close or volume gives "
+      "NaN, and the total starts again after it.\n\n"
+      "volumes is laid out like closes; offsets, threads and out are as for sma.");
 }

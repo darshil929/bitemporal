@@ -7,25 +7,13 @@ namespace btcore {
 
 namespace {
 
-// Neumaier's compensated summation: the rounding error of each addition is carried separately and
-// added back when the total is read.
-void accumulate(double& total, double& compensation, double value) {
-  const double sum = total + value;
-  if (std::fabs(total) >= std::fabs(value)) {
-    compensation += (total - sum) + value;
-  } else {
-    compensation += (value - sum) + total;
-  }
-  total = sum;
-}
-
 // A missing value is counted rather than summed, so it leaves the total untouched when it leaves
 // the window.
 void enter(double& total, double& compensation, std::size_t& missing_count, double value) {
   if (is_missing(value)) {
     ++missing_count;
   } else {
-    accumulate(total, compensation, value);
+    detail::accumulate(total, compensation, value);
   }
 }
 
@@ -33,7 +21,7 @@ void leave(double& total, double& compensation, std::size_t& missing_count, doub
   if (is_missing(value)) {
     --missing_count;
   } else {
-    accumulate(total, compensation, -value);
+    detail::accumulate(total, compensation, -value);
   }
 }
 
