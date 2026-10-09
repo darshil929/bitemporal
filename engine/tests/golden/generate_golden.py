@@ -235,7 +235,31 @@ def returns() -> Family:
     )
 
 
-FAMILIES = [moving_averages(), relative_strength(), variances(), price_bands(), returns()]
+def numpy_volatility(close: np.ndarray, period: int, periods_per_year: int) -> np.ndarray:
+    out = np.full(close.shape, np.nan)
+    log_returns = np.log1p(np.diff(close) / close[:-1])
+    for end in range(period, close.size):
+        out[end] = log_returns[end - period : end].std(ddof=1) * np.sqrt(periods_per_year)
+    return out
+
+
+def volatilities() -> Family:
+    """NumPy alone: TA-Lib has no realised volatility."""
+    return Family(
+        "golden_volatility.csv",
+        1e-12,
+        [Expected("volatility_20", numpy=lambda c: numpy_volatility(c["close"], 20, 252))],
+    )
+
+
+FAMILIES = [
+    moving_averages(),
+    relative_strength(),
+    variances(),
+    price_bands(),
+    returns(),
+    volatilities(),
+]
 
 
 class ReferencesDisagree(Exception):

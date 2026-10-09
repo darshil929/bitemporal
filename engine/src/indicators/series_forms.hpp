@@ -7,6 +7,10 @@
 
 namespace btcore::detail {
 
+/// The variance of one window: its squared deviations summed and divided by `divisor`. A window of
+/// equal values gives exactly 0.
+[[nodiscard]] double window_variance(std::span<const double> window, double divisor);
+
 /// The universe form of a computation: its batch form over every series, spread over threads.
 template <typename Batch>
 void over_series(const SeriesBatch& values, int period, std::span<double> out, unsigned threads,

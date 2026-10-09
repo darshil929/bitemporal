@@ -175,4 +175,27 @@ class ReturnState {
   Lookback earlier_;
 };
 
+/// Realised volatility: the sample standard deviation of the last `period` daily log returns, each
+/// `log1p` of the fractional return from one value to the next, times the square root of
+/// `periods_per_year`. The first `period` outputs are missing, and so is every output whose window
+/// holds a missing return. `period` is at least 2 and `periods_per_year` at least 1.
+void realised_volatility(std::span<const double> values, int period, int periods_per_year,
+                         std::span<double> out);
+
+void realised_volatility(const SeriesBatch& values, int period, int periods_per_year,
+                         std::span<double> out, unsigned threads);
+
+/// Realised volatility one value at a time, equal bit for bit to the batch form.
+class VolatilityState {
+ public:
+  VolatilityState(int period, int periods_per_year);
+
+  [[nodiscard]] double update(double value);
+
+ private:
+  ReturnState daily_;
+  VarianceState variance_;
+  double annualiser_;
+};
+
 }  // namespace btcore

@@ -11,7 +11,14 @@ import btcore
 
 NAN = np.nan
 CLOSES = np.array([10.0, 12.0, 11.0, 15.0, 14.0])
-COMPUTATIONS = [btcore.sma, btcore.ema, btcore.rsi, btcore.variance, btcore.simple_return]
+COMPUTATIONS = [
+    btcore.sma,
+    btcore.ema,
+    btcore.rsi,
+    btcore.variance,
+    btcore.simple_return,
+    btcore.realised_volatility,
+]
 
 type Computation = Callable[..., np.ndarray]
 
@@ -35,6 +42,12 @@ def test_a_return_measures_from_the_value_bars_before() -> None:
     returns = [NAN, 0.2, -1 / 12, 4 / 11, -1 / 15]
     np.testing.assert_allclose(btcore.simple_return(CLOSES, 1), returns)
     np.testing.assert_allclose(btcore.simple_return(CLOSES, 1, skip=1), [NAN, *returns[:-1]])
+
+
+def test_volatility_annualises_the_deviation_of_log_returns() -> None:
+    log_returns = np.log1p(np.diff(CLOSES) / CLOSES[:-1])
+    expected = [log_returns[end - 2 : end].std(ddof=1) * np.sqrt(252) for end in (2, 3, 4)]
+    np.testing.assert_allclose(btcore.realised_volatility(CLOSES, 2), [NAN, NAN, *expected])
 
 
 @pytest.mark.parametrize("computation", COMPUTATIONS)
