@@ -22,6 +22,7 @@ add_executable(btcore_unit_tests
   golden/test_traded_value_golden.cpp
   golden/test_variance_golden.cpp
   golden/test_volatility_golden.cpp
+  golden/test_volume_flow_golden.cpp
   property/test_log1p_properties.cpp
   property/test_moving_average_properties.cpp
   property/test_price_bands_properties.cpp
@@ -33,6 +34,7 @@ add_executable(btcore_unit_tests
   property/test_traded_value_properties.cpp
   property/test_variance_properties.cpp
   property/test_volatility_properties.cpp
+  property/test_volume_flow_properties.cpp
   unit/test_arithmetic.cpp
   unit/test_log1p.cpp
   unit/test_moving_average.cpp
@@ -46,6 +48,7 @@ add_executable(btcore_unit_tests
   unit/test_types.cpp
   unit/test_variance.cpp
   unit/test_volatility.cpp
+  unit/test_volume_flow.cpp
   unit/test_version.cpp
 )
 target_link_libraries(btcore_unit_tests
