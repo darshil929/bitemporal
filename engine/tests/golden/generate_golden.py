@@ -200,7 +200,42 @@ def price_bands() -> Family:
     )
 
 
-FAMILIES = [moving_averages(), relative_strength(), variances(), price_bands()]
+def numpy_return(close: np.ndarray, bars: int, skip: int) -> np.ndarray:
+    out = np.full(close.shape, np.nan)
+    for index in range(bars + skip, close.size):
+        later, earlier = close[index - skip], close[index - skip - bars]
+        out[index] = (later - earlier) / earlier
+    return out
+
+
+def lagged(values: np.ndarray, skip: int) -> np.ndarray:
+    kept = max(values.size - skip, 0)
+    return np.concatenate([np.full(values.size - kept, np.nan), values[:kept]])
+
+
+def returns() -> Family:
+    return Family(
+        "golden_returns.csv",
+        1e-12,
+        [
+            *(
+                Expected(
+                    f"return_{bars}",
+                    numpy=lambda c, b=bars: numpy_return(c["close"], b, 0),
+                    talib=lambda c, b=bars: talib.ROCP(c["close"], timeperiod=b),
+                )
+                for bars in (1, 252)
+            ),
+            Expected(
+                "momentum_12_1",
+                numpy=lambda c: numpy_return(c["close"], 231, 21),
+                talib=lambda c: lagged(talib.ROCP(c["close"], timeperiod=231), 21),
+            ),
+        ],
+    )
+
+
+FAMILIES = [moving_averages(), relative_strength(), variances(), price_bands(), returns()]
 
 
 class ReferencesDisagree(Exception):
