@@ -1,0 +1,21 @@
+#pragma once
+
+#include <btcore/parallel.hpp>
+#include <btcore/types.hpp>
+#include <cstddef>
+#include <span>
+
+namespace btcore::detail {
+
+/// The universe form of a computation: its batch form over every series, spread over threads.
+template <typename Batch>
+void over_series(const SeriesBatch& values, int period, std::span<double> out, unsigned threads,
+                 Batch batch) {
+  require_period(period);
+  require_same_length(values.values().size(), out.size());
+  parallel_for(values.size(), threads, [&](std::size_t index) {
+    batch(values.series(index), period, values.series(out, index));
+  });
+}
+
+}  // namespace btcore::detail

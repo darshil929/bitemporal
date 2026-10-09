@@ -87,4 +87,14 @@ NB_MODULE(_btcore, m) {
       "period values. The first period - 1 values of a series are NaN; a NaN yields NaN and the "
       "average is seeded again from the values after it.\n\n"
       "offsets, threads and out are as for sma.");
+
+  def_windowed<btcore::rsi, btcore::rsi>(
+      m, "rsi",
+      "Relative strength index of each series, 0 to 100, from Wilder's averages of its gains and "
+      "losses seeded with the mean of the first period changes. The first period values of a "
+      "series "
+      "are NaN, and so is every value until the series first moves; a NaN yields NaN and the "
+      "warm-up "
+      "starts again after it.\n\n"
+      "offsets, threads and out are as for sma.");
 }

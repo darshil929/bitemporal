@@ -1,6 +1,7 @@
 #include <btcore/indicators.hpp>
-#include <btcore/parallel.hpp>
 #include <cmath>
+
+#include "series_forms.hpp"
 
 namespace btcore {
 
@@ -42,16 +43,6 @@ double ema_step(double k, double value, double average) {
 
 double smoothing(int period) { return 2.0 / (static_cast<double>(period) + 1.0); }
 
-template <typename Batch>
-void over_series(const SeriesBatch& values, int period, std::span<double> out, unsigned threads,
-                 Batch batch) {
-  require_period(period);
-  require_same_length(values.values().size(), out.size());
-  parallel_for(values.size(), threads, [&](std::size_t index) {
-    batch(values.series(index), period, values.series(out, index));
-  });
-}
-
 }  // namespace
 
 void sma(std::span<const double> values, int period, std::span<double> out) {
@@ -73,8 +64,8 @@ void sma(std::span<const double> values, int period, std::span<double> out) {
 }
 
 void sma(const SeriesBatch& values, int period, std::span<double> out, unsigned threads) {
-  over_series(values, period, out, threads,
-              [](auto series, int p, auto result) { sma(series, p, result); });
+  detail::over_series(values, period, out, threads,
+                      [](auto series, int p, auto result) { sma(series, p, result); });
 }
 
 SmaState::SmaState(int period) {
@@ -105,8 +96,8 @@ void ema(std::span<const double> values, int period, std::span<double> out) {
 }
 
 void ema(const SeriesBatch& values, int period, std::span<double> out, unsigned threads) {
-  over_series(values, period, out, threads,
-              [](auto series, int p, auto result) { ema(series, p, result); });
+  detail::over_series(values, period, out, threads,
+                      [](auto series, int p, auto result) { ema(series, p, result); });
 }
 
 EmaState::EmaState(int period) : period_(period), k_(smoothing(period)) { require_period(period); }
