@@ -43,4 +43,15 @@ TEST(MovingAverageGolden, SmaMatchesTheReference) {
   }
 }
 
+TEST(MovingAverageGolden, EmaMatchesTheReference) {
+  const auto input = GoldenTable::read("golden_ohlcv.csv");
+  const auto offsets = input.series_offsets();
+  const btcore::SeriesBatch batch(input.numbers("close"), offsets);
+  for (const int period : {20, 50}) {
+    std::vector<double> out(input.rows());
+    btcore::ema(batch, period, out, 0);
+    expect_matches("ema_" + std::to_string(period), out);
+  }
+}
+
 }  // namespace
