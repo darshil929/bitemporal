@@ -149,7 +149,30 @@ def relative_strength() -> Family:
     )
 
 
-FAMILIES = [moving_averages(), relative_strength()]
+def numpy_variance(close: np.ndarray, period: int, ddof: int) -> np.ndarray:
+    out = np.full(close.shape, np.nan)
+    for end in range(period, close.size + 1):
+        out[end - 1] = close[end - period : end].var(ddof=ddof)
+    return out
+
+
+def variances() -> Family:
+    """TA-Lib keeps running sums, within 1e-11 of the two-pass variance on these series."""
+    return Family(
+        "golden_variance.csv",
+        1e-11,
+        [
+            Expected(
+                "variance_20",
+                numpy=lambda c: numpy_variance(c["close"], 20, ddof=0),
+                talib=lambda c: talib.VAR(c["close"], timeperiod=20, nbdev=1),
+            ),
+            Expected("sample_variance_20", numpy=lambda c: numpy_variance(c["close"], 20, ddof=1)),
+        ],
+    )
+
+
+FAMILIES = [moving_averages(), relative_strength(), variances()]
 
 
 class ReferencesDisagree(Exception):

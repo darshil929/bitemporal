@@ -42,9 +42,10 @@ inline void expect_identical(std::span<const double> actual, std::span<const dou
 /// Over every window case of every period: `batch(values, period, out)` equals the streaming form
 /// bit for bit, and its first `leading_blanks(period)` outputs are missing.
 template <typename State, typename Batch, typename LeadingBlanks>
-void expect_batch_equals_streaming(Batch batch, LeadingBlanks leading_blanks) {
+void expect_batch_equals_streaming(Batch batch, LeadingBlanks leading_blanks,
+                                   std::span<const int> periods = kPropertyPeriods) {
   const auto seed = property_seed();
-  for (const int period : kPropertyPeriods) {
+  for (const int period : periods) {
     for (const SeriesCase& series : window_cases(period, seed)) {
       SCOPED_TRACE("seed " + std::to_string(seed) + ", period " + std::to_string(period) + ", " +
                    series.label);
