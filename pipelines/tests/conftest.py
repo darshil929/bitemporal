@@ -1,3 +1,5 @@
+import os
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -17,6 +19,7 @@ POSTGRES_IMAGE = "timescale/timescaledb-ha:pg17"
 
 PIPELINES_ROOT = Path(__file__).resolve().parents[1]
 DBT_SEEDS = PIPELINES_ROOT / "dbt" / "seeds"
+SEED_SCHEMA = "fixture"
 
 # The seed dataset occupies the fixture schema in the same container.
 MIGRATION_SCHEMA = "dev"
@@ -42,6 +45,21 @@ def postgres_dsn() -> Iterator[str]:
 def seeded_postgres(postgres_dsn: str) -> str:
     load_seed(postgres_dsn)
     return postgres_dsn
+
+
+@pytest.fixture(scope="session")
+def seeded_models(seeded_postgres: str) -> Iterator[psycopg.Connection]:
+    """A connection to the seed dataset with every model built over it."""
+    for arguments in (["seed"], ["run"]):
+        subprocess.run(
+            ["dbt", *arguments, "--profiles-dir", ".", "--target", SEED_SCHEMA],
+            cwd=PIPELINES_ROOT / "dbt",
+            env={**os.environ, **dbt_environment(seeded_postgres)},
+            capture_output=True,
+            check=True,
+        )
+    with psycopg.connect(seeded_postgres, options=f"-csearch_path={SEED_SCHEMA},public") as opened:
+        yield opened
 
 
 @pytest.fixture
