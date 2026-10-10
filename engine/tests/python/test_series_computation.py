@@ -211,3 +211,61 @@ def test_the_package_reports_its_version_and_ships_type_stubs() -> None:
     package = importlib.resources.files("btcore")
     assert (package / "py.typed").is_file()
     assert "def sma(" in (package / "_btcore.pyi").read_text()
+
+
+def daily_bars(length: int, seed: int) -> dict[str, np.ndarray]:
+    """A drawn walk read as every price, its factor halving the scale of the first half."""
+    close = walk(length, seed)
+    return {
+        "close": close,
+        "high": close * 1.01,
+        "low": close * 0.99,
+        "volume": np.full(length, 1_000.0),
+        "delivery": np.full(length, 400.0),
+        "turnover": close * 1_000.0,
+        "adjustment_factor": np.where(np.arange(length) < length // 2, 0.5, 1.0),
+    }
+
+
+def test_daily_features_hold_every_column_with_its_leading_blanks() -> None:
+    bars = daily_bars(300, seed=11)
+    table = btcore.daily_features(**bars)
+    assert table.shape == (len(btcore.FEATURE_COLUMNS), 300)
+    column = dict(zip(btcore.FEATURE_COLUMNS, table, strict=True))
+    close, factor = bars["close"], bars["adjustment_factor"]
+    np.testing.assert_array_equal(column["sma_20"], btcore.sma(close, 20) / factor)
+    np.testing.assert_array_equal(column["rsi_14"], btcore.rsi(close, 14))
+    np.testing.assert_array_equal(
+        column["delivery_pct_1d"], btcore.percentage_of(bars["delivery"], bars["volume"])
+    )
+    for name, blanks in zip(btcore.FEATURE_COLUMNS, btcore.FEATURE_LEADING_BLANKS, strict=True):
+        assert np.isnan(column[name][:blanks]).all(), name
+        assert not np.isnan(column[name][blanks:]).any(), name
+
+
+def test_daily_features_match_each_series_on_any_thread_count() -> None:
+    bars = daily_bars(600, seed=13)
+    offsets = np.array([0, 250, 250, 600], dtype=np.int64)
+    each = np.concatenate(
+        [
+            btcore.daily_features(**{name: values[start:end] for name, values in bars.items()})
+            for start, end in itertools.pairwise(offsets)
+        ],
+        axis=1,
+    )
+    for threads in (1, 8):
+        result = btcore.daily_features(**bars, offsets=offsets, threads=threads)
+        np.testing.assert_array_equal(result, each)
+
+
+def test_designated_bars_flag_the_bars_of_each_days_primary_venue() -> None:
+    bse_days = np.array(["2024-01-02", "2024-01-03", "2024-02-01"], dtype="datetime64[D]")
+    nse_days = np.array(["2024-01-02", "2024-02-01", "2024-02-02"], dtype="datetime64[D]")
+    days = np.concatenate([bse_days, nse_days]).view(np.int64)
+    turnover = np.array([5.0, 10.0, 1.0, 7.0, 9.0, 9.0])
+    offsets = np.array([0, 3, 6], dtype=np.int64)
+    flags = btcore.designated_bars(days, turnover, offsets)
+    assert flags.dtype == np.uint8
+    np.testing.assert_array_equal(flags, [0, 1, 1, 1, 0, 0])
+    with pytest.raises(ValueError, match="pairs"):
+        btcore.designated_bars(days, turnover, np.array([0, 6], dtype=np.int64))
