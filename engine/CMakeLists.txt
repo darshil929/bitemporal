@@ -38,6 +38,7 @@ target_compile_options(btcore_warnings INTERFACE
 find_package(Threads REQUIRED)
 
 add_library(btcore
+  src/features.cpp
   src/indicators/moving_average.cpp
   src/indicators/price_bands.cpp
   src/indicators/range_extremes.cpp
