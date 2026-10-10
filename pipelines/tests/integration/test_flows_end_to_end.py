@@ -94,3 +94,9 @@ def test_a_bootstrap_then_a_sync_over_the_same_week_load_it_once(
     ]
     written = sync.asset_materializations_for_node("bse_bhavcopy")[0].metadata["written"]
     assert written.value == 0
+    instruments = rows(postgres_dsn, "select count(distinct isin) from int_continuous_prices")
+    assert rows(postgres_dsn, "select count(*) from mart_daily_features") == instruments
+    assert (
+        sync.asset_materializations_for_node("daily_features")[0].metadata["rows"].value
+        == (instruments[0][0])
+    )
