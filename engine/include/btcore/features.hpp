@@ -22,6 +22,13 @@ enum class Feature : std::size_t {
   momentum_12_1,
   volatility_20d,
   rsi_14,
+  adtv_20d,
+  volume_ratio_20d,
+  delivery_pct_1d,
+  delivery_pct_20d,
+  from_52w_high,
+  is_52w_high,
+  is_52w_low,
   sma_20,
   sma_50,
   sma_200,
@@ -39,7 +46,8 @@ struct FeatureColumn {
 };
 
 /// Every column, indexed by `Feature`.
-inline constexpr std::array<FeatureColumn, 17> feature_columns{{
+// clang-format off
+inline constexpr std::array<FeatureColumn, 24> feature_columns{{
     {"change_1d", 1},
     {"return_1d", 1},
     {"return_1w", 5},
@@ -50,6 +58,13 @@ inline constexpr std::array<FeatureColumn, 17> feature_columns{{
     {"momentum_12_1", 252},
     {"volatility_20d", 20},
     {"rsi_14", 14},
+    {"adtv_20d", 19},
+    {"volume_ratio_20d", 20},
+    {"delivery_pct_1d", 0},
+    {"delivery_pct_20d", 19},
+    {"from_52w_high", 251},
+    {"is_52w_high", 251},
+    {"is_52w_low", 251},
     {"sma_20", 19},
     {"sma_50", 49},
     {"sma_200", 199},
@@ -58,19 +73,27 @@ inline constexpr std::array<FeatureColumn, 17> feature_columns{{
     {"bollinger_20_upper", 19},
     {"bollinger_20_lower", 19},
 }};
+// clang-format on
 
 inline constexpr std::size_t feature_count = feature_columns.size();
 
-/// One instrument's daily bars at one venue: closes multiplied by the adjustment factor, and each
-/// bar's factor.
+/// One instrument's daily bars at one venue, each input holding a value per bar. Close, high and
+/// low are multiplied by the adjustment factor, volume and delivery divided by it; turnover is as
+/// traded, and delivery is missing on a day without a published figure.
 struct DailyBars {
   std::span<const double> close;
+  std::span<const double> high;
+  std::span<const double> low;
+  std::span<const double> volume;
+  std::span<const double> delivery;
+  std::span<const double> turnover;
   std::span<const double> adjustment_factor;
 };
 
 /// Every column of every bar, column `f` of bar `i` at `out[f * n + i]` for `n` bars. Returns,
-/// volatility and momentum are fractions; `change_1d`, the averages and the bands are divided by
-/// the bar's adjustment factor, so each is in its own day's price scale.
+/// volatility, momentum and the distance from the high are fractions, and the flags 1 or 0;
+/// `change_1d`, the averages and the bands are divided by the bar's adjustment factor, so each is
+/// in its own day's price scale.
 void daily_features(const DailyBars& bars, std::span<double> out);
 
 /// The batch form over every series the offsets mark in the inputs, across threads: column `f` of

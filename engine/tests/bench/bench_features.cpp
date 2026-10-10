@@ -13,7 +13,8 @@ using btcore::testing::full_history;
 void DailyFeatures(benchmark::State& state) {
   const auto& history = full_history();
   const std::vector<double> factor(history.values.size(), 1.0);
-  const btcore::DailyBars bars{history.values, factor};
+  const btcore::DailyBars bars{history.values, history.values, history.values, history.values,
+                               history.values, history.values, factor};
   std::vector<double> out(history.values.size() * btcore::feature_count);
   const auto threads = static_cast<unsigned>(state.range(0));
   for (auto _ : state) {
