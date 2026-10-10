@@ -171,6 +171,10 @@ jobs:
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.engine == 'true'
     runs-on: xcode-27
     timeout-minutes: 30
+    # Reads the pull request's labels.
+    permissions:
+      contents: read
+      pull-requests: read
     env:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-archives
     steps:
@@ -219,7 +223,13 @@ jobs:
             touch no-base
           fi
 
+      # One thread's time is held to the base; eight threads' on a shared runner vary too widely to
+      # hold. A pull request labelled expected-slowdown is reported and not held.
       - name: Compare benchmarks with the base
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
         run: |
           if [ -e no-base ]; then
             echo "The base branch holds no engine benchmarks." >> "$GITHUB_STEP_SUMMARY"
@@ -229,7 +239,12 @@ jobs:
             "$RUNNER_TEMP/base/build/engine/tests/btcore_benchmarks" --benchmark_out="base-$round.json" > /dev/null
             build/engine/tests/btcore_benchmarks --benchmark_out="change-$round.json" > /dev/null
           done
-          python3 scripts/compare_benchmarks.py --base base-*.json --change change-*.json | tee -a "$GITHUB_STEP_SUMMARY"
+          hold=--fail
+          if gh pr view "$PULL_REQUEST" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' | grep -qx expected-slowdown; then
+            hold=
+            echo "Labelled expected-slowdown: reported, not held to the base." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          python3 scripts/compare_benchmarks.py --base base-*.json --change change-*.json $hold --threshold 0.40 --gated '/1/' | tee -a "$GITHUB_STEP_SUMMARY"
 
   python-test:
     needs: detect-changes

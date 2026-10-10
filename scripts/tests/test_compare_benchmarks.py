@@ -58,3 +58,15 @@ def test_a_regression_fails_only_when_asked(
     assert (
         "| Sma20/1 | 10.000 | 11.500 | 1.150 slower by more than 10% |" in capsys.readouterr().out
     )
+
+
+def test_only_gated_benchmarks_fail(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    base = write_run(tmp_path / "base.json", {"Sma20/1/real_time": 10.0, "Sma20/8/real_time": 2.0})
+    change = write_run(
+        tmp_path / "change.json", {"Sma20/1/real_time": 10.5, "Sma20/8/real_time": 3.0}
+    )
+    files = ["--base", str(base), "--change", str(change), "--fail", "--threshold", "0.4"]
+
+    assert compare_benchmarks.main([*files, "--gated", "/1/"]) == 0
+    assert "slower by more than" not in capsys.readouterr().out
+    assert compare_benchmarks.main([*files, "--gated", "/8/"]) == 1
