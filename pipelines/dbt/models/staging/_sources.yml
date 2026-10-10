@@ -31,3 +31,104 @@ sources:
         description: >
           A name an exchange's list of securities gives an instrument, written the day a list
           first gives it or changes it, beside the names read before.
+
+  - name: features
+    schema: "{{ target.schema }}"
+    description: >
+      Tables the feature computation writes after the models are built, each run replacing every
+      row from the facts.
+    tables:
+      - name: mart_daily_features
+        description: >
+          One row per instrument and day it traded at its primary venue, every figure computed on
+          that venue's own whole series of adjusted prices. A figure is null while its window is
+          still filling. Returns, momentum, volatility and the distance from the 52-week high are
+          fractions, 0.0124 being 1.24 percent; change_1d, the averages and the bands are in the
+          price scale of their own day.
+        columns:
+          - name: isin
+            description: The ISIN the instrument trades under now.
+          - name: trade_date
+            description: The day the row describes.
+          - name: as_of_date
+            description: >
+              The latest day on which the bars of both venues up to the day, the actions applied
+              on or before it, and its verdict were knowable.
+          - name: primary_venue
+            description: >
+              BSE or NSE: the venue with the larger turnover over the 90 calendar days ending on
+              the last day of the month before, or from the month's first day in an instrument's
+              first month; a tie goes to BSE.
+          - name: close
+            description: The close as traded on the primary venue, in rupees.
+          - name: change_1d
+            description: The adjusted close less the previous one, in the day's own price scale.
+          - name: return_1d
+            description: The adjusted close over the previous one, less one.
+          - name: return_1w
+            description: The adjusted close over the one 5 bars earlier, less one.
+          - name: return_1m
+            description: The adjusted close over the one 21 bars earlier, less one.
+          - name: return_3m
+            description: The adjusted close over the one 63 bars earlier, less one.
+          - name: return_6m
+            description: The adjusted close over the one 126 bars earlier, less one.
+          - name: return_1y
+            description: The adjusted close over the one 252 bars earlier, less one.
+          - name: momentum_12_1
+            description: The adjusted close 21 bars ago over the one 252 bars ago, less one.
+          - name: volatility_20d
+            description: >
+              The sample standard deviation of the last 20 daily log returns, times the square
+              root of 252.
+          - name: rsi_14
+            description: >
+              The 14-day relative strength index from 0 to 100, Wilder's smoothing seeded with the
+              simple average of the first 14 changes; null while the close has not changed since
+              the series began.
+          - name: adtv_20d
+            description: The mean turnover of the last 20 bars, in rupees as traded.
+          - name: volume_ratio_20d
+            description: The day's adjusted volume over the mean of the 20 bars before it.
+          - name: delivery_pct_1d
+            description: >
+              Delivered shares over shares traded, times 100; null without a delivery figure. Above
+              100 only on a venue day whose delivery file counts more shares than its bhavcopy.
+          - name: delivery_pct_20d
+            description: The mean of delivery_pct_1d over 20 bars; null unless all 20 carry one.
+          - name: from_52w_high
+            description: >
+              The adjusted close over the highest adjusted high of the last 252 bars, less one: 0
+              at the high, negative below it.
+          - name: is_52w_high
+            description: Whether the day's high reaches every high of the 251 bars before it.
+          - name: is_52w_low
+            description: Whether the day's low reaches every low of the 251 bars before it.
+          - name: sma_20
+            description: The simple average of the last 20 adjusted closes.
+          - name: sma_50
+            description: The simple average of the last 50 adjusted closes.
+          - name: sma_200
+            description: The simple average of the last 200 adjusted closes.
+          - name: ema_20
+            description: >
+              The exponential average of adjusted closes with weight 2 / 21, seeded with the
+              simple average of the first 20.
+          - name: ema_50
+            description: >
+              The exponential average of adjusted closes with weight 2 / 51, seeded with the
+              simple average of the first 50.
+          - name: bollinger_20_upper
+            description: The 20-day average plus two population standard deviations.
+          - name: bollinger_20_lower
+            description: The 20-day average less two population standard deviations.
+          - name: venue_spread_bps
+            description: >
+              The gap between the two venues' closes in basis points of their midpoint; null
+              where the other venue has no close that day.
+          - name: is_day_complete
+            description: Whether the primary venue's day passed validation.
+          - name: is_diverging
+            description: >
+              Whether the two venues' closes differ by more than 500 basis points where both
+              traded at least 25 lakh rupees at 10 rupees or more, which makes the day incomplete.
