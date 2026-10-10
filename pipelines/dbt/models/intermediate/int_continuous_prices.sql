@@ -42,8 +42,12 @@ steps as (
     from by_ex_date
 ),
 
+-- An instrument can trade on two lines at a venue on one day under different ISINs, such as a
+-- deal window numbered under the ISIN before a change of face value. One bar stands, by the rule
+-- ingestion applies within an ISIN: a line numbered as a second line, its scrip code beginning
+-- 1 or 6, gives way, and among the rest the most trades, then turnover, then shares stand.
 bars as (
-    select
+    select distinct on (lineage.current_isin, prices.venue, prices.trade_date)
         lineage.current_isin,
         prices.isin,
         prices.venue,
@@ -63,6 +67,14 @@ bars as (
             prices.isin = delivery.isin
             and prices.venue = delivery.venue
             and prices.trade_date = delivery.trade_date
+    order by
+        lineage.current_isin asc,
+        prices.venue asc,
+        prices.trade_date asc,
+        coalesce(left(prices.scrip_code, 1) in ('1', '6'), false) asc,
+        prices.trade_count desc nulls last,
+        prices.turnover desc nulls last,
+        prices.volume desc
 )
 
 select
