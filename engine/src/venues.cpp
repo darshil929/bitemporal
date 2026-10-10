@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <btcore/parallel.hpp>
 #include <btcore/venues.hpp>
 #include <chrono>
@@ -18,6 +19,36 @@ std::int64_t month_start(std::int64_t day) {
 double traded(double turnover) { return is_missing(turnover) ? 0.0 : turnover; }
 
 Venue larger(double bse, double nse) { return nse > bse ? Venue::nse : Venue::bse; }
+
+// One instrument's bars at one venue, read in step with its bars at the other.
+struct VenueBars {
+  std::span<const std::int64_t> days;
+  std::span<const double> turnover;
+  std::span<std::uint8_t> out;
+  std::size_t next = 0;
+
+  [[nodiscard]] bool has_bars() const { return next < days.size(); }
+  [[nodiscard]] bool trades_on(std::int64_t day) const { return has_bars() && days[next] == day; }
+};
+
+void designate(VenueBars bse, VenueBars nse) {
+  PrimaryVenueState state;
+  while (bse.has_bars() || nse.has_bars()) {
+    const std::int64_t day = !nse.has_bars()   ? bse.days[bse.next]
+                             : !bse.has_bars() ? nse.days[nse.next]
+                                               : std::min(bse.days[bse.next], nse.days[nse.next]);
+    const bool on_bse = bse.trades_on(day);
+    const bool on_nse = nse.trades_on(day);
+    const Venue venue = state.update(day, on_bse ? bse.turnover[bse.next] : missing,
+                                     on_nse ? nse.turnover[nse.next] : missing);
+    if (on_bse) {
+      bse.out[bse.next++] = venue == Venue::bse ? 1 : 0;
+    }
+    if (on_nse) {
+      nse.out[nse.next++] = venue == Venue::nse ? 1 : 0;
+    }
+  }
+}
 
 }  // namespace
 
@@ -40,6 +71,21 @@ void primary_venue(std::span<const std::int64_t> days, std::span<const double> b
   parallel_for(batch.size(), threads, [&](std::size_t index) {
     primary_venue(batch.slice(days, index), batch.series(index),
                   batch.input_series(nse_turnover, index), batch.slice(out, index));
+  });
+}
+
+void designated_bars(std::span<const std::int64_t> days, std::span<const double> turnover,
+                     std::span<const std::int64_t> offsets, std::span<std::uint8_t> out,
+                     unsigned threads) {
+  const SeriesBatch batch(turnover, offsets);
+  if (batch.size() % 2 != 0) {
+    throw InvalidArgument("series come in pairs, BSE then NSE, got " +
+                          std::to_string(batch.size()));
+  }
+  parallel_for(batch.size() / 2, threads, [&](std::size_t instrument) {
+    const std::size_t bse = 2 * instrument;
+    designate({batch.slice(days, bse), batch.series(bse), batch.slice(out, bse)},
+              {batch.slice(days, bse + 1), batch.series(bse + 1), batch.slice(out, bse + 1)});
   });
 }
 

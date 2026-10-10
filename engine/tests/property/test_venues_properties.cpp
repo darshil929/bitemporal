@@ -2,6 +2,7 @@
 
 #include <btcore/venues.hpp>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -73,6 +74,72 @@ TEST(VenuesProperties, HoldsOneVenueThroughEachLaterMonth) {
         ASSERT_EQ(out[row], out[row - 1]) << "seed " << seed << ", row " << row;
       }
     }
+  }
+}
+
+// The same instruments laid out twice: once by day with both venues' turnover, once as a pair of
+// venue series, each bar remembering its day's row and its venue.
+struct PairedMarket {
+  Market by_day;
+  std::vector<std::int64_t> days;
+  std::vector<double> turnover;
+  std::vector<std::int64_t> offsets{0};
+  std::vector<std::size_t> day_row;
+  std::vector<Venue> venue;
+};
+
+PairedMarket paired_market(std::uint64_t seed) {
+  btcore::testing::SeriesGenerator draw(seed);
+  PairedMarket market;
+  for (int instrument = 0; instrument < 40; ++instrument) {
+    std::int64_t day = 19'000 + static_cast<std::int64_t>(draw.uniform() * 400);
+    std::vector<std::size_t> bse_rows;
+    std::vector<std::size_t> nse_rows;
+    for (int bar = 0; bar < 500; ++bar) {
+      day += draw.uniform() < 0.01 ? 150 : (draw.uniform() < 0.2 ? 3 : 1);
+      const double pick = draw.uniform();
+      const std::size_t row = market.by_day.days.size();
+      market.by_day.days.push_back(day);
+      market.by_day.bse.push_back(pick < 0.75 ? draw.price() : btcore::missing);
+      market.by_day.nse.push_back(pick > 0.25 ? draw.price() : btcore::missing);
+      if (pick < 0.75) {
+        bse_rows.push_back(row);
+      }
+      if (pick > 0.25) {
+        nse_rows.push_back(row);
+      }
+    }
+    market.by_day.offsets.push_back(static_cast<std::int64_t>(market.by_day.days.size()));
+    const auto lay_out = [&market](Venue venue, const std::vector<std::size_t>& rows,
+                                   const std::vector<double>& turnover) {
+      for (const std::size_t row : rows) {
+        market.days.push_back(market.by_day.days[row]);
+        market.turnover.push_back(turnover[row]);
+        market.day_row.push_back(row);
+        market.venue.push_back(venue);
+      }
+      market.offsets.push_back(static_cast<std::int64_t>(market.days.size()));
+    };
+    lay_out(Venue::bse, bse_rows, market.by_day.bse);
+    lay_out(Venue::nse, nse_rows, market.by_day.nse);
+  }
+  return market;
+}
+
+TEST(VenuesProperties, DesignatesTheBarsOfEachDaysPrimaryVenueOnAnyThreadCount) {
+  const auto seed = btcore::testing::property_seed();
+  const PairedMarket market = paired_market(seed + 2);
+  std::vector<std::uint8_t> alone(market.days.size());
+  std::vector<std::uint8_t> spread(market.days.size());
+  btcore::designated_bars(market.days, market.turnover, market.offsets, alone, 1);
+  btcore::designated_bars(market.days, market.turnover, market.offsets, spread, 8);
+  ASSERT_EQ(alone, spread) << "seed " << seed;
+  const Market& by_day = market.by_day;
+  std::vector<Venue> designated(by_day.days.size());
+  btcore::primary_venue(by_day.days, by_day.bse, by_day.nse, by_day.offsets, designated, 0);
+  for (std::size_t bar = 0; bar < alone.size(); ++bar) {
+    ASSERT_EQ(alone[bar], designated[market.day_row[bar]] == market.venue[bar] ? 1 : 0)
+        << "seed " << seed << ", bar " << bar;
   }
 }
 

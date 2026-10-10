@@ -71,6 +71,7 @@ add_executable(btcore_benchmarks
   bench/bench_returns.cpp
   bench/bench_traded_value.cpp
   bench/bench_variance.cpp
+  bench/bench_venues.cpp
   bench/bench_volatility.cpp
 )
 target_link_libraries(btcore_benchmarks
