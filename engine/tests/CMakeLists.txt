@@ -12,6 +12,7 @@ target_compile_definitions(btcore_golden_table PRIVATE BTCORE_GOLDEN_DIR="${CMAK
 target_link_libraries(btcore_golden_table PRIVATE btcore_warnings)
 
 add_executable(btcore_unit_tests
+  golden/test_features_golden.cpp
   golden/test_golden_table.cpp
   golden/test_moving_average_golden.cpp
   golden/test_price_bands_golden.cpp
@@ -24,6 +25,7 @@ add_executable(btcore_unit_tests
   golden/test_venues_golden.cpp
   golden/test_volatility_golden.cpp
   golden/test_volume_flow_golden.cpp
+  property/test_features_properties.cpp
   property/test_log1p_properties.cpp
   property/test_moving_average_properties.cpp
   property/test_price_bands_properties.cpp
@@ -38,6 +40,7 @@ add_executable(btcore_unit_tests
   property/test_volatility_properties.cpp
   property/test_volume_flow_properties.cpp
   unit/test_arithmetic.cpp
+  unit/test_features.cpp
   unit/test_log1p.cpp
   unit/test_moving_average.cpp
   unit/test_parallel.cpp
@@ -59,6 +62,7 @@ target_link_libraries(btcore_unit_tests
 )
 
 add_executable(btcore_benchmarks
+  bench/bench_features.cpp
   bench/bench_moving_average.cpp
   bench/bench_parallel.cpp
   bench/bench_price_bands.cpp
