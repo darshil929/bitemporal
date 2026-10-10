@@ -11,7 +11,7 @@ namespace {
 
 using btcore::Feature;
 
-// Closes rising by one from 100.
+// Closes rising by one from 100, read as every input: highs, lows, volumes, delivery and turnover.
 std::vector<double> rising(std::size_t length) {
   std::vector<double> values(length);
   for (std::size_t index = 0; index < length; ++index) {
@@ -22,7 +22,7 @@ std::vector<double> rising(std::size_t length) {
 
 std::vector<double> computed(const std::vector<double>& values, const std::vector<double>& factor) {
   std::vector<double> out(values.size() * btcore::feature_count);
-  btcore::daily_features({values, factor}, out);
+  btcore::daily_features({values, values, values, values, values, values, factor}, out);
   return out;
 }
 
@@ -67,16 +67,24 @@ TEST(DailyFeatures, ReadsEachLevelInItsOwnDaysScale) {
   EXPECT_EQ(at(out, kLength, Feature::ema_20, 19), 219.0);
   EXPECT_EQ(at(out, kLength, Feature::sma_20, 24), 114.5);
   EXPECT_EQ(at(out, kLength, Feature::return_1d, 5), (105.0 - 104.0) / 104.0);
+  EXPECT_EQ(at(out, kLength, Feature::delivery_pct_1d, 5), 100.0);
 }
 
 TEST(DailyFeatures, RefusesInputsAndOutputsOfAnotherLength) {
   const auto values = rising(30);
   const std::vector<double> factor(30, 1.0);
-  const std::vector<double> short_factor(29, 1.0);
+  const std::vector<double> short_input(29, 1.0);
   std::vector<double> out(30 * btcore::feature_count);
-  EXPECT_THROW(btcore::daily_features({values, short_factor}, out), btcore::InvalidArgument);
+  EXPECT_THROW(
+      btcore::daily_features({values, values, values, values, short_input, values, factor}, out),
+      btcore::InvalidArgument);
+  EXPECT_THROW(
+      btcore::daily_features({values, values, values, values, values, values, short_input}, out),
+      btcore::InvalidArgument);
   out.pop_back();
-  EXPECT_THROW(btcore::daily_features({values, factor}, out), btcore::InvalidArgument);
+  EXPECT_THROW(
+      btcore::daily_features({values, values, values, values, values, values, factor}, out),
+      btcore::InvalidArgument);
 }
 
 }  // namespace
