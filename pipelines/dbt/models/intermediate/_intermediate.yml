@@ -106,6 +106,7 @@ models:
       A price series that spans a change of face value, keyed on the ISIN the instrument trades
       under now and scaled by every factor int_capital_action_factors applies after each bar. A split issues a new ISIN
       holding no earlier bars, so a series read from stg_price_daily alone stops at the split.
+      Rebuilt as a table by each run, one bar per instrument, venue and day.
     columns:
       - name: isin
         description: The ISIN the instrument trades under now, which the whole series is keyed on.

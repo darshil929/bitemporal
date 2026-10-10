@@ -12,13 +12,13 @@ from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
 
 from fixtures.loader import load_seed
+from pipelines.db.schema import Base
 from pipelines.resources import Database
 
 # Matches the image the local stack runs, so tests exercise the same extensions.
 POSTGRES_IMAGE = "timescale/timescaledb-ha:pg17"
 
 PIPELINES_ROOT = Path(__file__).resolve().parents[1]
-DBT_SEEDS = PIPELINES_ROOT / "dbt" / "seeds"
 SEED_SCHEMA = "fixture"
 
 # The seed dataset occupies the fixture schema in the same container.
@@ -97,9 +97,11 @@ def dbt_environment(dsn: str) -> dict[str, str]:
 def dbt_built(migrated: Config, postgres_dsn: str) -> Iterator[None]:
     """A migrated schema dbt builds into, cleared of the models and seeds before migrating down.
 
-    The models are views over the migrated tables, which cannot be dropped while they stand.
+    The models are views and tables over the migrated tables, which cannot be dropped while views
+    stand on them. Every table the migrations do not manage is one dbt built.
     """
     yield
+    managed = set(Base.metadata.tables) | {"alembic_version"}
     with psycopg.connect(postgres_dsn, autocommit=True) as connection:
         views = connection.execute(
             "select table_name from information_schema.views where table_schema = %s",
@@ -110,7 +112,13 @@ def dbt_built(migrated: Config, postgres_dsn: str) -> Iterator[None]:
             connection.execute(
                 sql.SQL("drop view if exists {}.{} cascade").format(schema, sql.Identifier(view))
             )
-        for seed in DBT_SEEDS.glob("*.csv"):
-            connection.execute(
-                sql.SQL("drop table if exists {}.{}").format(schema, sql.Identifier(seed.stem))
-            )
+        tables = connection.execute(
+            "select table_name from information_schema.tables"
+            " where table_schema = %s and table_type = 'BASE TABLE'",
+            (MIGRATION_SCHEMA,),
+        ).fetchall()
+        for (table,) in tables:
+            if table not in managed:
+                connection.execute(
+                    sql.SQL("drop table {}.{}").format(schema, sql.Identifier(table))
+                )
