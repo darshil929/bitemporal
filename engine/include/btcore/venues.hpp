@@ -24,6 +24,14 @@ void primary_venue(std::span<const std::int64_t> days, std::span<const double> b
                    std::span<const double> nse_turnover, std::span<const std::int64_t> offsets,
                    std::span<Venue> out, unsigned threads);
 
+/// 1 for each bar on its instrument's primary venue that day, 0 for a bar on the other. The series
+/// come in pairs, instrument `i`'s BSE bars in series `2i` and its NSE bars in series `2i + 1`,
+/// either empty where it never traded there; `days` and `turnover` are laid out like the bars, and
+/// each series' days rise strictly. A day the designated venue did not trade has no designated bar.
+void designated_bars(std::span<const std::int64_t> days, std::span<const double> turnover,
+                     std::span<const std::int64_t> offsets, std::span<std::uint8_t> out,
+                     unsigned threads);
+
 /// The primary venue one day at a time, equal to the batch form.
 class PrimaryVenueState {
  public:
