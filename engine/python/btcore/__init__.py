@@ -1,6 +1,10 @@
 from btcore._btcore import (
+    FEATURE_COLUMNS,
+    FEATURE_LEADING_BLANKS,
     bollinger_bands,
     change,
+    daily_features,
+    designated_bars,
     distance_from_high,
     ema,
     new_high,
@@ -20,8 +24,12 @@ from btcore._btcore import (
 )
 
 __all__ = [
+    "FEATURE_COLUMNS",
+    "FEATURE_LEADING_BLANKS",
     "bollinger_bands",
     "change",
+    "daily_features",
+    "designated_bars",
     "distance_from_high",
     "ema",
     "new_high",

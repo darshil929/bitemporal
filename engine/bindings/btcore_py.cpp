@@ -5,6 +5,7 @@
 #include <nanobind/stl/string_view.h>
 
 #include <algorithm>
+#include <btcore/features.hpp>
 #include <btcore/indicators.hpp>
 #include <btcore/types.hpp>
 #include <btcore/venues.hpp>
@@ -30,6 +31,8 @@ using Offsets = nb::ndarray<const std::int64_t, nb::ndim<1>, nb::c_contig, nb::d
 using Output = nb::ndarray<double, nb::numpy, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 using Days = nb::ndarray<const std::int64_t, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
 using VenueCodes = nb::ndarray<std::int8_t, nb::numpy, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+using Flags = nb::ndarray<std::uint8_t, nb::numpy, nb::ndim<1>, nb::c_contig, nb::device::cpu>;
+using FeatureTable = nb::ndarray<double, nb::numpy, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
 
 using SeriesForm = void (*)(std::span<const double>, int, std::span<double>);
 using UniverseForm = void (*)(const btcore::SeriesBatch&, int, std::span<double>, unsigned);
@@ -241,6 +244,47 @@ VenueCodes venue_binding(const Days& days, const Values& bse_turnover, const Val
   return codes;
 }
 
+std::span<const double> line(const Values& values) { return {values.data(), values.size()}; }
+
+FeatureTable features_binding(const Values& close, const Values& high, const Values& low,
+                              const Values& volume, const Values& delivery, const Values& turnover,
+                              const Values& adjustment_factor,
+                              const std::optional<Offsets>& offsets, unsigned threads) {
+  const btcore::DailyBars bars{line(close),
+                               line(high),
+                               line(low),
+                               line(volume),
+                               line(delivery),
+                               line(turnover),
+                               line(adjustment_factor)};
+  auto table = nb::cast<FeatureTable>(nb::module_::import_("numpy").attr("empty")(
+                                          nb::make_tuple(btcore::feature_count, close.size())),
+                                      false);
+  const std::span<double> output(table.data(), table.size());
+  {
+    const nb::gil_scoped_release release;
+    if (offsets) {
+      btcore::daily_features(bars, {offsets->data(), offsets->size()}, output, threads);
+    } else {
+      btcore::daily_features(bars, output);
+    }
+  }
+  return table;
+}
+
+Flags designated_binding(const Days& days, const Values& turnover, const Offsets& offsets,
+                         unsigned threads) {
+  auto flags = nb::cast<Flags>(
+      nb::module_::import_("numpy").attr("empty")(days.size(), "dtype"_a = "uint8"), false);
+  {
+    const nb::gil_scoped_release release;
+    btcore::designated_bars({days.data(), days.size()}, line(turnover),
+                            {offsets.data(), offsets.size()}, {flags.data(), flags.size()},
+                            threads);
+  }
+  return flags;
+}
+
 }  // namespace
 
 NB_MODULE(_btcore, m) {
@@ -374,4 +418,35 @@ NB_MODULE(_btcore, m) {
       "datetime64[D].view('int64') gives them, and rises strictly; a venue's turnover is NaN on a "
       "day it did not trade.\n\n"
       "offsets and threads are as for sma.");
+
+  nb::list names;
+  nb::list leading_blanks;
+  for (const btcore::FeatureColumn& column : btcore::feature_columns) {
+    names.append(nb::str(column.name.data(), column.name.size()));
+    leading_blanks.append(column.leading_blanks);
+  }
+  const auto tuple = nb::module_::import_("builtins").attr("tuple");
+  m.attr("FEATURE_COLUMNS") = tuple(names);
+  m.attr("FEATURE_LEADING_BLANKS") = tuple(leading_blanks);
+
+  m.def("daily_features", &features_binding, "close"_a.noconvert(), "high"_a.noconvert(),
+        "low"_a.noconvert(), "volume"_a.noconvert(), "delivery"_a.noconvert(),
+        "turnover"_a.noconvert(), "adjustment_factor"_a.noconvert(), nb::kw_only(),
+        "offsets"_a.noconvert() = nb::none(), "threads"_a = 0,
+        "Every daily feature column of each series, as an array of FEATURE_COLUMNS rows by one "
+        "column per bar. close, high and low are multiplied by the adjustment factor, volume and "
+        "delivery divided by it, turnover is as traded, and delivery is NaN on a day without a "
+        "figure. Returns, volatility, momentum and the distance from the high are fractions and "
+        "the flags 1.0 or 0.0; change_1d, the averages and the bands are divided by the bar's "
+        "factor, so each is in its own day's price scale. A column's first "
+        "FEATURE_LEADING_BLANKS values of a series are NaN.\n\n"
+        "Every input is laid out like close; offsets and threads are as for sma.");
+
+  m.def("designated_bars", &designated_binding, "days"_a.noconvert(), "turnover"_a.noconvert(),
+        "offsets"_a.noconvert(), nb::kw_only(), "threads"_a = 0,
+        "1 as uint8 for each bar on its instrument's primary venue that day, 0 for a bar on the "
+        "other. The series come in pairs, instrument i's BSE bars in series 2i and its NSE bars in "
+        "series 2i + 1, either empty where it never traded there; days, as for primary_venue, and "
+        "turnover are laid out like the bars, and each series' days rise strictly.\n\n"
+        "threads is as for sma.");
 }
