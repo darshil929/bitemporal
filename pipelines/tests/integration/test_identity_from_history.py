@@ -129,7 +129,6 @@ def test_the_asset_writes_what_it_derives(
         open_.execute("delete from price_daily")
         open_.execute("delete from instrument_succession")
         open_.execute("delete from listing")
-        open_.execute("delete from instrument_primary_venue")
         open_.execute("delete from instrument_master")
         open_.commit()
 
@@ -189,7 +188,6 @@ def test_a_stretch_reaching_an_earlier_first_day_leaves_no_row_behind(
             "price_daily",
             "instrument_succession",
             "listing",
-            "instrument_primary_venue",
             "instrument_master",
         ):
             open_.execute(f"delete from {table}")
@@ -215,7 +213,6 @@ def test_a_derivation_that_loses_stretches_outright_is_refused(
             "price_daily",
             "instrument_succession",
             "listing",
-            "instrument_primary_venue",
             "instrument_master",
         ):
             open_.execute(f"delete from {table}")
@@ -244,7 +241,6 @@ def test_history_read_before_bses_tickers_derives_the_same_listings(
             "price_daily",
             "instrument_succession",
             "listing",
-            "instrument_primary_venue",
             "instrument_master",
         ):
             open_.execute(f"delete from {table}")

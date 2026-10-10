@@ -162,9 +162,9 @@ def ingest(
                     item for item in derive_instruments(bars, names) if item.isin not in read_names
                 ]
                 # Every fact references the instrument master, so an instrument a day introduces
-                # is written before its bars, under that day's name. Listings and the primary venue
-                # read the whole history and are derived downstream rather than one day at a time.
-                persist_identity(connection, introduced, (), ())
+                # is written before its bars, under that day's name. Listings read the whole
+                # history and are derived downstream rather than one day at a time.
+                persist_identity(connection, introduced, ())
                 for bar in bars:
                     held = read_names.get(bar.isin)
                     if held is None or day > held[0]:
@@ -184,7 +184,7 @@ def ingest(
                     noticed,
                 )
                 persist_identity(
-                    connection, derive_instruments(changed, names_by_isin(read, venue)), (), ()
+                    connection, derive_instruments(changed, names_by_isin(read, venue)), ()
                 )
                 corrected += persist_bars(connection, changed)
                 record_ingestion(
