@@ -351,6 +351,34 @@ unit_tests:
            trade_date: "2025-01-10", adjustment_factor: "1", close_as_traded: "532",
            close: "532.0000", volume: "5000", delivery_quantity: null, turnover: "2660000.00"}
 
+  - name: a_second_line_under_a_former_isin_gives_way
+    description: >
+      A line numbered as a second line, under the ISIN before a change of face value, trades
+      beside the ordinary line under the new one. The ordinary line stands, as ingestion keeps it
+      within an ISIN, so the day holds one bar.
+    model: int_continuous_prices
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE579B01021, current_isin: INE579B01039}
+          - {isin: INE579B01039, current_isin: INE579B01039}
+      - input: ref('int_capital_action_factors')
+        rows: []
+      - input: ref('stg_price_daily')
+        rows:
+          - {isin: INE579B01021, venue: BSE, trade_date: "2018-02-02",
+             as_of_date: "2018-02-02", scrip_code: "604000", open: 60.9, high: 60.9, low: 60.9,
+             close: 60.9, volume: 1464704, turnover: 89200473.6, trade_count: 2}
+          - {isin: INE579B01039, venue: BSE, trade_date: "2018-02-02",
+             as_of_date: "2018-02-02", scrip_code: "504000", open: 63.3, high: 63.3, low: 58,
+             close: 59.35, volume: 43986, turnover: 2610569.1, trade_count: 121}
+      - input: ref('stg_delivery_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE579B01039, source_isin: INE579B01039, venue: BSE,
+           trade_date: "2018-02-02", close_as_traded: "59.35"}
+
   - name: a_bar_carries_the_product_of_the_actions_still_ahead_of_it
     description: >
       HDFC Bank split one for two on 2019-09-19 and issued a one for one bonus on 2025-08-26. A

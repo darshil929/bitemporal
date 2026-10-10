@@ -37,16 +37,6 @@ class SuccessionRecord(BaseModel):
     changed_on: date
 
 
-class PrimaryVenueRecord(BaseModel):
-    """The venue an instrument's series is computed from, over a span of dates."""
-
-    isin: str
-    effective_from: date
-    as_of_date: date
-    effective_to: date | None
-    venue: str
-
-
 class InstrumentNameRecord(BaseModel):
     """A name a list of securities gives an instrument, on the day the list was read."""
 

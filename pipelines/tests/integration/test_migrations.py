@@ -7,9 +7,7 @@ from alembic.config import Config
 
 from conftest import MIGRATION_SCHEMA
 
-IDENTITY_TABLES = frozenset(
-    {"instrument_master", "listing", "listing_suspension", "instrument_primary_venue"}
-)
+IDENTITY_TABLES = frozenset({"instrument_master", "listing", "listing_suspension"})
 FACT_TABLES = frozenset({"price_daily", "corporate_action", "instrument_name", "ingestion_log"})
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
 DERIVED_TABLES = frozenset({"mart_daily_features"})
@@ -59,6 +57,12 @@ def test_upgrade_creates_every_managed_table(migrated: Config, postgres_dsn: str
 def test_migration_matches_the_model_definitions(migrated: Config) -> None:
     """Guards against the hand-written migration and the models drifting apart."""
     command.check(migrated)
+
+
+def test_designated_venue_stretches_are_no_longer_stored(
+    migrated: Config, postgres_dsn: str
+) -> None:
+    assert "instrument_primary_venue" not in _tables(postgres_dsn)
 
 
 def test_downgrade_removes_every_table_it_created(migrated: Config, postgres_dsn: str) -> None:

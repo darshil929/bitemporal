@@ -180,32 +180,6 @@ class InstrumentName(Base):
     __table_args__ = (CheckConstraint("name <> ''", name="name_is_not_empty"),)
 
 
-class InstrumentPrimaryVenue(Base):
-    """The venue an instrument's series is computed from, over a span of dates.
-
-    Recomputed on a schedule from trailing turnover. Each recomputation inserts a row rather than
-    replacing one, leaving every earlier assignment readable.
-    """
-
-    __tablename__ = "instrument_primary_venue"
-
-    isin: Mapped[str] = mapped_column(
-        String(12), ForeignKey("instrument_master.isin"), primary_key=True
-    )
-    effective_from: Mapped[date] = mapped_column(Date, primary_key=True)
-    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    effective_to: Mapped[date | None] = mapped_column(Date)
-    venue: Mapped[str] = mapped_column(String(12))
-
-    __table_args__ = (
-        CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
-        CheckConstraint(
-            "effective_to is null or effective_to > effective_from",
-            name="ends_after_it_starts",
-        ),
-    )
-
-
 class PriceDaily(Base):
     """One bar per instrument, venue, trading day and the date that bar became knowable.
 

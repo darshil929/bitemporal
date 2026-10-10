@@ -8,9 +8,7 @@ covers years of rows, and the full universe holds tens of millions.
 import logging
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
 from statistics import median
 
 import psycopg
@@ -53,13 +51,6 @@ group by isin, venue, coalesce(scrip_code, ''), stretch, local_symbol
 order by isin, venue, min(trade_date)
 """
 
-TURNOVER = """
-select distinct on (isin, venue, trade_date) isin, venue, trade_date, turnover
-from price_daily
-where as_of_date <= %(as_of)s
-order by isin, venue, trade_date, as_of_date desc
-"""
-
 VENUE_LAST_DAYS = """
 select venue, max(trade_date) from price_daily where as_of_date <= %(as_of)s group by venue
 """
@@ -84,29 +75,12 @@ BAR_FIELDS = (
 )
 
 
-@dataclass(frozen=True)
-class TurnoverPoint:
-    """What one instrument traded at one venue on one day, which designates a primary venue."""
-
-    isin: str
-    venue: str
-    trade_date: date
-    turnover: Decimal | None
-
-
 def read_stretches(connection: psycopg.Connection, as_of: date = FAR_FUTURE) -> tuple[Stretch, ...]:
     rows = connection.execute(STRETCHES, {"as_of": as_of}).fetchall()
     stretches = tuple(Stretch(*row) for row in rows)
 
     logger.info("stretches read", extra={"stretches": len(stretches)})
     return stretches
-
-
-def read_turnover(
-    connection: psycopg.Connection, as_of: date = FAR_FUTURE
-) -> tuple[TurnoverPoint, ...]:
-    rows = connection.execute(TURNOVER, {"as_of": as_of}).fetchall()
-    return tuple(TurnoverPoint(*row) for row in rows)
 
 
 def venue_last_days(connection: psycopg.Connection, as_of: date = FAR_FUTURE) -> dict[str, date]:

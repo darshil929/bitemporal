@@ -8,7 +8,6 @@ import pytest
 from pipelines.identity import (
     UnresolvedInstrument,
     derive_listings,
-    derive_primary_venue,
     derive_successions,
     resolvable,
 )
@@ -189,48 +188,6 @@ def test_two_security_lines_at_one_venue_stay_separate() -> None:
 
     assert {item.scrip_code for item in listings} == {"500325", "100325"}
     assert all(item.closure_reason is None for item in listings)
-
-
-def test_the_busier_venue_is_designated_primary() -> None:
-    bars = [bar(venue="NSE", day=f"2025-01-{day:02d}", turnover="900") for day in range(2, 28)] + [
-        bar(venue="BSE", day=f"2025-01-{day:02d}", turnover="100") for day in range(2, 28)
-    ]
-
-    designations = derive_primary_venue(bars)
-
-    assert designations
-    assert {item.venue for item in designations} == {"NSE"}
-
-
-def test_a_designation_records_the_date_it_was_computed() -> None:
-    """A backtest reads the venue trailing turnover pointed at then, not the one it points at now."""
-    bars = [bar(day=f"2025-01-{day:02d}") for day in range(2, 28)]
-
-    designations = derive_primary_venue(bars)
-
-    assert all(item.as_of_date == item.effective_from for item in designations)
-
-
-def test_a_venue_that_takes_over_opens_a_new_span() -> None:
-    early = [bar(venue="BSE", day=f"2025-01-{day:02d}", turnover="900") for day in range(2, 28)]
-    early += [bar(venue="NSE", day=f"2025-01-{day:02d}", turnover="100") for day in range(2, 28)]
-    late = [bar(venue="NSE", day=f"2025-06-{day:02d}", turnover="900") for day in range(2, 28)]
-    late += [bar(venue="BSE", day=f"2025-06-{day:02d}", turnover="100") for day in range(2, 28)]
-
-    designations = derive_primary_venue(early + late)
-    venues = [item.venue for item in designations]
-
-    assert venues[0] == "BSE"
-    assert "NSE" in venues
-    assert designations[0].effective_to is not None, "the earlier span has to close"
-
-
-def test_the_final_span_stays_open() -> None:
-    bars = [bar(day=f"2025-01-{day:02d}") for day in range(2, 28)]
-
-    designations = derive_primary_venue(bars)
-
-    assert designations[-1].effective_to is None
 
 
 def test_a_superseded_stretch_names_the_isin_that_took_it_over() -> None:

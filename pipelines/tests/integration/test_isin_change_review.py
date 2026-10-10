@@ -49,7 +49,6 @@ def test_a_change_before_the_history_held_is_not_asked_for(
                 )
             ],
             (),
-            (),
         )
         persist_bars(
             connection,
