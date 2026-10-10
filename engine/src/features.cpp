@@ -105,4 +105,63 @@ void daily_features(const DailyBars& bars, std::span<const std::int64_t> offsets
   });
 }
 
+DailyFeatureState::DailyFeatureState()
+    : change_(1),
+      return_1d_(1, 0),
+      return_1w_(kWeek, 0),
+      return_1m_(kMonth, 0),
+      return_3m_(kQuarter, 0),
+      return_6m_(kHalfYear, 0),
+      return_1y_(kYear, 0),
+      momentum_(kYear - kMonth, kMonth),
+      volatility_(kShortWindow, kYear),
+      rsi_(kRsiPeriod),
+      turnover_average_(kShortWindow),
+      volume_ratio_(kShortWindow),
+      delivery_average_(kShortWindow),
+      from_high_(kYear),
+      new_high_(kYear, Extreme::maximum),
+      new_low_(kYear, Extreme::minimum),
+      sma_20_(kShortWindow),
+      sma_50_(kMediumWindow),
+      sma_200_(kLongWindow),
+      ema_20_(kShortWindow),
+      ema_50_(kMediumWindow),
+      bands_(kShortWindow, kBandWidth) {}
+
+std::array<double, feature_count> DailyFeatureState::update(const DailyBar& bar) {
+  std::array<double, feature_count> row{};
+  const auto set = [&row](Feature feature, double value) {
+    row[static_cast<std::size_t>(feature)] = value;
+  };
+  const double factor = bar.adjustment_factor;
+  set(Feature::change_1d, change_.update(bar.close) / factor);
+  set(Feature::return_1d, return_1d_.update(bar.close));
+  set(Feature::return_1w, return_1w_.update(bar.close));
+  set(Feature::return_1m, return_1m_.update(bar.close));
+  set(Feature::return_3m, return_3m_.update(bar.close));
+  set(Feature::return_6m, return_6m_.update(bar.close));
+  set(Feature::return_1y, return_1y_.update(bar.close));
+  set(Feature::momentum_12_1, momentum_.update(bar.close));
+  set(Feature::volatility_20d, volatility_.update(bar.close));
+  set(Feature::rsi_14, rsi_.update(bar.close));
+  set(Feature::adtv_20d, turnover_average_.update(bar.turnover));
+  set(Feature::volume_ratio_20d, volume_ratio_.update(bar.volume));
+  const double delivery_share = percentage(bar.delivery, bar.volume);
+  set(Feature::delivery_pct_1d, delivery_share);
+  set(Feature::delivery_pct_20d, delivery_average_.update(delivery_share));
+  set(Feature::from_52w_high, from_high_.update(bar.close, bar.high));
+  set(Feature::is_52w_high, new_high_.update(bar.high));
+  set(Feature::is_52w_low, new_low_.update(bar.low));
+  set(Feature::sma_20, sma_20_.update(bar.close) / factor);
+  set(Feature::sma_50, sma_50_.update(bar.close) / factor);
+  set(Feature::sma_200, sma_200_.update(bar.close) / factor);
+  set(Feature::ema_20, ema_20_.update(bar.close) / factor);
+  set(Feature::ema_50, ema_50_.update(bar.close) / factor);
+  const Band band = bands_.update(bar.close);
+  set(Feature::bollinger_20_upper, band.upper / factor);
+  set(Feature::bollinger_20_lower, band.lower / factor);
+  return row;
+}
+
 }  // namespace btcore
