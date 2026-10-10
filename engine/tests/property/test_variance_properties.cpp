@@ -28,8 +28,11 @@ struct SampleVarianceState : btcore::VarianceState {
 constexpr int kSamplePeriods[] = {2, 14, 20};
 constexpr auto kWindowBlanks = [](int period) { return period - 1; };
 
-// Neumaier-compensated sums in two passes: a reference accurate to about the last bit.
+// Neumaier-compensated sums in two passes over each value less the window's first: a reference
+// accurate to about the last bit, and exactly 0 on a flat window, where the mean of the values
+// themselves can round away from their common value.
 double reference_variance(std::span<const double> window) {
+  const double shift = window.front();
   const auto compensated = [&](auto term) {
     double total = 0.0;
     double compensation = 0.0;
@@ -43,8 +46,22 @@ double reference_variance(std::span<const double> window) {
     return total + compensation;
   };
   const auto size = static_cast<double>(window.size());
-  const double mean = compensated([](double value) { return value; }) / size;
-  return compensated([mean](double value) { return (value - mean) * (value - mean); }) / size;
+  const double mean = compensated([shift](double value) { return value - shift; }) / size;
+  const auto squared_deviation = [shift, mean](double value) {
+    const double deviation = (value - shift) - mean;
+    return deviation * deviation;
+  };
+  return compensated(squared_deviation) / size;
+}
+
+TEST(VarianceProperties, AFlatWindowIsExactlyZeroWhereItsMeanRounds) {
+  // Twenty copies of this price, summed and divided by 20, come to one unit in the last place
+  // below it.
+  const std::vector<double> flat(20, 53152.579029100008);
+  std::vector<double> out(flat.size());
+  btcore::variance(flat, 20, Estimator::population, out);
+  EXPECT_EQ(out.back(), 0.0);
+  EXPECT_EQ(reference_variance(flat), 0.0);
 }
 
 TEST(VarianceProperties, BatchEqualsStreaming) {
