@@ -41,7 +41,7 @@ def test_a_table_records_the_rows_its_writers_left(migrated: Config, postgres_ds
         isin=HDFC_BANK, name="HDFC Bank", country="IN", instrument_type="equity"
     )
     with database.connect() as connection:
-        persist_identity(connection, [instrument], (), ())
+        persist_identity(connection, [instrument], ())
         persist_bars(connection, [bar("BSE"), bar("NSE")])
         connection.commit()
 

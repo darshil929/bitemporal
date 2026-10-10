@@ -2,7 +2,6 @@
 
 from collections.abc import Iterator
 from datetime import date
-from itertools import pairwise
 
 import psycopg
 import pytest
@@ -10,7 +9,6 @@ import pytest
 from pipelines.identity import (
     derive_instruments,
     derive_listings,
-    derive_primary_venue,
     persist_identity,
     resolvable,
 )
@@ -100,38 +98,6 @@ def test_a_rename_is_recorded_on_both_venues(
         assert min(per_venue.values()) > 1, f"{isin} lost a stretch at one venue"
 
 
-def test_a_primary_venue_span_never_overlaps_its_successor(
-    bars: tuple[PriceBar, ...],
-) -> None:
-    designations = derive_primary_venue(bars)
-    by_instrument: dict[str, list[tuple[date, date | None]]] = {}
-    for item in designations:
-        by_instrument.setdefault(item.isin, []).append((item.effective_from, item.effective_to))
-
-    assert by_instrument
-    for spans in by_instrument.values():
-        ordered = sorted(spans)
-        for earlier, later in pairwise(ordered):
-            assert earlier[1] is not None
-            assert earlier[1] <= later[0]
-
-
-def test_a_dual_listed_instrument_is_designated_one_venue_at_a_time(
-    bars: tuple[PriceBar, ...],
-) -> None:
-    designations = derive_primary_venue(bars)
-    dual = {item.isin for item in bars if item.venue == "BSE"} & {
-        item.isin for item in bars if item.venue == "NSE"
-    }
-
-    assert dual
-    for isin in dual:
-        spans = [item for item in designations if item.isin == isin]
-        for span in spans:
-            assert span.venue in {"BSE", "NSE"}
-        assert len({(span.effective_from, span.venue) for span in spans}) == len(spans)
-
-
 def test_identity_written_twice_leaves_one_row_per_listing(
     migrated_connection: psycopg.Connection,
     bars: tuple[PriceBar, ...],
@@ -140,14 +106,12 @@ def test_identity_written_twice_leaves_one_row_per_listing(
     names = {item.isin: item.local_symbol for item in bars}
     instruments = derive_instruments(bars, names)
     listings = derive_listings(bars, venue_last_day)
-    designations = derive_primary_venue(bars)
 
-    persist_identity(migrated_connection, instruments, listings, designations)
-    persist_identity(migrated_connection, instruments, listings, designations)
+    persist_identity(migrated_connection, instruments, listings)
+    persist_identity(migrated_connection, instruments, listings)
 
     counts = migrated_connection.execute(
-        "select (select count(*) from instrument_master), (select count(*) from listing),"
-        " (select count(*) from instrument_primary_venue)"
+        "select (select count(*) from instrument_master), (select count(*) from listing)"
     ).fetchone()
 
-    assert counts == (len(instruments), len(listings), len(designations))
+    assert counts == (len(instruments), len(listings))

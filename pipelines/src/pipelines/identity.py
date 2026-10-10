@@ -1,4 +1,4 @@
-"""Derivation of instrument identity, listings and primary venue from observed bars."""
+"""Derivation of instrument identity and listings from observed bars."""
 
 import logging
 import re
@@ -7,15 +7,12 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
-from decimal import Decimal
-from typing import Protocol
 
 import psycopg
 
 from pipelines.models.identity import (
     InstrumentRecord,
     ListingRecord,
-    PrimaryVenueRecord,
     SuccessionRecord,
 )
 from pipelines.models.market import PriceBar
@@ -36,10 +33,6 @@ SETTLED_AFTER = timedelta(days=90)
 # A face value change issues a new ISIN, and the successor trades on the next day the venue is
 # open under the identifier the venue keeps. A weekend beside a holiday fits inside this.
 SUCCESSION_WINDOW = timedelta(days=7)
-
-# Liquidity migrates between venues gradually, so the designation is recomputed monthly from the
-# quarter behind it.
-TURNOVER_WINDOW = timedelta(days=90)
 
 # A fault reading the history loses stretches outright, while history reaching further back only
 # moves the day a stretch begins, and a ticker read after a BSE scrip code only renames it.
@@ -297,105 +290,10 @@ def _absorb_untickered(history: list[Stretch], key: str) -> list[Stretch]:
     return history
 
 
-def _computation_days(first: date, last: date) -> list[date]:
-    """Month ends inside the range, and the final observed day when it is not one."""
-    days, current = [], date(first.year, first.month, 1)
-    while current <= last:
-        following = date(current.year + current.month // 12, current.month % 12 + 1, 1)
-        days.append(following - timedelta(days=1))
-        current = following
-
-    inside = [day for day in days if first <= day <= last]
-    if last not in inside:
-        inside.append(last)
-    return inside
-
-
-class TradedValue(Protocol):
-    """What designating a primary venue needs of a row: who traded where, when, and how much.
-
-    Read-only members, so a bar read from a file and a summary read from storage both satisfy it.
-    """
-
-    @property
-    def isin(self) -> str: ...
-
-    @property
-    def venue(self) -> str: ...
-
-    @property
-    def trade_date(self) -> date: ...
-
-    @property
-    def turnover(self) -> Decimal | None: ...
-
-
-def derive_primary_venue(bars: Sequence[TradedValue]) -> tuple[PrimaryVenueRecord, ...]:
-    """Designate, month by month, the venue an instrument's series is computed from.
-
-    The designation carries the date it was computed, so a backtest reads the venue that trailing
-    turnover pointed at on the date in question rather than the one it points at now.
-    """
-    if not bars:
-        return ()
-
-    by_day: dict[tuple[str, str, date], Decimal] = defaultdict(Decimal)
-    for bar in bars:
-        by_day[(bar.isin, bar.venue, bar.trade_date)] += bar.turnover or Decimal(0)
-
-    first = min(bar.trade_date for bar in bars)
-    last = max(bar.trade_date for bar in bars)
-
-    designations: dict[str, list[tuple[date, str]]] = defaultdict(list)
-    for computed_on in _computation_days(first, last):
-        window_opens = computed_on - TURNOVER_WINDOW
-        totals: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
-        for (isin, venue, day), turnover in by_day.items():
-            if window_opens < day <= computed_on:
-                totals[(isin, venue)] += turnover
-
-        leaders: dict[str, tuple[Decimal, str]] = {}
-        for (isin, venue), turnover in totals.items():
-            best = leaders.get(isin)
-            if best is None or turnover > best[0] or (turnover == best[0] and venue < best[1]):
-                leaders[isin] = (turnover, venue)
-
-        for isin, (_, venue) in leaders.items():
-            designations[isin].append((computed_on, venue))
-
-    return tuple(_collapse(designations))
-
-
-def _collapse(designations: dict[str, list[tuple[date, str]]]) -> list[PrimaryVenueRecord]:
-    """Fold consecutive months that agree into one span."""
-    records = []
-    for isin in sorted(designations):
-        months = designations[isin]
-        start_index = 0
-        for index in range(1, len(months) + 1):
-            ended = index == len(months) or months[index][1] != months[start_index][1]
-            if not ended:
-                continue
-            computed_on, venue = months[start_index]
-            closes = index < len(months)
-            records.append(
-                PrimaryVenueRecord(
-                    isin=isin,
-                    effective_from=computed_on,
-                    as_of_date=computed_on,
-                    effective_to=months[index][0] if closes else None,
-                    venue=venue,
-                )
-            )
-            start_index = index
-    return records
-
-
 def persist_identity(
     connection: psycopg.Connection,
     instruments: Sequence[InstrumentRecord],
     listings: Sequence[ListingRecord],
-    venues: Sequence[PrimaryVenueRecord],
     successions: Sequence[SuccessionRecord] = (),
 ) -> None:
     """Write identity rows, leaving anything already recorded in place."""
@@ -425,14 +323,6 @@ def persist_identity(
             ),
         )
 
-    for venue in venues:
-        connection.execute(
-            "insert into instrument_primary_venue"
-            " (isin, effective_from, as_of_date, effective_to, venue) values (%s, %s, %s, %s, %s)"
-            " on conflict (isin, effective_from, as_of_date) do nothing",
-            (venue.isin, venue.effective_from, venue.as_of_date, venue.effective_to, venue.venue),
-        )
-
     for succession in successions:
         connection.execute(
             "insert into instrument_succession"
@@ -452,7 +342,6 @@ def persist_identity(
         extra={
             "instruments": len(instruments),
             "listings": len(listings),
-            "primary_venues": len(venues),
             "successions": len(successions),
         },
     )
