@@ -1,3 +1,10 @@
+-- Stored as a table: holding one bar per instrument, venue and day sorts the whole history, which a
+-- view would repeat on every read. The unique index holds that one bar.
+{{ config(
+    materialized='table',
+    indexes=[{'columns': ['isin', 'venue', 'trade_date'], 'unique': True}],
+) }}
+
 -- One series per instrument that survives a change of face value, keyed on the ISIN the
 -- instrument trades under now. A split issues a new ISIN carrying no earlier bars, so the
 -- predecessor's bars are drawn in through the lineage and scaled by the actions that followed
