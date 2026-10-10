@@ -52,6 +52,23 @@ def test_the_models_wait_for_the_assets_that_fill_their_sources() -> None:
     ).parent_keys
 
 
+def test_the_daily_features_wait_for_the_models_they_read() -> None:
+    parents = defs.resolve_asset_graph().get(AssetKey("daily_features")).parent_keys
+
+    assert {
+        AssetKey("int_continuous_prices"),
+        AssetKey("int_capital_action_factors"),
+        AssetKey("stg_trading_day"),
+    } <= parents
+
+
+def test_both_flows_compute_the_daily_features() -> None:
+    for name in ("history_bootstrap", "daily_sync"):
+        job = defs.resolve_job_def(name)
+
+        assert AssetKey("daily_features") in job.asset_layer.selected_asset_keys
+
+
 def test_the_models_wait_for_both_venues_corporate_actions() -> None:
     writers = defs.resolve_asset_graph().get(AssetKey(["market", "corporate_action"])).parent_keys
 
