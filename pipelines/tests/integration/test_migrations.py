@@ -12,7 +12,8 @@ IDENTITY_TABLES = frozenset(
 )
 FACT_TABLES = frozenset({"price_daily", "corporate_action", "instrument_name", "ingestion_log"})
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
-MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES
+DERIVED_TABLES = frozenset({"mart_daily_features"})
+MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES | DERIVED_TABLES
 
 BAR_COLUMNS = "isin, venue, trade_date, as_of_date, local_symbol, open, high, low, close, volume"
 
@@ -108,12 +109,15 @@ def test_a_rename_keeps_the_superseded_symbol(migrated: Config, postgres_dsn: st
     assert [row[0] for row in symbols] == ["INFOSYSTCH"]
 
 
-def test_price_daily_is_partitioned_on_trade_date(migrated: Config, postgres_dsn: str) -> None:
+@pytest.mark.parametrize("table", ["price_daily", "mart_daily_features"])
+def test_a_daily_table_is_partitioned_on_trade_date(
+    migrated: Config, postgres_dsn: str, table: str
+) -> None:
     with _connect(postgres_dsn) as connection:
         dimensions = connection.execute(
             "select column_name from timescaledb_information.dimensions"
-            " where hypertable_schema = %s and hypertable_name = 'price_daily'",
-            (MIGRATION_SCHEMA,),
+            " where hypertable_schema = %s and hypertable_name = %s",
+            (MIGRATION_SCHEMA, table),
         ).fetchall()
 
     assert [row[0] for row in dimensions] == ["trade_date"]
@@ -294,4 +298,16 @@ def test_a_split_without_a_ratio_is_rejected(migrated: Config, postgres_dsn: str
                 " (isin, action_type, ex_date, source_id, as_of_date)"
                 " values (%s, 'split', %s, %s, %s)",
                 ("INE002A01018", "2026-06-01", "bse_corporate_actions", "2026-05-20"),
+            )
+
+
+def test_a_daily_feature_row_names_bse_or_nse(migrated: Config, postgres_dsn: str) -> None:
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE002A01018")
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "insert into mart_daily_features (isin, trade_date, as_of_date, primary_venue,"
+                " close, is_day_complete, is_diverging)"
+                " values ('INE002A01018', '2025-12-31', '2025-12-31', 'MCX', 1500, true, false)"
             )

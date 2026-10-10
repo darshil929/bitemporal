@@ -1,4 +1,5 @@
-"""Table definitions for instrument identity and the market facts keyed on it."""
+"""Table definitions for instrument identity, the market facts keyed on it and the figures
+derived from them."""
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -9,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Double,
     ForeignKey,
     Identity,
     Index,
@@ -42,6 +44,7 @@ ACTION_TYPES = ("split", "bonus", "consolidation", "rights", "dividend", "unhand
 # An action whose terms the purpose text does not carry, a spin off or a scheme of arrangement.
 UNTERMED_TYPES = ("dividend", "unhandled")
 INGESTION_OUTCOMES = ("succeeded", "not_published", "failed")
+PRIMARY_VENUES = ("BSE", "NSE")
 
 PRICE = Numeric(18, 4)
 RATIO = Numeric(18, 6)
@@ -422,4 +425,62 @@ class IngestionLog(Base):
             "(outcome = 'succeeded') = (row_count is not null)",
             name="a_success_counts_its_rows",
         ),
+    )
+
+
+class DailyFeature(Base):
+    """The daily features of one instrument on one day, read from its primary venue that day.
+
+    Derived from the facts and rewritten by each computation of the days it covers, so a row holds
+    the latest computation. A day the primary venue did not trade has no row. Each figure is
+    computed on that venue's own whole series, and is null while its window is still filling.
+    """
+
+    __tablename__ = "mart_daily_features"
+
+    isin: Mapped[str] = mapped_column(
+        String(12), ForeignKey("instrument_master.isin"), primary_key=True
+    )
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # The latest `as_of_date` among the facts the row was computed from.
+    as_of_date: Mapped[date] = mapped_column(Date)
+    primary_venue: Mapped[str] = mapped_column(String(12))
+    # As traded on the primary venue.
+    close: Mapped[Decimal] = mapped_column(PRICE)
+
+    # Returns, momentum, volatility and the distance from the 52-week high are fractions.
+    # `change_1d`, the averages and the bands are in the price scale of their own day.
+    change_1d: Mapped[float | None] = mapped_column(Double)
+    return_1d: Mapped[float | None] = mapped_column(Double)
+    return_1w: Mapped[float | None] = mapped_column(Double)
+    return_1m: Mapped[float | None] = mapped_column(Double)
+    return_3m: Mapped[float | None] = mapped_column(Double)
+    return_6m: Mapped[float | None] = mapped_column(Double)
+    return_1y: Mapped[float | None] = mapped_column(Double)
+    momentum_12_1: Mapped[float | None] = mapped_column(Double)
+    volatility_20d: Mapped[float | None] = mapped_column(Double)
+    rsi_14: Mapped[float | None] = mapped_column(Double)
+    adtv_20d: Mapped[float | None] = mapped_column(Double)
+    volume_ratio_20d: Mapped[float | None] = mapped_column(Double)
+    delivery_pct_1d: Mapped[float | None] = mapped_column(Double)
+    delivery_pct_20d: Mapped[float | None] = mapped_column(Double)
+    from_52w_high: Mapped[float | None] = mapped_column(Double)
+    is_52w_high: Mapped[bool | None] = mapped_column(Boolean)
+    is_52w_low: Mapped[bool | None] = mapped_column(Boolean)
+    sma_20: Mapped[float | None] = mapped_column(Double)
+    sma_50: Mapped[float | None] = mapped_column(Double)
+    sma_200: Mapped[float | None] = mapped_column(Double)
+    ema_20: Mapped[float | None] = mapped_column(Double)
+    ema_50: Mapped[float | None] = mapped_column(Double)
+    bollinger_20_upper: Mapped[float | None] = mapped_column(Double)
+    bollinger_20_lower: Mapped[float | None] = mapped_column(Double)
+
+    # Null where the other venue has no close that day.
+    venue_spread_bps: Mapped[float | None] = mapped_column(Double)
+    is_day_complete: Mapped[bool] = mapped_column(Boolean)
+    is_diverging: Mapped[bool] = mapped_column(Boolean)
+
+    __table_args__ = (
+        CheckConstraint(_in_list("primary_venue", PRIMARY_VENUES), name="primary_venue"),
+        Index("ix_mart_daily_features_trade_date", "trade_date"),
     )
