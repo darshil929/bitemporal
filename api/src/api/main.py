@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from api.config import ApiSettings
 from api.db.database import Database
+from api.log_format import configure_logging
 from api.routers import health
 
 
@@ -15,7 +16,9 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.database = Database(settings or ApiSettings())
+        active = settings or ApiSettings()
+        configure_logging(active.log_level)
+        app.state.database = Database(active)
         try:
             yield
         finally:

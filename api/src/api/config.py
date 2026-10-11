@@ -13,6 +13,7 @@ class ApiSettings(BaseSettings):
     database_url: str = Field(default="postgresql+psycopg://bitemporal@localhost:5432/bitemporal")
     data_env: str = Field(default="fixture", pattern="^(fixture|dev|full)$")
     database_connect_timeout_seconds: int = Field(default=5, gt=0)
+    log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
 
     @property
     def schema_name(self) -> str:
