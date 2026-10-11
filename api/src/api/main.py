@@ -1,15 +1,29 @@
 """FastAPI application entry point."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from pydantic import BaseModel
 
-app = FastAPI(title="Bitemporal API", version="0.0.0")
-
-
-class HealthResponse(BaseModel):
-    status: str
+from api.config import ApiSettings
+from api.db.database import Database
+from api.routers import health
 
 
-@app.get("/health")
-def health() -> HealthResponse:
-    return HealthResponse(status="ok")
+def create_app(settings: ApiSettings | None = None) -> FastAPI:
+    """The application, reading `settings`, or the environment when none are given, as it starts."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        app.state.database = Database(settings or ApiSettings())
+        try:
+            yield
+        finally:
+            await app.state.database.close()
+
+    app = FastAPI(title="Bitemporal API", version="0.0.0", lifespan=lifespan)
+    app.include_router(health.router)
+    return app
+
+
+app = create_app()
