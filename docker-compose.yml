@@ -24,7 +24,7 @@ services:
       context: .
       dockerfile: infra/docker/api.Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bitemporal}:${POSTGRES_PASSWORD:-replace-me}@postgres:5432/${POSTGRES_DB:-bitemporal}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bitemporal}:${POSTGRES_PASSWORD:-replace-me}@postgres:5432/${POSTGRES_DB:-bitemporal}
       DATA_ENV: ${DATA_ENV:-dev}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
