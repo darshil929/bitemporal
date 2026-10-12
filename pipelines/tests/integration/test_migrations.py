@@ -1,5 +1,7 @@
 """The migrations build the identity and fact tables and enforce their invariants."""
 
+from datetime import date
+
 import psycopg
 import pytest
 from alembic import command
@@ -10,10 +12,14 @@ from fixtures.database import MIGRATION_SCHEMA
 IDENTITY_TABLES = frozenset({"instrument_master", "listing", "listing_suspension"})
 FACT_TABLES = frozenset({"price_daily", "corporate_action", "instrument_name", "ingestion_log"})
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
-DERIVED_TABLES = frozenset({"mart_daily_features"})
+DERIVED_TABLES = frozenset({"daily_features_a", "daily_features_b", "feature_release"})
 MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES | DERIVED_TABLES
 
 BAR_COLUMNS = "isin, venue, trade_date, as_of_date, local_symbol, open, high, low, close, volume"
+FEATURE_ROW = (
+    "insert into {} (isin, trade_date, as_of_date, primary_venue, close, is_day_complete,"
+    " is_diverging) values ('INE002A01018', %s, %s, 'NSE', 1500, true, false)"
+)
 
 
 def _connect(dsn: str) -> psycopg.Connection:
@@ -113,7 +119,7 @@ def test_a_rename_keeps_the_superseded_symbol(migrated: Config, postgres_dsn: st
     assert [row[0] for row in symbols] == ["INFOSYSTCH"]
 
 
-@pytest.mark.parametrize("table", ["price_daily", "mart_daily_features"])
+@pytest.mark.parametrize("table", ["price_daily", "daily_features_a", "daily_features_b"])
 def test_a_daily_table_is_partitioned_on_trade_date(
     migrated: Config, postgres_dsn: str, table: str
 ) -> None:
@@ -315,3 +321,58 @@ def test_a_daily_feature_row_names_bse_or_nse(migrated: Config, postgres_dsn: st
                 " close, is_day_complete, is_diverging)"
                 " values ('INE002A01018', '2025-12-31', '2025-12-31', 'MCX', 1500, true, false)"
             )
+
+
+def test_stored_features_become_the_first_release(migrated: Config, postgres_dsn: str) -> None:
+    command.downgrade(migrated, "0016")
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE002A01018")
+        for day in ("2025-12-30", "2025-12-31"):
+            connection.execute(FEATURE_ROW.format("mart_daily_features"), (day, day))
+    command.upgrade(migrated, "head")
+
+    with _connect(postgres_dsn) as connection:
+        releases = connection.execute(
+            "select table_name, trade_date, row_count, run_id from feature_release"
+        ).fetchall()
+        shown = connection.execute("select count(*) from mart_daily_features").fetchone()
+    assert releases == [("daily_features_a", date(2025, 12, 31), 2, None)]
+    assert shown == (2,)
+
+
+def test_an_installation_without_features_has_no_release(
+    migrated: Config, postgres_dsn: str
+) -> None:
+    with _connect(postgres_dsn) as connection:
+        assert connection.execute("select count(*) from feature_release").fetchone() == (0,)
+
+
+def test_a_downgrade_keeps_the_published_computation(migrated: Config, postgres_dsn: str) -> None:
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE002A01018")
+        connection.execute(FEATURE_ROW.format("daily_features_b"), ("2025-12-31", "2025-12-31"))
+        connection.execute(
+            "create or replace view mart_daily_features as select * from daily_features_b"
+        )
+    command.downgrade(migrated, "0016")
+
+    with _connect(postgres_dsn) as connection:
+        kept = connection.execute("select trade_date from mart_daily_features").fetchall()
+        kind = connection.execute(
+            "select table_type from information_schema.tables"
+            " where table_schema = %s and table_name = 'mart_daily_features'",
+            (MIGRATION_SCHEMA,),
+        ).fetchone()
+    assert kept == [(date(2025, 12, 31),)]
+    assert kind == ("BASE TABLE",)
+    assert not {"daily_features_a", "daily_features_b"} & _tables(postgres_dsn)
+
+
+def test_a_release_cannot_be_updated(migrated: Config, postgres_dsn: str) -> None:
+    with _connect(postgres_dsn) as connection:
+        connection.execute(
+            "insert into feature_release (table_name, row_count) values ('daily_features_b', 0)"
+        )
+
+        with pytest.raises(psycopg.errors.RestrictViolation):
+            connection.execute("update feature_release set row_count = 1")

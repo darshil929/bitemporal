@@ -23,7 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
 # Deterministic constraint names, required for a downgrade to drop them by name.
 NAMING_CONVENTION = {
@@ -402,15 +402,21 @@ class IngestionLog(Base):
     )
 
 
-class DailyFeature(Base):
+FEATURE_TABLES = ("daily_features_a", "daily_features_b")
+# The view readers query, over one of the feature tables. Created by a migration.
+FEATURES_VIEW = "mart_daily_features"
+
+
+class DailyFeatureColumns:
     """The daily features of one instrument on one day, read from its primary venue that day.
 
-    Derived from the facts and rewritten by each computation of the days it covers, so a row holds
-    the latest computation. A day the primary venue did not trade has no row. Each figure is
-    computed on that venue's own whole series, and is null while its window is still filling.
+    The features live in two tables of these columns, and readers query the view
+    `mart_daily_features` over one of them. A day the primary venue did not trade has no row. Each
+    figure is computed on that venue's own whole series, and is null while its window is still
+    filling.
     """
 
-    __tablename__ = "mart_daily_features"
+    __tablename__: str
 
     isin: Mapped[str] = mapped_column(
         String(12), ForeignKey("instrument_master.isin"), primary_key=True
@@ -454,7 +460,40 @@ class DailyFeature(Base):
     is_day_complete: Mapped[bool] = mapped_column(Boolean)
     is_diverging: Mapped[bool] = mapped_column(Boolean)
 
+    @declared_attr.directive
+    @classmethod
+    def __table_args__(cls) -> tuple[CheckConstraint | Index, ...]:
+        return (
+            CheckConstraint(_in_list("primary_venue", PRIMARY_VENUES), name="primary_venue"),
+            Index(f"ix_{cls.__tablename__}_trade_date", "trade_date"),
+        )
+
+
+class DailyFeaturesA(DailyFeatureColumns, Base):
+    __tablename__ = FEATURE_TABLES[0]
+
+
+class DailyFeaturesB(DailyFeatureColumns, Base):
+    __tablename__ = FEATURE_TABLES[1]
+
+
+class FeatureRelease(Base):
+    """A publish of the daily features: the table the view reads from then on. Never updated."""
+
+    __tablename__ = "feature_release"
+
+    release_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    table_name: Mapped[str] = mapped_column(Text)
+    # The newest day the published computation holds.
+    trade_date: Mapped[date | None] = mapped_column(Date)
+    row_count: Mapped[int] = mapped_column(BigInteger)
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # The Dagster run that published it; absent for the computation the table was created with.
+    run_id: Mapped[str | None] = mapped_column(Text)
+
     __table_args__ = (
-        CheckConstraint(_in_list("primary_venue", PRIMARY_VENUES), name="primary_venue"),
-        Index("ix_mart_daily_features_trade_date", "trade_date"),
+        CheckConstraint(_in_list("table_name", FEATURE_TABLES), name="table_name"),
+        CheckConstraint("row_count >= 0", name="row_count"),
     )

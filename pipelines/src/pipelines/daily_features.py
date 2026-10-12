@@ -1,7 +1,7 @@
-"""Writes of the daily features, each computation replacing every stored row.
+"""Writes of the daily features, each computation replacing every row readers see.
 
-The table is emptied and every batch of rows inserted in one transaction, so a reader waits while a
-replacement runs and then sees the new computation whole. The rows of an instrument the computation
+The table the view `mart_daily_features` reads is emptied and every batch of rows inserted in one
+transaction, so a reader waits while a replacement runs and then sees the new computation whole. The rows of an instrument the computation
 no longer holds, such as an ISIN superseded at a split, leave with the rest. Rows reach a temporary
 table through a binary COPY, a blank figure travelling as NaN, and are stored with blanks as nulls.
 """
@@ -12,6 +12,9 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 import psycopg
+from psycopg import sql
+
+from pipelines.feature_publication import published_table
 
 # The engine's columns, in the order of the rows of `DailyFeatureRows.figures`.
 ENGINE_COLUMNS = (
@@ -86,7 +89,7 @@ INCOMING_TYPES = (
     + ["float8", "bool", "bool"]
 )
 STORE_INCOMING = (
-    "insert into mart_daily_features (isin, trade_date, as_of_date, primary_venue, close,"
+    "insert into {} (isin, trade_date, as_of_date, primary_venue, close,"
     f" {ENGINE_LIST}, venue_spread_bps, is_day_complete, is_diverging)"
     " select isin, trade_date, as_of_date, primary_venue, round(close::numeric, 4), "
     + ", ".join(_stored(column) for column in ENGINE_COLUMNS)
@@ -140,13 +143,14 @@ def replace_daily_features(
 ) -> int:
     """Replace every stored row with the rows of `batches` and count those written."""
     written = 0
+    target = sql.Identifier(published_table(connection))
     with connection.transaction(), connection.cursor() as cursor:
-        cursor.execute("truncate mart_daily_features")
+        cursor.execute(sql.SQL("truncate {}").format(target))
         cursor.execute(CREATE_INCOMING)
         for rows in batches:
             count = _check(rows)
             _copy(cursor, rows, count)
-            cursor.execute(STORE_INCOMING)
+            cursor.execute(sql.SQL(STORE_INCOMING).format(target))
             written += cursor.rowcount
             cursor.execute(f"truncate {INCOMING}")
         # The caller's transaction can stay open after the replacement returns.
