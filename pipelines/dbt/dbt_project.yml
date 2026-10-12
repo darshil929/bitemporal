@@ -25,4 +25,6 @@ models:
     intermediate:
       +materialized: view
     marts:
-      +materialized: table
+      +materialized: view
+      +contract:
+        enforced: true

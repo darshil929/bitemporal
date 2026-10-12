@@ -27,6 +27,10 @@ sources:
         description: >
           The ISIN that took an instrument over when a face value change issued a new one,
           one row per venue that observed the handover.
+      - name: source_registry
+        description: >
+          Each source the pipelines read, with its trust tier and the SEBI curation row that
+          names it, rewritten from configuration by every flow.
       - name: instrument_name
         description: >
           A name an exchange's list of securities gives an instrument, written the day a list
