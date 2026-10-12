@@ -1,6 +1,7 @@
-"""The daily features are stored a computation at a time, each replacing every stored row."""
+"""The daily features are written a computation at a time into the table readers do not see, and
+published by pointing the view readers query at it."""
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -15,7 +16,13 @@ from pipelines.daily_features import (
     ENGINE_COLUMNS,
     DailyFeatureRows,
     FeatureWriteRefused,
-    replace_daily_features,
+    write_daily_features,
+)
+from pipelines.feature_publication import (
+    PublicationRefused,
+    publish,
+    published_table,
+    unpublished_table,
 )
 
 RELIANCE = "INE002A01018"
@@ -59,6 +66,15 @@ def stored(connection: psycopg.Connection) -> list[tuple[object, ...]]:
     return connection.execute(
         "select isin, trade_date, rsi_14 from mart_daily_features order by isin, trade_date"
     ).fetchall()
+
+
+def replace_daily_features(
+    connection: psycopg.Connection, batches: Iterable[DailyFeatureRows]
+) -> int:
+    table = unpublished_table(connection)
+    written = write_daily_features(connection, batches, table)
+    publish(connection, table, run_id=None)
+    return written
 
 
 def test_a_blank_figure_is_stored_as_null(connection: psycopg.Connection) -> None:
@@ -123,3 +139,77 @@ def test_replacements_inside_an_open_transaction_each_apply(
     replace_daily_features(connection, [feature_rows([RELIANCE], ["2025-12-31"], rsi=61.0)])
 
     assert stored(connection) == [(RELIANCE, date(2025, 12, 31), 61.0)]
+
+
+def test_a_computation_is_written_where_readers_do_not_look(
+    connection: psycopg.Connection,
+) -> None:
+    replace_daily_features(connection, [feature_rows([HDFC_BANK], ["2025-12-30"])])
+    table = unpublished_table(connection)
+
+    write_daily_features(connection, [feature_rows([RELIANCE], ["2025-12-31"])], table)
+
+    assert stored(connection) == [(HDFC_BANK, date(2025, 12, 30), 50.0)]
+    publish(connection, table, run_id="run-2")
+    assert published_table(connection) == table
+    assert stored(connection) == [(RELIANCE, date(2025, 12, 31), 50.0)]
+
+
+def test_a_publish_records_the_newest_day_and_the_rows(connection: psycopg.Connection) -> None:
+    table = unpublished_table(connection)
+    write_daily_features(
+        connection, [feature_rows([HDFC_BANK, RELIANCE], ["2025-12-30", "2025-12-31"])], table
+    )
+
+    release = publish(connection, table, run_id="run-1")
+
+    recorded = connection.execute(
+        "select table_name, trade_date, row_count, run_id from feature_release"
+        " where release_id = %s",
+        (release.release_id,),
+    ).fetchone()
+    assert recorded == (table, date(2025, 12, 31), 2, "run-1")
+
+
+def test_the_previous_computation_stays_in_the_other_table(
+    connection: psycopg.Connection,
+) -> None:
+    replace_daily_features(connection, [feature_rows([HDFC_BANK], ["2025-12-30"])])
+    replace_daily_features(connection, [feature_rows([RELIANCE], ["2025-12-31"])])
+
+    previous = connection.execute(
+        f"select isin, trade_date from {unpublished_table(connection)}"
+    ).fetchall()
+
+    assert previous == [(HDFC_BANK, date(2025, 12, 30))]
+
+
+def test_a_day_is_stored_together(connection: psycopg.Connection) -> None:
+    table = unpublished_table(connection)
+    batches = [
+        feature_rows([HDFC_BANK, HDFC_BANK], ["2025-12-29", "2025-12-31"]),
+        feature_rows([RELIANCE, RELIANCE], ["2025-12-29", "2025-12-31"]),
+    ]
+
+    write_daily_features(connection, batches, table)
+
+    in_storage = connection.execute(
+        f"select isin, trade_date from {table} order by ctid"
+    ).fetchall()
+    assert [day for _, day in in_storage] == sorted(day for _, day in in_storage)
+
+
+def test_a_publish_gives_up_on_a_reader_holding_the_view(
+    connection: psycopg.Connection, postgres_dsn: str
+) -> None:
+    table = unpublished_table(connection)
+    connection.commit()
+    with psycopg.connect(
+        postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public"
+    ) as reader:
+        reader.execute("select count(*) from mart_daily_features")
+
+        with pytest.raises(PublicationRefused):
+            publish(connection, table, run_id=None, attempts=2, lock_timeout="50ms")
+
+    assert publish(connection, table, run_id=None).table_name == table

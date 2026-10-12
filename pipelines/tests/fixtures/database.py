@@ -72,8 +72,8 @@ def seeded_models(seeded_postgres: str) -> Iterator[psycopg.Connection]:
     """The seed dataset as a flow leaves it, for reading: sources registered, models built and
     daily features stored.
 
-    Storing the features empties their table, which waits for every open transaction that read it;
-    the connection returned holds one transaction for the whole session, so it opens afterwards.
+    Publishing the features waits for every open transaction that read them; the connection
+    returned holds one transaction for the whole session, so it opens afterwards.
     """
     source_registry(build_asset_context(), PointedDatabase(dsn=seeded_postgres, schema=SEED_SCHEMA))
     for arguments in (["seed"], ["run"]):
@@ -84,7 +84,7 @@ def seeded_models(seeded_postgres: str) -> Iterator[psycopg.Connection]:
             capture_output=True,
             check=True,
         )
-    daily_features(database=PointedDatabase(dsn=seeded_postgres, schema=SEED_SCHEMA))
+    daily_features(build_asset_context(), PointedDatabase(dsn=seeded_postgres, schema=SEED_SCHEMA))
     with psycopg.connect(seeded_postgres, options=f"-csearch_path={SEED_SCHEMA},public") as opened:
         yield opened
 

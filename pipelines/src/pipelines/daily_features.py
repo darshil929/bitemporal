@@ -1,9 +1,10 @@
-"""Writes of the daily features, each computation replacing every row readers see.
+"""Writes of the daily features, each computation replacing every row of the table it is written to.
 
-The table the view `mart_daily_features` reads is emptied and every batch of rows inserted in one
-transaction, so a reader waits while a replacement runs and then sees the new computation whole. The rows of an instrument the computation
-no longer holds, such as an ISIN superseded at a split, leave with the rest. Rows reach a temporary
-table through a binary COPY, a blank figure travelling as NaN, and are stored with blanks as nulls.
+The table is emptied and the whole computation stored in one transaction, so the rows of an
+instrument the computation no longer holds, such as an ISIN superseded at a split, leave with the
+rest. Rows reach a temporary table through a binary COPY, a blank figure travelling as NaN, and are
+stored with blanks as nulls, in day order: a day's rows then share pages, which a read of one day
+across every instrument scans.
 """
 
 from collections.abc import Iterable, Sequence
@@ -13,8 +14,6 @@ import numpy as np
 import numpy.typing as npt
 import psycopg
 from psycopg import sql
-
-from pipelines.feature_publication import published_table
 
 # The engine's columns, in the order of the rows of `DailyFeatureRows.figures`.
 ENGINE_COLUMNS = (
@@ -94,6 +93,7 @@ STORE_INCOMING = (
     " select isin, trade_date, as_of_date, primary_venue, round(close::numeric, 4), "
     + ", ".join(_stored(column) for column in ENGINE_COLUMNS)
     + f", nullif(venue_spread_bps, 'NaN'), is_day_complete, is_diverging from {INCOMING}"
+    " order by trade_date, isin"
 )
 
 
@@ -138,21 +138,19 @@ def _copy(cursor: psycopg.Cursor[tuple[object, ...]], rows: DailyFeatureRows, co
                 )
 
 
-def replace_daily_features(
-    connection: psycopg.Connection, batches: Iterable[DailyFeatureRows]
+def write_daily_features(
+    connection: psycopg.Connection, batches: Iterable[DailyFeatureRows], table: str
 ) -> int:
-    """Replace every stored row with the rows of `batches` and count those written."""
-    written = 0
-    target = sql.Identifier(published_table(connection))
+    """Replace every row of `table` with the rows of `batches` and count those written."""
+    target = sql.Identifier(table)
     with connection.transaction(), connection.cursor() as cursor:
         cursor.execute(sql.SQL("truncate {}").format(target))
         cursor.execute(CREATE_INCOMING)
         for rows in batches:
-            count = _check(rows)
-            _copy(cursor, rows, count)
-            cursor.execute(sql.SQL(STORE_INCOMING).format(target))
-            written += cursor.rowcount
-            cursor.execute(f"truncate {INCOMING}")
-        # The caller's transaction can stay open after the replacement returns.
+            _copy(cursor, rows, _check(rows))
+        cursor.execute(sql.SQL(STORE_INCOMING).format(target))
+        written = cursor.rowcount
+        # The caller's transaction can stay open after the write returns.
         cursor.execute(f"drop table {INCOMING}")
+        cursor.execute(sql.SQL("analyze {}").format(target))
     return written
