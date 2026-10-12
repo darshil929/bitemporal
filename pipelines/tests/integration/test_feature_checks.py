@@ -1,4 +1,4 @@
-"""The rules every stored daily feature row has to satisfy."""
+"""The rules every daily feature row a computation writes has to satisfy before it is published."""
 
 from collections.abc import Iterator
 
@@ -10,6 +10,9 @@ from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.checks.features import RULES, daily_feature_ranges
 
 HDFC_BANK = "INE040A01034"
+
+# A migrated database publishes daily_features_a, so a computation is written to the other table.
+WRITTEN = "daily_features_b"
 
 ROW = {
     "isin": HDFC_BANK,
@@ -60,14 +63,14 @@ def connection(migrated: Config, postgres_dsn: str) -> Iterator[psycopg.Connecti
         )
         columns = ", ".join(ROW)
         open_.execute(
-            f"insert into mart_daily_features ({columns}) values ({', '.join(['%s'] * len(ROW))})",
+            f"insert into {WRITTEN} ({columns}) values ({', '.join(['%s'] * len(ROW))})",
             tuple(ROW.values()),
         )
         open_.commit()
         yield open_
         open_.rollback()
         open_.execute("drop table venue_delivery_discrepancies")
-        open_.execute("delete from mart_daily_features")
+        open_.execute(f"delete from {WRITTEN}")
         open_.commit()
 
 
@@ -88,7 +91,7 @@ def test_every_rule_holds_for_a_row_within_range(
 def test_a_row_breaking_a_rule_fails_that_rule_alone(
     connection: psycopg.Connection, postgres_dsn: str, rule: str
 ) -> None:
-    connection.execute(f"update mart_daily_features set {BREAKING[rule]}")
+    connection.execute(f"update {WRITTEN} set {BREAKING[rule]}")
     connection.commit()
 
     failed = {name for name, (passed, _) in outcomes(postgres_dsn).items() if not passed}
@@ -100,10 +103,22 @@ def test_a_row_breaking_a_rule_fails_that_rule_alone(
 def test_delivery_above_volume_passes_on_a_reviewed_venue_day(
     connection: psycopg.Connection, postgres_dsn: str
 ) -> None:
-    connection.execute("update mart_daily_features set delivery_pct_1d = 120")
+    connection.execute(f"update {WRITTEN} set delivery_pct_1d = 120")
     connection.execute(
         "insert into venue_delivery_discrepancies values ('NSE', '2025-12-31', 'reviewed')"
     )
     connection.commit()
 
     assert outcomes(postgres_dsn)["delivery_stays_within_volume"] == (True, 0)
+
+
+def test_the_rules_ignore_the_published_computation(
+    connection: psycopg.Connection, postgres_dsn: str
+) -> None:
+    connection.execute(f"insert into daily_features_a select * from {WRITTEN}")
+    connection.execute("update daily_features_a set rsi_14 = 101")
+    connection.commit()
+
+    assert outcomes(postgres_dsn)["rsi_runs_from_0_to_100"] == (True, 0)
+    connection.execute("delete from daily_features_a")
+    connection.commit()

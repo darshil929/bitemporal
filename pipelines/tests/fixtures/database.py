@@ -15,11 +15,12 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
-from dagster import build_asset_context
+from dagster import build_asset_context, materialize
 from testcontainers.community.postgres import PostgresContainer
 
 from fixtures.loader import load_seed
 from pipelines.assets.features.daily import daily_features
+from pipelines.assets.features.publication import daily_feature_publication
 from pipelines.assets.ingestion.registry import source_registry
 from pipelines.resources import Database
 
@@ -70,7 +71,7 @@ def seeded_postgres(postgres_dsn: str) -> str:
 @pytest.fixture(scope="session")
 def seeded_models(seeded_postgres: str) -> Iterator[psycopg.Connection]:
     """The seed dataset as a flow leaves it, for reading: sources registered, models built and
-    daily features stored.
+    daily features published.
 
     Publishing the features waits for every open transaction that read them; the connection
     returned holds one transaction for the whole session, so it opens afterwards.
@@ -84,7 +85,10 @@ def seeded_models(seeded_postgres: str) -> Iterator[psycopg.Connection]:
             capture_output=True,
             check=True,
         )
-    daily_features(build_asset_context(), PointedDatabase(dsn=seeded_postgres, schema=SEED_SCHEMA))
+    materialize(
+        [daily_features, daily_feature_publication],
+        resources={"database": PointedDatabase(dsn=seeded_postgres, schema=SEED_SCHEMA)},
+    )
     with psycopg.connect(seeded_postgres, options=f"-csearch_path={SEED_SCHEMA},public") as opened:
         yield opened
 
