@@ -1,1 +1,81 @@
 @import "tailwindcss";
+
+@theme static {
+  --color-*: initial;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f6f7f8;
+  --color-border: #e4e7eb;
+  --color-border-strong: #c9cfd6;
+  --color-text: #16191d;
+  --color-text-muted: #4e5765;
+  --color-text-subtle: #6a7481;
+  --color-up: #007b55;
+  --color-down: #bf361a;
+  --color-flag: #9a6400;
+  --color-flag-surface: #fdf8ee;
+  --color-flag-border: #e8d9b8;
+  --color-stale: #4e5765;
+  --color-accent: #1f5fbf;
+
+  --font-sans: var(--font-plex-sans, ui-sans-serif), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono, ui-monospace), monospace;
+
+  --text-*: initial;
+  --text-hero: 2.25rem;
+  --text-hero--font-weight: 600;
+  --text-hero--line-height: 1;
+  --text-hero--letter-spacing: -0.015em;
+  --text-title: 1.5rem;
+  --text-title--font-weight: 600;
+  --text-title--letter-spacing: -0.01em;
+  --text-heading: 1rem;
+  --text-heading--font-weight: 600;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.4;
+  --text-cell: 0.8125rem;
+  --text-cell--line-height: 1.2;
+  --text-header: 0.75rem;
+  --text-header--font-weight: 500;
+  --text-header--line-height: 1.2;
+  --text-caption: 0.6875rem;
+
+  --spacing-row: 2rem;
+  --spacing-cell: 0.75rem;
+  --spacing-card: 1rem;
+  --spacing-gutter: 1.5rem;
+  --spacing-section: 1.5rem;
+  --spacing-control: 2rem;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-surface: #0f1114;
+  --color-surface-raised: #16191d;
+  --color-surface-sunken: #1b1f24;
+  --color-border: #2a2f36;
+  --color-border-strong: #3a424c;
+  --color-text: #e8eaed;
+  --color-text-muted: #9ba3ae;
+  --color-text-subtle: #7c8695;
+  --color-up: #4fc994;
+  --color-down: #e0655a;
+  --color-flag: #e0a94a;
+  --color-flag-surface: #2a2313;
+  --color-flag-border: #4a3d1e;
+  --color-stale: #9ba3ae;
+  --color-accent: #6aa3f0;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+}
