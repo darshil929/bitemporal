@@ -3,7 +3,8 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# psycopg serves every connection, whichever driver a Postgres URL names.
+# One DATABASE_URL serves the API and the pipelines; the API connects through psycopg whichever
+# driver the URL names.
 ASYNC_DRIVER = "postgresql+psycopg"
 
 

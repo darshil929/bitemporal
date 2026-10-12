@@ -67,10 +67,10 @@ def seeded_postgres(postgres_dsn: str) -> str:
 
 @pytest.fixture(scope="session")
 def seeded_models(seeded_postgres: str) -> Iterator[psycopg.Connection]:
-    """A connection to the seed dataset with every model built over it and its features stored.
+    """The seed dataset as a flow leaves it, models built and daily features stored, for reading.
 
-    The daily features are written by the asset a flow runs, before the connection opens: the
-    connection stays in one transaction for the session, and the write empties the table first.
+    Storing the features empties their table, which waits for every open transaction that read it;
+    the connection returned holds one transaction for the whole session, so it opens afterwards.
     """
     for arguments in (["seed"], ["run"]):
         subprocess.run(

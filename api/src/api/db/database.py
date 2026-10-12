@@ -9,11 +9,11 @@ from api.config import ApiSettings
 
 
 class Database:
-    """A pool of connections, each reading the environment's schema before `public`."""
+    """The API's connections to the data of the environment it serves: `fixture`, `dev` or `full`."""
 
     def __init__(self, settings: ApiSettings) -> None:
         self.schema = settings.schema_name
-        # Unqualified names resolve in the environment's schema; extension functions live in public.
+        # Each environment's tables are a schema of their own; the extensions' functions live in public.
         self.engine = create_async_engine(
             settings.async_database_url,
             pool_pre_ping=True,
@@ -26,7 +26,7 @@ class Database:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[AsyncSession]:
-        """A session inside one transaction, committed when the block ends, rolled back on error."""
+        """One unit of work: everything it writes is kept together, or nothing is."""
         async with self._sessions() as session, session.begin():
             yield session
 

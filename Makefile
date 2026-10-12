@@ -18,12 +18,13 @@ PYTHON_SRC := api/src pipelines/src scripts
 CPP_SOURCES = $(shell find engine -path engine/build -prune -o \
 	\( -name '*.cpp' -o -name '*.hpp' \) -print)
 SQL_SOURCES = $(shell find infra pipelines -name '*.sql' -not -path '*/target/*' 2>/dev/null)
-# The bindings build and run in a throwaway environment, outside the workspace lock.
-ENGINE_PYTHON := uv run --no-project --managed-python --python 3.12 \
+# The bindings are tested against the engine alone: in an environment of their own, outside the
+# workspace lock and any checkout's .venv, without the repository's shared test databases.
+ENGINE_PYTHON := uv run --isolated --no-project --managed-python --python 3.12 \
 	--with ./engine --with "numpy>=2,<3" --with "pytest>=8.3"
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine bench-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill bootstrap sync pgadmin
+.PHONY: setup lint test-engine bench-engine test-python test-contracts test-dbt test-web openapi ci up down migrate seed backfill bootstrap sync pgadmin
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -69,7 +70,7 @@ test-engine:
 # A sanitizer runtime must be loaded before the interpreter starts, so only the default build runs
 # the bindings.
 ifeq ($(SANITIZER),)
-	$(ENGINE_PYTHON) pytest engine/tests/python
+	$(ENGINE_PYTHON) pytest engine/tests/python --confcutdir=engine/tests/python
 endif
 
 # Runs the engine's benchmarks in the default build; BENCH_ARGS passes Google Benchmark's flags.
@@ -91,6 +92,10 @@ test-dbt:
 test-web:
 	npm --prefix web run typecheck
 	npm --prefix web run test
+
+# Writes the API's OpenAPI document, the reviewed contract the web client is generated from.
+openapi:
+	uv run python -m api.contract > api/openapi.json
 
 ci: lint test-engine test-python test-dbt test-web
 
