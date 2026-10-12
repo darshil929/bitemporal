@@ -9,7 +9,7 @@ import pytest
 from alembic.config import Config
 from dagster import build_asset_context
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.completeness import record_verdicts, trading_day_completeness
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
 from pipelines.checks.completeness import every_stored_day_has_a_verdict

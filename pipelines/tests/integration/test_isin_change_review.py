@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase, dbt_environment
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase, dbt_environment
 from pipelines.facts import persist_bars
 from pipelines.identity import persist_identity
 from pipelines.models.identity import InstrumentRecord

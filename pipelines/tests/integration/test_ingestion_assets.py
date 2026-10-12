@@ -13,7 +13,7 @@ import pytest
 from alembic.config import Config
 from dagster import PartitionKeyRange, build_asset_context
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.bhavcopy import ingest
 from pipelines.assets.ingestion.completeness import record_verdicts
 from pipelines.identity import INSTRUMENT_WRITES, isins_by_scrip_code

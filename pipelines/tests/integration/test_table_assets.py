@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from alembic.config import Config
 
-from conftest import PointedDatabase
+from fixtures.database import PointedDatabase
 from pipelines.assets.transform.dbt import table_asset
 from pipelines.facts import persist_bars
 from pipelines.identity import persist_identity

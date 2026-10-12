@@ -8,7 +8,7 @@ import pytest
 from alembic.config import Config
 from dagster import build_asset_context
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.identity import instrument_identity
 from pipelines.checks.identity import (
     every_bar_sits_inside_a_listing,

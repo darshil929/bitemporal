@@ -8,7 +8,7 @@ import pytest
 from alembic.config import Config
 from dagster import build_asset_context
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.instrument_names import ingest_bse_names, ingest_nse_names
 from pipelines.resources import NseLists, ScripLists
 from pipelines.sources.bse.scrip_list import BseScripList
