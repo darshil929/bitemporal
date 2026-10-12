@@ -15,10 +15,12 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
+from dagster import build_asset_context
 from testcontainers.community.postgres import PostgresContainer
 
 from fixtures.loader import load_seed
 from pipelines.assets.features.daily import daily_features
+from pipelines.assets.ingestion.registry import source_registry
 from pipelines.resources import Database
 
 # Matches the image the local stack runs, so tests exercise the same extensions.
@@ -67,11 +69,13 @@ def seeded_postgres(postgres_dsn: str) -> str:
 
 @pytest.fixture(scope="session")
 def seeded_models(seeded_postgres: str) -> Iterator[psycopg.Connection]:
-    """The seed dataset as a flow leaves it, models built and daily features stored, for reading.
+    """The seed dataset as a flow leaves it, for reading: sources registered, models built and
+    daily features stored.
 
     Storing the features empties their table, which waits for every open transaction that read it;
     the connection returned holds one transaction for the whole session, so it opens afterwards.
     """
+    source_registry(build_asset_context(), PointedDatabase(dsn=seeded_postgres, schema=SEED_SCHEMA))
     for arguments in (["seed"], ["run"]):
         subprocess.run(
             ["dbt", *arguments, "--profiles-dir", ".", "--target", SEED_SCHEMA],
