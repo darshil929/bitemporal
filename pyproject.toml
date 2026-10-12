@@ -35,7 +35,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["api/tests", "pipelines/tests", "scripts/tests"]
-pythonpath = ["scripts"]
+pythonpath = ["scripts", "pipelines/tests"]
 # Contract checks reach the real venues, so they are opt in and run only in the nightly workflow.
 addopts = "-m 'not contract'"
 markers = ["contract: reads a live endpoint and asserts its columns are unchanged"]

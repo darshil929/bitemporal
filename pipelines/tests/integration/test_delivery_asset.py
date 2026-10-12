@@ -9,7 +9,7 @@ import pytest
 from alembic.config import Config
 from dagster import PartitionKeyRange, build_asset_context
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.delivery import ingest_delivery
 from pipelines.facts import record_ingestion
 from pipelines.resources import Deliveries
