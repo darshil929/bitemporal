@@ -28,3 +28,6 @@ models:
       +materialized: view
       +contract:
         enforced: true
+      # The role the API connects as reads the marts and nothing beneath them.
+      +grants:
+        select: [bitemporal_api]
