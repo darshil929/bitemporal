@@ -7,7 +7,7 @@ from alembic.config import Config
 from dagster import DagsterInstance, DagsterRunStatus
 from dagster._core.test_utils import create_run_for_test
 
-from conftest import MIGRATION_SCHEMA
+from fixtures.database import MIGRATION_SCHEMA
 from pipelines.flows import FlowRefused, refuse_unless_ready
 from pipelines.jobs import FLOW_TAG, SYNC
 

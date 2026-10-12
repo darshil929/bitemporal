@@ -17,7 +17,7 @@ from test_ingestion_assets import RecordedBhavcopies, payload, rows
 from test_instrument_name_asset import RecordedNseLists, RecordedScripLists
 from test_nse_corporate_action_asset import RecordedActions as RecordedNseActions
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase, dbt_environment
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase, dbt_environment
 from pipelines.assets.transform.dbt import dbt_project
 from pipelines.definitions import defs
 from pipelines.jobs import FLOW_TAG, RANGE_END, RANGE_START, daily_sync, history_bootstrap

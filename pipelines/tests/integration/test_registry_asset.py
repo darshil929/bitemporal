@@ -4,7 +4,7 @@ import psycopg
 from alembic.config import Config
 from dagster import build_asset_context
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.registry import source_registry
 from pipelines.sources.registry import load_definitions
 

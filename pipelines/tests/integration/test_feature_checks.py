@@ -6,7 +6,7 @@ import psycopg
 import pytest
 from alembic.config import Config
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.checks.features import RULES, daily_feature_ranges
 
 HDFC_BANK = "INE040A01034"

@@ -5,7 +5,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 
-from conftest import MIGRATION_SCHEMA
+from fixtures.database import MIGRATION_SCHEMA
 
 IDENTITY_TABLES = frozenset({"instrument_master", "listing", "listing_suspension"})
 FACT_TABLES = frozenset({"price_daily", "corporate_action", "instrument_name", "ingestion_log"})

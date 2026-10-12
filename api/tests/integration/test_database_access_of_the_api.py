@@ -18,15 +18,14 @@ class Abandoned(Exception):
 
 
 @pytest.fixture
-async def database(empty_settings: ApiSettings) -> AsyncIterator[Database]:
-    opened = Database(empty_settings)
+async def database(migrated_settings: ApiSettings) -> AsyncIterator[Database]:
+    opened = Database(migrated_settings)
     yield opened
     await opened.close()
 
 
 async def test_a_transaction_reads_the_environment_schema_first(database: Database) -> None:
     async with database.transaction() as session:
-        await session.execute(text("create schema if not exists fixture"))
         current = (await session.execute(text("select current_schema()"))).scalar_one()
         schemas = (await session.execute(text("select current_schemas(false)"))).scalar_one()
 
@@ -37,7 +36,6 @@ async def test_a_transaction_reads_the_environment_schema_first(database: Databa
 async def test_a_transaction_that_raises_writes_nothing(database: Database) -> None:
     with pytest.raises(Abandoned):
         async with database.transaction() as session:
-            await session.execute(text("create schema if not exists fixture"))
             await session.execute(text("create table abandoned_marker (id integer)"))
             raise Abandoned
 
@@ -49,7 +47,6 @@ async def test_a_transaction_that_raises_writes_nothing(database: Database) -> N
 
 async def test_a_transaction_that_ends_keeps_its_writes(database: Database) -> None:
     async with database.transaction() as session:
-        await session.execute(text("create schema if not exists fixture"))
         await session.execute(text("create table kept_marker (id integer)"))
 
     async with database.transaction() as session:
@@ -60,9 +57,9 @@ async def test_a_transaction_that_ends_keeps_its_writes(database: Database) -> N
 
 
 async def test_the_application_starts_and_serves_with_its_settings(
-    start_api: StartApi, empty_settings: ApiSettings
+    start_api: StartApi, migrated_settings: ApiSettings
 ) -> None:
-    async with start_api(empty_settings) as api:
+    async with start_api(migrated_settings) as api:
         response = await api.get("/health")
 
     assert response.status_code == 200

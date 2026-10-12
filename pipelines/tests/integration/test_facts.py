@@ -8,7 +8,7 @@ import psycopg
 import pytest
 from alembic.config import Config
 
-from conftest import MIGRATION_SCHEMA
+from fixtures.database import MIGRATION_SCHEMA
 from pipelines.facts import (
     persist_actions,
     persist_bars,

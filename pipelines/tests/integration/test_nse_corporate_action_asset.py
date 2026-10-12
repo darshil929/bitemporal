@@ -10,7 +10,7 @@ import pytest
 from alembic.config import Config
 from dagster import build_asset_context
 
-from conftest import MIGRATION_SCHEMA, PointedDatabase
+from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.nse_corporate_actions import ingest_nse_actions
 from pipelines.facts import persist_actions
 from pipelines.models.corporate_action import CorporateActionRecord
