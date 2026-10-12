@@ -23,7 +23,7 @@ ENGINE_PYTHON := uv run --no-project --managed-python --python 3.12 \
 	--with ./engine --with "numpy>=2,<3" --with "pytest>=8.3"
 
 .DEFAULT_GOAL := ci
-.PHONY: setup lint test-engine bench-engine test-python test-contracts test-dbt test-web ci up down migrate seed backfill bootstrap sync pgadmin
+.PHONY: setup lint test-engine bench-engine test-python test-contracts test-dbt test-web openapi ci up down migrate seed backfill bootstrap sync pgadmin
 
 setup:
 ifeq ($(UNAME_S),Darwin)
@@ -91,6 +91,10 @@ test-dbt:
 test-web:
 	npm --prefix web run typecheck
 	npm --prefix web run test
+
+# Writes the API's OpenAPI document, the reviewed contract the web client is generated from.
+openapi:
+	uv run python -m api.contract > api/openapi.json
 
 ci: lint test-engine test-python test-dbt test-web
 
