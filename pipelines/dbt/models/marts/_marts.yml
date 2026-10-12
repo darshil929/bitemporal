@@ -1,0 +1,103 @@
+version: 2
+
+models:
+  - name: mart_instruments
+    description: >
+      One row per instrument, under the name the application shows it by, with the ISIN it trades
+      under now.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: Canonical instrument identifier.
+      - name: name
+        data_type: text
+        description: The name the venue's price file printed, in its own capitals and abbreviations.
+      - name: display_name
+        data_type: text
+        description: >
+          The name the application shows: BSE's list of scrips, then NSE's list of equities, then
+          either list's name for the ISIN the instrument trades under now, then the price file's.
+      - name: instrument_type
+        data_type: text
+        description: What the instrument is, such as equity, etf or debt.
+      - name: current_isin
+        data_type: varchar(12)
+        description: >
+          The ISIN the instrument trades under now: itself, unless a change of face value issued
+          another.
+
+  - name: mart_listings
+    description: >
+      One row per stretch during which an instrument traded under one symbol at one venue. A rename
+      or a change of ISIN closes a stretch and opens another.
+    columns:
+      - name: listing_id
+        data_type: bigint
+        description: Surrogate key of the stretch.
+      - name: isin
+        data_type: varchar(12)
+        description: Canonical instrument identifier.
+      - name: exchange
+        data_type: varchar(12)
+        description: BSE or NSE.
+      - name: local_symbol
+        data_type: text
+        description: Ticker in force during the stretch. Venue-local, never a join key.
+      - name: scrip_code
+        data_type: text
+        description: BSE's numeric identifier, which survives a rename and a change of ISIN.
+      - name: listing_date
+        data_type: date
+        description: The first day of the stretch the stored history holds.
+      - name: delisting_date
+        data_type: date
+        description: The last day of the stretch, absent while it remains open.
+      - name: closure_reason
+        data_type: text
+        description: >
+          Why the stretch closed: delisted, renamed, merged, or superseded where another ISIN took
+          the instrument over under the same venue-local identifier at a change of face value.
+
+  - name: mart_trading_days
+    description: One verdict per venue and trading day, the latest reached.
+    columns:
+      - name: venue
+        data_type: varchar(12)
+        description: BSE or NSE.
+      - name: trade_date
+        data_type: date
+        description: The day the verdict describes.
+      - name: as_of_date
+        data_type: date
+        description: The day the verdict was reached.
+      - name: is_complete
+        data_type: boolean
+        description: >
+          Whether the day passed every check. An incomplete day feeds no ranking, breadth or alert.
+      - name: bars
+        data_type: integer
+        description: How many bars the venue published.
+      - name: divergent_instruments
+        data_type: integer
+        description: Instruments whose two venue closes disagreed beyond tolerance.
+      - name: detail
+        data_type: text
+        description: What the day failed on, absent when it passed.
+
+  - name: mart_sources
+    description: Each source the platform's figures are read from, with its trust tier.
+    columns:
+      - name: source_id
+        data_type: text
+        description: The source's identifier, recorded beside every fact read from it.
+      - name: tier
+        data_type: smallint
+        description: >
+          1 for an exchange's bulk file, 2 for an exchange's web endpoint, 3 for a library wrapping
+          either, 4 for any other site.
+      - name: sebi_curation_ref
+        data_type: text
+        description: The SEBI curation row naming the source; absent for an endpoint no row lists.
+      - name: base_url
+        data_type: text
+        description: Where the source is read from.

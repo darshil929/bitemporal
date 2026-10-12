@@ -281,6 +281,36 @@ models:
           often start it a trading day apart.
         data_tests: [not_null]
 
+  - name: stg_source_registry
+    description: One row per source the pipelines read, as configured.
+    columns:
+      - name: source_id
+        description: The source's identifier, which ingestion records beside every fact it reads.
+        data_tests: [not_null, unique]
+      - name: tier
+        description: >
+          1 for an exchange's bulk file, 2 for an exchange's web endpoint, 3 for a library wrapping
+          either, 4 for any other site.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+      - name: base_url
+        description: Where the source is read from.
+        data_tests: [not_null]
+      - name: requests_per_second
+        description: The highest rate the source is asked at.
+      - name: cache_policy
+        description: >
+          `permanent` where a response is kept for good, `daily` where the source is asked again
+          each day.
+      - name: sebi_curation_ref
+        description: The SEBI curation row naming the source; absent for an endpoint no row lists.
+      - name: owner_notes
+        description: How the source answers and what reading it requires.
+
 unit_tests:
   - name: a_revalidated_day_supersedes_its_earlier_verdict
     description: A day checked again after a correction appends a verdict rather than replacing one.
