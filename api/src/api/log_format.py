@@ -1,10 +1,10 @@
-"""The API's log records as one JSON object a line, carrying the fields passed in `extra`."""
+"""The API's log, each record carrying its identifiers as fields an operator can search on."""
 
 import json
 import logging
 from datetime import UTC, datetime
 
-# Attributes every record carries; any other attribute on a record came from `extra`.
+# Python's logging keeps the fields passed in `extra` as attributes beside these, its own.
 RECORD_ATTRIBUTES = frozenset(vars(logging.makeLogRecord({}))) | {"message", "asctime"}
 
 
@@ -25,7 +25,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: str) -> None:
-    """Write the `api` loggers' records to standard error as JSON lines from `level` up."""
+    """The API's own records from `level` up, on standard error, where a container's log is read."""
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     logger = logging.getLogger("api")

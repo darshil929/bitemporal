@@ -13,12 +13,12 @@ from api.routers import health
 
 
 def operation_id(route: APIRoute) -> str:
-    """Each operation is named after its endpoint function, a name unique across the routers."""
+    """The name the web client calls an operation by: its endpoint's, `ready` for `/ready`."""
     return route.name
 
 
 def create_app(settings: ApiSettings | None = None) -> FastAPI:
-    """The application, reading `settings`, or the environment when none are given, as it starts."""
+    """The API service, holding its database connections from start to stop."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

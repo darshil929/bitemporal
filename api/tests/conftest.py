@@ -53,5 +53,5 @@ async def running_api(settings: ApiSettings) -> AsyncIterator[httpx.AsyncClient]
 
 @pytest.fixture
 def start_api() -> StartApi:
-    """A client of the application started with the given settings, shut down on leaving."""
+    """Requests to a running copy of the API, started with the given settings."""
     return running_api

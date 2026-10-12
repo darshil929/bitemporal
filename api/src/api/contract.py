@@ -1,6 +1,6 @@
-"""The API's OpenAPI document, written as the committed contract the web client is generated from.
-
-python -m api.contract > api/openapi.json
+"""The interface the web client is built against: every path the API answers, what each accepts and
+what each returns. The committed copy in api/openapi.json is the reviewed one, and a test fails while
+the running application differs from it.
 """
 
 import json
@@ -10,7 +10,7 @@ from api.main import create_app
 
 
 def contract() -> str:
-    """The OpenAPI document with sorted keys and a final newline, so a change reads as a diff."""
+    """The interface in its committed form; the same interface always gives the same file."""
     return json.dumps(create_app().openapi(), indent=2, sort_keys=True) + "\n"
 
 
