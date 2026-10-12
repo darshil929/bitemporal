@@ -101,3 +101,170 @@ models:
       - name: base_url
         data_type: text
         description: Where the source is read from.
+
+  - name: mart_price_daily
+    description: >
+      One bar per instrument, venue and trading day as the venue published it, the latest version
+      known. Prices are as traded, so a bonus or split moves them; a series over time reads
+      mart_adjusted_prices. Each bar is resolved from every version stored, so a read names its
+      instruments and days.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: The ISIN the bar was published under.
+      - name: venue
+        data_type: varchar(12)
+        description: BSE or NSE.
+      - name: trade_date
+        data_type: date
+        description: The day the bar describes.
+      - name: as_of_date
+        data_type: date
+        description: The day this version of the bar became knowable.
+      - name: local_symbol
+        data_type: text
+        description: The ticker the venue printed on the bar.
+      - name: scrip_code
+        data_type: text
+        description: BSE's numeric identifier printed on the bar.
+      - name: open
+        data_type: numeric(18,4)
+        description: First traded price, in rupees.
+      - name: high
+        data_type: numeric(18,4)
+        description: Highest traded price, in rupees.
+      - name: low
+        data_type: numeric(18,4)
+        description: Lowest traded price, in rupees.
+      - name: previous_close
+        data_type: numeric(18,4)
+        description: >
+          The venue's own prior close, as traded, so on the ex-date of a bonus or split it differs
+          from the adjusted close before it.
+      - name: volume
+        data_type: bigint
+        description: Shares traded.
+      - name: turnover
+        data_type: numeric(20,2)
+        description: Value traded, in rupees.
+      - name: trade_count
+        data_type: bigint
+        description: Number of trades executed.
+      - name: close
+        data_type: numeric(18,4)
+        description: >
+          Closing price, computed by the venue from the last half hour rather than traded, so on a
+          thin day it sits outside the day's high and low. Missing where the venue published 0.
+
+  - name: mart_adjusted_prices
+    description: >
+      One bar per instrument, venue and trading day, scaled by every bonus, split and
+      consolidation after it, keyed on the ISIN the instrument trades under now so the series runs
+      across a change of face value. Charts and trends read this; one venue at a time, never both
+      blended.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: The ISIN the instrument trades under now, which the whole series is keyed on.
+      - name: source_isin
+        data_type: varchar(12)
+        description: The ISIN the bar was published under, which differs before a face value change.
+      - name: venue
+        data_type: varchar(12)
+        description: BSE or NSE.
+      - name: trade_date
+        data_type: date
+        description: The day the bar describes.
+      - name: as_of_date
+        data_type: date
+        description: The day the bar became knowable.
+      - name: close_as_traded
+        data_type: numeric(18,4)
+        description: The close the venue published, unscaled; missing where the venue published 0.
+      - name: turnover
+        data_type: numeric(20,2)
+        description: Value traded in rupees, as published; a change in the count of shares leaves it.
+      - name: adjustment_factor
+        data_type: numeric
+        description: The product of every factor applied after this bar.
+      - name: open
+        data_type: numeric
+        description: The first traded price scaled by the factor.
+      - name: high
+        data_type: numeric
+        description: The highest traded price scaled by the factor.
+      - name: low
+        data_type: numeric
+        description: The lowest traded price scaled by the factor.
+      - name: close
+        data_type: numeric
+        description: The close scaled by the factor; missing with the published close.
+      - name: volume
+        data_type: numeric
+        description: Shares traded divided by the factor, since a bonus multiplies the count.
+      - name: delivery_quantity
+        data_type: numeric
+        description: >
+          Shares that settled, divided by the same factor; missing on a day the venue published no
+          delivery figure for the instrument.
+
+  - name: mart_venue_spread
+    description: >
+      One row per dual-listed instrument and trading day on which both venues published a close,
+      with the gap between the closes. Each row is resolved from every version of both bars, so a
+      read names its instruments and days. Whether a gap marks a divergence is `is_diverging` on
+      mart_daily_features.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: The ISIN both bars were published under.
+      - name: trade_date
+        data_type: date
+        description: The day the two closes describe.
+      - name: as_of_date
+        data_type: date
+        description: The later of the two bars' knowable dates.
+      - name: bse_close
+        data_type: numeric
+        description: BSE's published close, unadjusted.
+      - name: nse_close
+        data_type: numeric
+        description: NSE's published close, unadjusted.
+      - name: venue_spread_bps
+        data_type: numeric
+        description: The absolute gap between the closes, in basis points of their midpoint.
+      - name: comparable_turnover
+        data_type: numeric
+        description: >
+          Turnover in rupees on the venue that traded less. Below 25 lakh a close is wherever a
+          trade put it, and a gap is no divergence.
+
+  - name: mart_delivery_daily
+    description: >
+      The share of a day's volume that settled, per instrument, venue and trading day, where the
+      venue published a delivery figure. A day without one has no row. Each row is resolved from
+      every version stored, so a read names its instruments and days.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: The ISIN both figures were published under.
+      - name: venue
+        data_type: varchar(12)
+        description: BSE or NSE.
+      - name: trade_date
+        data_type: date
+        description: The day both figures describe.
+      - name: volume
+        data_type: bigint
+        description: Shares traded, from the bhavcopy.
+      - name: delivery_quantity
+        data_type: bigint
+        description: Shares that settled, from the delivery file.
+      - name: as_of_date
+        data_type: date
+        description: The later of the two knowable dates, since the delivery file arrives second.
+      - name: delivery_percentage
+        data_type: numeric
+        description: >
+          Delivery as a percentage of volume, absent on a day that traded nothing. Above 100 only
+          on a venue day whose delivery file counts more shares than its bhavcopy.

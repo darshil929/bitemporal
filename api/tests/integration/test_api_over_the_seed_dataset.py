@@ -20,14 +20,14 @@ LAST_DAY = date(2025, 12, 31)
 FEATURE_AND_BAR = text(
     "select features.primary_venue, features.close, bars.close as bar_close"
     " from mart_daily_features as features"
-    " join stg_price_daily as bars on bars.isin = features.isin"
+    " join mart_price_daily as bars on bars.isin = features.isin"
     " and bars.venue = features.primary_venue and bars.trade_date = features.trade_date"
     " where features.isin = :isin and features.trade_date = :day"
 )
 
 INSTRUMENTS_ON_THE_DAY = text(
     "select (select count(*) from mart_daily_features where trade_date = :day),"
-    " (select count(distinct isin) from int_continuous_prices where trade_date = :day)"
+    " (select count(distinct isin) from mart_adjusted_prices where trade_date = :day)"
 )
 
 
