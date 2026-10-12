@@ -268,3 +268,212 @@ models:
         description: >
           Delivery as a percentage of volume, absent on a day that traded nothing. Above 100 only
           on a venue day whose delivery file counts more shares than its bhavcopy.
+
+  - name: mart_corporate_actions
+    description: >
+      Each corporate action once, keyed on the ISIN the instrument trades under now. Where both
+      venues report an action, BSE's record stands, as it does for the price adjustment; NSE's
+      stands where BSE reports no action of that kind that day. A split of a fund's units no venue
+      records is read from the prices.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: The ISIN the instrument trades under now.
+      - name: source_isin
+        data_type: varchar(12)
+        description: The ISIN the action was recorded under, which differs before a face value change.
+      - name: ex_date
+        data_type: date
+        description: The first day the shares traded without the action's entitlement.
+      - name: action_type
+        data_type: text
+        description: >
+          bonus, split, consolidation, dividend, or unhandled where the venue's text states no
+          terms, such as a demerger.
+      - name: qualifier
+        data_type: text
+        description: >
+          The kind of dividend (interim, final, special, ordinary); for an unhandled action, its
+          text in lower case.
+      - name: source_id
+        data_type: text
+        description: The source whose record is shown; absent for an action read from the prices.
+      - name: as_of_date
+        data_type: date
+        description: The day the shown record became knowable.
+      - name: ratio_from
+        data_type: numeric(18,6)
+        description: Shares held before a bonus, split or consolidation.
+      - name: ratio_to
+        data_type: numeric(18,6)
+        description: Shares held after it, for the same holding.
+      - name: adjustment_factor
+        data_type: numeric
+        description: >
+          The factor the action scales earlier prices by, shares before over shares after; absent
+          for a dividend.
+      - name: dividend_amount
+        data_type: numeric(18,4)
+        description: Rupees a share. 0 where the venue recorded a dividend of nothing.
+      - name: purpose
+        data_type: text
+        description: The venue's own text for an unhandled action, the only record of what it did.
+      - name: reported_by
+        data_type: text
+        description: BSE, NSE, both, or prices for a fund's unit split no venue records.
+      - name: venues_differ
+        data_type: boolean
+        description: >
+          Whether both venues report dividends that day and state different amounts. The shown
+          amount is BSE's.
+      - name: is_applied
+        data_type: boolean
+        description: >
+          Whether the adjusted prices apply this split, bonus or consolidation. An action NSE alone
+          reports is applied only where the prices confirm it. Absent for a dividend or an
+          unhandled action.
+      - name: terms
+        data_type: text
+        description: >
+          The terms as an announcement states them: "1 for 1" for a bonus, "1 into 5" or "10 into
+          1" for a split or consolidation, "Nil" for a dividend of nothing; absent for a paid
+          dividend, whose amount is dividend_amount, and for an unhandled action.
+
+unit_tests:
+  - name: an_action_both_venues_report_is_listed_once_as_bse_records_it
+    model: mart_corporate_actions
+    given:
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE040A01034, action_type: dividend, ex_date: "2025-06-27", qualifier: final,
+             source_id: bse_corporate_actions, as_of_date: "2025-06-27", dividend_amount: 22}
+          - {isin: INE040A01034, action_type: dividend, ex_date: "2025-06-27", qualifier: ordinary,
+             source_id: nse_corporate_actions, as_of_date: "2025-06-27", dividend_amount: 22}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE040A01034, current_isin: INE040A01034}
+      - input: ref('int_capital_action_factors')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE040A01034, qualifier: final, source_id: bse_corporate_actions,
+           reported_by: both, venues_differ: false, terms: null}
+
+  - name: dividends_the_venues_state_differently_are_marked
+    description: BSE lists an interim and a special dividend that NSE files as one amount.
+    model: mart_corporate_actions
+    given:
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE001A01036, action_type: dividend, ex_date: "2024-02-01", qualifier: interim,
+             source_id: bse_corporate_actions, as_of_date: "2024-02-01", dividend_amount: 5}
+          - {isin: INE001A01036, action_type: dividend, ex_date: "2024-02-01", qualifier: special,
+             source_id: bse_corporate_actions, as_of_date: "2024-02-01", dividend_amount: 3}
+          - {isin: INE001A01036, action_type: dividend, ex_date: "2024-02-01", qualifier: interim,
+             source_id: nse_corporate_actions, as_of_date: "2024-02-01", dividend_amount: 8}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE001A01036, current_isin: INE001A01036}
+      - input: ref('int_capital_action_factors')
+        rows: []
+    expect:
+      rows:
+        - {qualifier: interim, dividend_amount: "5.0000", reported_by: both, venues_differ: true}
+        - {qualifier: special, dividend_amount: "3.0000", reported_by: both, venues_differ: true}
+
+  - name: an_nse_only_action_is_applied_where_the_prices_confirm_it
+    model: mart_corporate_actions
+    given:
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE002A01018, action_type: bonus, ex_date: "2024-10-28", qualifier: ordinary,
+             source_id: bse_corporate_actions, as_of_date: "2024-10-28", ratio_from: 1,
+             ratio_to: 2, adjustment_factor: 0.5}
+          - {isin: INE003A01024, action_type: bonus, ex_date: "2024-10-28", qualifier: ordinary,
+             source_id: nse_corporate_actions, as_of_date: "2024-10-28", ratio_from: 1,
+             ratio_to: 2, adjustment_factor: 0.5}
+          - {isin: INE004A01022, action_type: bonus, ex_date: "2024-10-28", qualifier: ordinary,
+             source_id: nse_corporate_actions, as_of_date: "2024-10-28", ratio_from: 1,
+             ratio_to: 2, adjustment_factor: 0.5}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE002A01018, current_isin: INE002A01018}
+          - {isin: INE003A01024, current_isin: INE003A01024}
+          - {isin: INE004A01022, current_isin: INE004A01022}
+      - input: ref('int_capital_action_factors')
+        rows:
+          - {isin: INE002A01018, ex_date: "2024-10-28", basis: bse, applied_factor: 0.5}
+          - {isin: INE003A01024, ex_date: "2024-10-28", basis: nse_confirmed, applied_factor: 0.5}
+          - {isin: INE004A01022, ex_date: "2024-10-28", basis: nse_contradicted}
+    expect:
+      rows:
+        - {isin: INE002A01018, reported_by: BSE, is_applied: true}
+        - {isin: INE003A01024, reported_by: NSE, is_applied: true}
+        - {isin: INE004A01022, reported_by: NSE, is_applied: false}
+
+  - name: terms_read_as_an_announcement_states_them
+    model: mart_corporate_actions
+    given:
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE005A01025, action_type: bonus, ex_date: "2024-01-02", qualifier: ordinary,
+             source_id: bse_corporate_actions, ratio_from: 1, ratio_to: 2}
+          - {isin: INE005A01025, action_type: bonus, ex_date: "2024-02-01", qualifier: ordinary,
+             source_id: bse_corporate_actions, ratio_from: 10, ratio_to: 14}
+          - {isin: INE005A01025, action_type: split, ex_date: "2024-03-01", qualifier: ordinary,
+             source_id: bse_corporate_actions, ratio_from: 1, ratio_to: 2.5}
+          - {isin: INE005A01025, action_type: consolidation, ex_date: "2024-04-01",
+             qualifier: ordinary, source_id: nse_corporate_actions, ratio_from: 10, ratio_to: 1}
+          - {isin: INE005A01025, action_type: dividend, ex_date: "2024-05-02", qualifier: ordinary,
+             source_id: bse_corporate_actions, dividend_amount: 0}
+          - {isin: INE005A01025, action_type: dividend, ex_date: "2024-06-03", qualifier: ordinary,
+             source_id: bse_corporate_actions, dividend_amount: 22}
+          - {isin: INE005A01025, action_type: unhandled, ex_date: "2024-07-01",
+             qualifier: scheme of arrangement, source_id: bse_corporate_actions,
+             purpose: Scheme of Arrangement}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE005A01025, current_isin: INE005A01025}
+      - input: ref('int_capital_action_factors')
+        rows: []
+    expect:
+      rows:
+        - {ex_date: "2024-01-02", terms: 1 for 1}
+        - {ex_date: "2024-02-01", terms: 4 for 10}
+        - {ex_date: "2024-03-01", terms: 2 into 5}
+        - {ex_date: "2024-04-01", terms: 10 into 1}
+        - {ex_date: "2024-05-02", terms: Nil}
+        - {ex_date: "2024-06-03", terms: null}
+        - {ex_date: "2024-07-01", terms: null}
+
+  - name: a_fund_unit_split_no_venue_records_is_read_from_the_prices
+    model: mart_corporate_actions
+    given:
+      - input: ref('stg_corporate_actions')
+        rows: []
+      - input: ref('int_instrument_lineage')
+        rows: []
+      - input: ref('int_capital_action_factors')
+        rows:
+          - {isin: INF000A01027, ex_date: "2019-07-15", basis: fund_unit_split,
+             applied_factor: 0.1, as_of_date: "2019-07-15"}
+    expect:
+      rows:
+        - {isin: INF000A01027, action_type: split, reported_by: prices, source_id: null,
+           adjustment_factor: "0.1", is_applied: true, terms: 1 into 10}
+
+  - name: an_action_under_a_replaced_isin_is_keyed_on_the_current_one
+    model: mart_corporate_actions
+    given:
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE006A01013, action_type: dividend, ex_date: "2024-08-01", qualifier: final,
+             source_id: nse_corporate_actions, dividend_amount: 2}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE006A01013, current_isin: INE006A01047}
+      - input: ref('int_capital_action_factors')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE006A01047, source_isin: INE006A01013, reported_by: NSE}
