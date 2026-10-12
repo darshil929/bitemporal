@@ -6,7 +6,7 @@ from alembic.config import Config
 from psycopg import sql
 
 from fixtures.database import MIGRATION_SCHEMA
-from pipelines.db.schema import Base
+from pipelines.db.schema import FEATURES_VIEW, Base
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def dbt_built(migrated: Config, postgres_dsn: str) -> Iterator[None]:
     """A migrated schema dbt builds into, cleared of the models and seeds before migrating down.
 
     The models are views and tables over the migrated tables, which cannot be dropped while views
-    stand on them. Every table the migrations do not manage is one dbt built.
+    stand on them. Every table and view the migrations do not manage is one dbt built.
     """
     yield
     managed = set(Base.metadata.tables) | {"alembic_version"}
@@ -33,6 +33,8 @@ def dbt_built(migrated: Config, postgres_dsn: str) -> Iterator[None]:
         ).fetchall()
         schema = sql.Identifier(MIGRATION_SCHEMA)
         for (view,) in views:
+            if view == FEATURES_VIEW:
+                continue
             connection.execute(
                 sql.SQL("drop view if exists {}.{} cascade").format(schema, sql.Identifier(view))
             )
