@@ -1,10 +1,13 @@
-"""What every stored daily feature row has to satisfy, counted in one pass over the table."""
+"""What every daily feature row has to satisfy before its computation is published, counted in one
+pass over the table the computation was written to."""
 
 from collections.abc import Iterator
 
 from dagster import AssetCheckResult, AssetCheckSpec, multi_asset_check
+from psycopg import sql
 
 from pipelines.assets.features.daily import daily_features
+from pipelines.feature_publication import unpublished_table
 from pipelines.resources import Database
 
 # Each rule's description and the condition a row breaking it meets.
@@ -54,7 +57,7 @@ RULES: dict[str, tuple[str, str]] = {
 BREACHES = (
     "select "
     + ", ".join(f"count(*) filter (where {condition})" for _, condition in RULES.values())
-    + " from mart_daily_features as features"
+    + " from {} as features"
     " left join venue_delivery_discrepancies as reviewed"
     " on features.primary_venue = reviewed.venue and features.trade_date = reviewed.trade_date"
 )
@@ -68,7 +71,8 @@ BREACHES = (
 )
 def daily_feature_ranges(database: Database) -> Iterator[AssetCheckResult]:
     with database.connect() as connection:
-        counts = connection.execute(BREACHES).fetchone()
+        table = sql.Identifier(unpublished_table(connection))
+        counts = connection.execute(sql.SQL(BREACHES).format(table)).fetchone()
 
     for (name, _), breaking in zip(RULES.items(), counts or [0] * len(RULES), strict=True):
         yield AssetCheckResult(
