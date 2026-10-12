@@ -15,6 +15,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     Numeric,
     SmallInteger,
@@ -46,6 +47,7 @@ UNTERMED_TYPES = ("dividend", "unhandled")
 INGESTION_OUTCOMES = ("succeeded", "not_published", "failed")
 PRIMARY_VENUES = ("BSE", "NSE")
 USER_ROLES = ("admin", "member")
+SESSION_END_REASONS = ("idle", "limit", "signed_out", "signed_out_elsewhere", "disabled")
 THEMES = ("light", "dark")
 
 PRICE = Numeric(18, 4)
@@ -527,6 +529,47 @@ class AppUser(Base):
         CheckConstraint("length(display_name) between 1 and 80", name="display_name"),
         CheckConstraint(_in_list("role", USER_ROLES), name="role"),
         CheckConstraint("failed_sign_ins >= 0", name="failed_sign_ins"),
+    )
+
+
+class AppSession(Base):
+    """A signed-in session, kept once ended. The cookie carries a token; the table, its hash."""
+
+    __tablename__ = "app_session"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"), index=True)
+    # SHA-256 of the token.
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_reason: Mapped[str | None] = mapped_column(Text)
+    user_agent_summary: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("length(token_hash) = 32", name="token_hash"),
+        CheckConstraint(_in_list("ended_reason", SESSION_END_REASONS), name="ended_reason"),
+        CheckConstraint("(ended_at is null) = (ended_reason is null)", name="ended"),
+    )
+
+
+class AppSetting(Base):
+    """The installation's settings, one row, which an admin changes."""
+
+    __tablename__ = "app_setting"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, server_default="1")
+    session_idle_minutes: Mapped[int] = mapped_column(Integer, server_default="120")
+    session_max_hours: Mapped[int] = mapped_column(Integer, server_default="12")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="one_row"),
+        CheckConstraint("session_idle_minutes between 5 and 1440", name="idle_minutes"),
+        CheckConstraint("session_max_hours between 1 and 72", name="max_hours"),
     )
 
 
