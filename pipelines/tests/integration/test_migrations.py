@@ -13,7 +13,8 @@ IDENTITY_TABLES = frozenset({"instrument_master", "listing", "listing_suspension
 FACT_TABLES = frozenset({"price_daily", "corporate_action", "instrument_name", "ingestion_log"})
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
 DERIVED_TABLES = frozenset({"daily_features_a", "daily_features_b", "feature_release"})
-MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES | DERIVED_TABLES
+ACCOUNT_TABLES = frozenset({"app_user", "user_setting"})
+MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES | DERIVED_TABLES | ACCOUNT_TABLES
 
 BAR_COLUMNS = "isin, venue, trade_date, as_of_date, local_symbol, open, high, low, close, volume"
 FEATURE_ROW = (

@@ -45,6 +45,8 @@ ACTION_TYPES = ("split", "bonus", "consolidation", "rights", "dividend", "unhand
 UNTERMED_TYPES = ("dividend", "unhandled")
 INGESTION_OUTCOMES = ("succeeded", "not_published", "failed")
 PRIMARY_VENUES = ("BSE", "NSE")
+USER_ROLES = ("admin", "member")
+THEMES = ("light", "dark")
 
 PRICE = Numeric(18, 4)
 RATIO = Numeric(18, 6)
@@ -497,3 +499,44 @@ class FeatureRelease(Base):
         CheckConstraint(_in_list("table_name", FEATURE_TABLES), name="table_name"),
         CheckConstraint("row_count >= 0", name="row_count"),
     )
+
+
+class AppUser(Base):
+    """A person's account. Row security shows the API a person's own row, and every row to an admin."""
+
+    __tablename__ = "app_user"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    # Stored in lower case, so a username matches whatever case it is typed in.
+    username: Mapped[str] = mapped_column(Text, unique=True)
+    display_name: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text)
+    # Argon2id; the API's role reads it only through the sign-in lookup.
+    password_hash: Mapped[str] = mapped_column(Text)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    temporary_password_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_sign_ins: Mapped[int] = mapped_column(Integer, server_default="0")
+    sign_in_paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "username = lower(username) and length(username) between 3 and 64", name="username"
+        ),
+        CheckConstraint("length(display_name) between 1 and 80", name="display_name"),
+        CheckConstraint(_in_list("role", USER_ROLES), name="role"),
+        CheckConstraint("failed_sign_ins >= 0", name="failed_sign_ins"),
+    )
+
+
+class UserSetting(Base):
+    """A person's own settings, readable by that person alone."""
+
+    __tablename__ = "user_setting"
+
+    owner_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"), primary_key=True)
+    theme: Mapped[str] = mapped_column(Text, server_default="light")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (CheckConstraint(_in_list("theme", THEMES), name="theme"),)

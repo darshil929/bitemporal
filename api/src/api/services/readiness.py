@@ -12,7 +12,7 @@ from api.db.database import Database
 logger = logging.getLogger(__name__)
 
 # The migration the API's queries are written against.
-EXPECTED_REVISION = "0018"
+EXPECTED_REVISION = "0019"
 
 CURRENT_REVISION = text("select version_num from alembic_version")
 
