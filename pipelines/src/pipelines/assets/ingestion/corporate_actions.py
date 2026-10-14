@@ -2,13 +2,13 @@
 
 The venue answers a range of ex-dates with the actions of every scrip code inside it, so a run
 walks years rather than scrip codes, and each year is committed as it is read. A year's answer must
-hold every action already stored for that year: a range the venue cut short reads the same as a
-year with fewer actions in it.
+hold every action already stored for that year of an instrument the venue still trades: a range the
+venue cut short reads the same as a year with fewer actions in it.
 """
 
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -67,6 +67,17 @@ where source_id = %s and ex_date between %s and %s
 order by isin, action_type, ex_date, qualifier, as_of_date desc
 """
 
+# Each instrument with a bar at a venue over a range of trading days.
+TRADED = """
+select distinct isin
+from price_daily
+where venue = %s and trade_date >= %s and trade_date < %s
+"""
+
+# A venue's answer leaves out every action of an instrument that has left the venue, as after an
+# amalgamation. An instrument without a bar at the venue over these days before collection has left.
+UNTRADED_DAYS = 30
+
 UNHANDLED = "unhandled"
 
 type ActionKey = tuple[str, str, date, str]
@@ -110,6 +121,23 @@ def held_actions(
         )
         for isin, kind, ex_date, qualifier, ratio_from, ratio_to, amount, purpose in rows
     }
+
+
+def traded_at(
+    connection: psycopg.Connection, venue: str, collected_on: date, current: dict[str, str]
+) -> set[str]:
+    """Each instrument the venue traded in the days before collection, under the ISIN it has now."""
+    since = collected_on - timedelta(days=UNTRADED_DAYS)
+    return {
+        str(current.get(isin, isin))
+        for (isin,) in connection.execute(TRADED, (venue, since, collected_on))
+    }
+
+
+def named(keys: list[ActionKey]) -> str:
+    return ", ".join(
+        f"{isin} {kind} {ex_date:%Y-%m-%d} {qualifier}" for isin, kind, ex_date, qualifier in keys
+    )
 
 
 def key_of(item: CorporateActionRecord) -> ActionKey:
@@ -162,6 +190,7 @@ def collect_ranges(
     context: AssetExecutionContext,
     connection: psycopg.Connection,
     definition: SourceDefinition,
+    venue: str,
     adapter: RangeReader,
     ranges: list[tuple[date, date]],
     collected_on: date,
@@ -173,10 +202,12 @@ def collect_ranges(
 
     `normalize` turns a venue's response into actions under the ISINs they belong to, `current`
     maps every ISIN already stored onto the one it has since become, and `listed_as` onto one
-    standing for the venue-local identifier it was listed under.
+    standing for the venue-local identifier it was listed under. A stored action the answer lacks
+    fails its range unless the venue has stopped trading the instrument, and is then excused.
     """
     version = definition.version_for(collected_on)
-    read = failed = written = 0
+    trading = traded_at(connection, venue, collected_on, current)
+    read = failed = written = excused = 0
 
     for first, last in ranges:
         partition = f"{first:%Y%m%d}-{last:%Y%m%d}"
@@ -189,10 +220,11 @@ def collect_ranges(
                 raise SchemaDrift(f"answer for {partition} holds ex-dates {outside[:3]} outside it")
             held = held_actions(connection, definition.source_id, first, last, current)
             missing = unanswered(held, records, listed_as)
-            if missing:
+            refused = [key for key in missing if key[0] in trading]
+            if refused:
                 raise SchemaDrift(
-                    f"answer for {partition} lacks {len(missing)} actions already stored,"
-                    f" such as {missing[:3]}"
+                    f"answer for {partition} lacks {len(refused)} actions already stored,"
+                    f" such as {refused[:3]}"
                 )
         except SourceError as failure:
             record_ingestion(
@@ -214,11 +246,34 @@ def collect_ranges(
         # venue reports for the first time, or restates, becomes a further version.
         fresh = tuple(item for item in records if held.get(key_of(item)) != terms_of(item))
         written += persist_actions(connection, fresh)
+        detail = (
+            f"lacks {len(missing)} actions of instruments untraded at {venue} for"
+            f" {UNTRADED_DAYS} days: {named(missing)}"
+            if missing
+            else None
+        )
         record_ingestion(
-            connection, definition.source_id, partition, version, "succeeded", len(records)
+            connection,
+            definition.source_id,
+            partition,
+            version,
+            "succeeded",
+            len(records),
+            detail=detail,
         )
         connection.commit()
         read += 1
+        excused += len(missing)
+        if missing:
+            context.log.info(
+                "stored corporate actions absent from the answer for instruments no longer traded",
+                extra={
+                    "source_id": definition.source_id,
+                    "range": partition,
+                    "count": len(missing),
+                    "actions": named(missing[:5]),
+                },
+            )
 
     context.log.info(
         "corporate actions ingested",
@@ -227,6 +282,7 @@ def collect_ranges(
             "ranges": read,
             "failed": failed,
             "written": written,
+            "excused": excused,
         },
     )
     return MaterializeResult(
@@ -234,6 +290,7 @@ def collect_ranges(
             "ranges": read,
             "failed": failed,
             "written": written,
+            "excused": excused,
             "collected_on": collected_on.isoformat(),
         }
     )
@@ -256,6 +313,7 @@ def ingest_actions(
             context,
             connection,
             actions.definition(),
+            "BSE",
             adapter,
             ranges,
             collected_on,

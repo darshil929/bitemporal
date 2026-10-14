@@ -56,7 +56,8 @@ LOG_FOLDER = "flow-logs"
 
 # The counts each source's result carries: days for prices and delivery, with the days asked for
 # again and answered, the rows a corrected file changed and the days that could not be asked for
-# again; years of ex-dates for corporate actions; statuses for a list of securities.
+# again; years of ex-dates for corporate actions, with the stored actions an answer left out for
+# instruments the venue no longer trades; statuses for a list of securities.
 DAY_COUNTS = (
     "published",
     "unpublished",
@@ -71,8 +72,8 @@ SOURCE_COUNTS = {
     "nse_bhavcopy": DAY_COUNTS,
     "bse_delivery": DAY_COUNTS,
     "nse_delivery": DAY_COUNTS,
-    "corporate_actions": ("ranges", "failed"),
-    "nse_corporate_actions": ("ranges", "failed"),
+    "corporate_actions": ("ranges", "failed", "excused"),
+    "nse_corporate_actions": ("ranges", "failed", "excused"),
     "bse_instrument_names": ("lists", "failed"),
     "nse_instrument_names": ("lists", "failed"),
 }

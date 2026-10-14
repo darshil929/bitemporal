@@ -9,6 +9,7 @@ import psycopg
 import pytest
 from alembic.config import Config
 from dagster import build_asset_context
+from test_corporate_action_asset import trade
 
 from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
 from pipelines.assets.ingestion.nse_corporate_actions import ingest_nse_actions
@@ -71,6 +72,7 @@ def database(migrated: Config, postgres_dsn: str) -> Iterator[PointedDatabase]:
 
     with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
         for table in (
+            "price_daily",
             "corporate_action",
             "ingestion_log",
             "instrument_succession",
@@ -172,6 +174,7 @@ def test_an_action_held_unhandled_on_a_day_the_answer_lacks_is_refused(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
     hold_unhandled(postgres_dsn, ITC, date(2025, 2, 3), "Scheme Of Arrangement")
+    trade(postgres_dsn, ITC, "NSE", date(2026, 9, 25))
 
     result = ingest_nse_actions(
         build_asset_context(), database, RecordedActions(), [YEAR_2025], COLLECTED_ON
