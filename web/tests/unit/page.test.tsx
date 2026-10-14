@@ -6,5 +6,7 @@ import DashboardPage from "@/app/page";
 test("dashboard renders its heading", () => {
   render(<DashboardPage />);
 
-  expect(screen.getByRole("heading", { name: "Bitemporal" })).toBeDefined();
+  expect(
+    screen.getByRole("heading", { level: 1, name: "Market" }),
+  ).toBeDefined();
 });
