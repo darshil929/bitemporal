@@ -19,6 +19,9 @@ class ApiSettings(BaseSettings):
     # Served over HTTPS the session cookie is Secure and takes the __Host- prefix, which binds it to
     # the host that set it; a deployment served over plain HTTP on its own network turns this off.
     session_cookie_secure: bool = True
+    # The address the application's pages are served from, which a browser too old to send
+    # Sec-Fetch-Site names in Origin; without it such a browser changes nothing.
+    app_origin: str | None = None
 
     @property
     def schema_name(self) -> str:
