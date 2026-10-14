@@ -339,6 +339,65 @@ models:
           1" for a split or consolidation, "Nil" for a dividend of nothing; absent for a paid
           dividend, whose amount is dividend_amount, and for an unhandled action.
 
+  - name: mart_market_breadth
+    description: >
+      One row per trading day: how many companies rose, fell and held, each on its primary venue,
+      with the day's new 52-week highs and lows and the median one-day return. Funds are left out,
+      a fund moving with what it holds rather than with the market. Each row is aggregated from
+      the published daily features, so a read names its days.
+    columns:
+      - name: trade_date
+        data_type: date
+        description: The day the counts describe.
+      - name: advancing
+        data_type: bigint
+        description: Companies whose adjusted close rose from the previous one.
+      - name: declining
+        data_type: bigint
+        description: Companies whose adjusted close fell from the previous one.
+      - name: unchanged
+        data_type: bigint
+        description: Companies whose adjusted close equals the previous one exactly.
+      - name: new_52w_highs
+        data_type: bigint
+        description: Companies whose high reaches every high of the 251 bars before it.
+      - name: new_52w_lows
+        data_type: bigint
+        description: Companies whose low reaches every low of the 251 bars before it.
+      - name: median_return_1d
+        data_type: double precision
+        description: >
+          The median one-day return of the companies with one, a fraction: 0.0012 is 0.12 percent.
+      - name: as_of_date
+        data_type: date
+        description: The latest day on which the day's feature rows and its verdicts were knowable.
+      - name: is_complete
+        data_type: boolean
+        description: >
+          Whether every venue that held a session that day passed every check. An incomplete day
+          feeds no breadth shown.
+
+  - name: mart_primary_venue
+    description: >
+      One row per instrument with a daily feature row: the venue its newest row was computed on,
+      which a page opens on. The designation follows each venue's turnover and can change at the
+      turn of a month.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: The ISIN the instrument trades under now.
+      - name: primary_venue
+        data_type: varchar(12)
+        description: >
+          BSE or NSE: the venue with the larger turnover over the 90 calendar days ending on the
+          last day of the month before the newest feature row.
+      - name: trade_date
+        data_type: date
+        description: The day of the instrument's newest feature row.
+      - name: as_of_date
+        data_type: date
+        description: The day that row became knowable.
+
 unit_tests:
   - name: an_action_both_venues_report_is_listed_once_as_bse_records_it
     model: mart_corporate_actions
@@ -477,3 +536,87 @@ unit_tests:
     expect:
       rows:
         - {isin: INE006A01047, source_isin: INE006A01013, reported_by: NSE}
+
+  - name: breadth_counts_each_company_by_the_sign_of_its_return
+    description: >
+      A rise however small advances, only a return of exactly 0 is unchanged, a first bar with no
+      return counts in none, and a fund counts in nothing.
+    model: mart_market_breadth
+    given:
+      - input: source('features', 'mart_daily_features')
+        rows:
+          - {isin: INE002A01018, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             return_1d: -0.02, is_52w_high: false, is_52w_low: true}
+          - {isin: INE009A01021, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             return_1d: 0, is_52w_high: false, is_52w_low: false}
+          - {isin: INE040A01034, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             return_1d: 0.01, is_52w_high: false, is_52w_low: false}
+          - {isin: INE062A01020, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             return_1d: 0.02, is_52w_high: true, is_52w_low: false}
+          - {isin: INE154A01025, trade_date: "2026-10-09", as_of_date: "2026-10-10",
+             return_1d: 0.03, is_52w_high: false, is_52w_low: false}
+          - {isin: INE155A01022, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             return_1d: null, is_52w_high: null, is_52w_low: null}
+          - {isin: INF204KB14I2, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             return_1d: 0.05, is_52w_high: true, is_52w_low: false}
+          - {isin: INE002A01018, trade_date: "2026-10-12", as_of_date: "2026-10-12",
+             return_1d: 0.000001, is_52w_high: false, is_52w_low: false}
+      - input: ref('stg_trading_day')
+        rows:
+          - {venue: BSE, trade_date: "2026-10-09", as_of_date: "2026-10-09", is_complete: true}
+          - {venue: NSE, trade_date: "2026-10-09", as_of_date: "2026-10-09", is_complete: true}
+          - {venue: BSE, trade_date: "2026-10-12", as_of_date: "2026-10-12", is_complete: true}
+          - {venue: NSE, trade_date: "2026-10-12", as_of_date: "2026-10-12", is_complete: true}
+    expect:
+      rows:
+        - {trade_date: "2026-10-09", advancing: 3, declining: 1, unchanged: 1, new_52w_highs: 1,
+           new_52w_lows: 1, median_return_1d: "0.01", as_of_date: "2026-10-10"}
+        - {trade_date: "2026-10-12", advancing: 1, declining: 0, unchanged: 0, new_52w_highs: 0,
+           new_52w_lows: 0, median_return_1d: "0.000001", as_of_date: "2026-10-12"}
+
+  - name: a_day_completes_where_every_venue_in_session_completed_it
+    description: >
+      A day only one venue held a session is judged on that venue alone; a day either venue left
+      incomplete is incomplete.
+    model: mart_market_breadth
+    given:
+      - input: source('features', 'mart_daily_features')
+        rows:
+          - {isin: INE002A01018, trade_date: "2025-11-09", return_1d: 0.01}
+          - {isin: INE002A01018, trade_date: "2026-10-09", return_1d: 0.01}
+          - {isin: INE002A01018, trade_date: "2026-10-12", return_1d: 0.01}
+      - input: ref('stg_trading_day')
+        rows:
+          - {venue: NSE, trade_date: "2025-11-09", as_of_date: "2025-11-09", is_complete: true}
+          - {venue: BSE, trade_date: "2026-10-09", as_of_date: "2026-10-09", is_complete: true}
+          - {venue: NSE, trade_date: "2026-10-09", as_of_date: "2026-10-09", is_complete: false}
+          - {venue: BSE, trade_date: "2026-10-12", as_of_date: "2026-10-12", is_complete: true}
+          - {venue: NSE, trade_date: "2026-10-12", as_of_date: "2026-10-13", is_complete: true}
+    expect:
+      rows:
+        - {trade_date: "2025-11-09", is_complete: true, as_of_date: "2025-11-09"}
+        - {trade_date: "2026-10-09", is_complete: false, as_of_date: "2026-10-09"}
+        - {trade_date: "2026-10-12", is_complete: true, as_of_date: "2026-10-13"}
+
+  - name: an_instrument_opens_on_its_newest_designation
+    description: >
+      An instrument designated BSE until a month's turn and NSE after it opens on NSE; one with no
+      feature row has none.
+    model: mart_primary_venue
+    given:
+      - input: ref('mart_instruments')
+        rows:
+          - {isin: INE002A01018}
+          - {isin: INE721A01013}
+      - input: source('features', 'mart_daily_features')
+        rows:
+          - {isin: INE002A01018, trade_date: "2026-09-30", as_of_date: "2026-09-30",
+             primary_venue: BSE}
+          - {isin: INE002A01018, trade_date: "2026-10-01", as_of_date: "2026-10-01",
+             primary_venue: NSE}
+          - {isin: INE002A01018, trade_date: "2026-10-09", as_of_date: "2026-10-10",
+             primary_venue: NSE}
+    expect:
+      rows:
+        - {isin: INE002A01018, primary_venue: NSE, trade_date: "2026-10-09",
+           as_of_date: "2026-10-10"}
