@@ -3,6 +3,7 @@
 import base64
 import binascii
 import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -33,6 +34,9 @@ STANDING = text(
 )
 END = text("update app_session set ended_at = :at, ended_reason = :reason where id = :id")
 SEEN = text("update app_session set last_seen_at = now() where id = :id")
+SIGN_OUT = text(
+    "update app_session set ended_at = now(), ended_reason = 'signed_out' where id = :id"
+)
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,12 @@ class NotSignedIn(Exception):
     ended_at: datetime | None = None
     idle_minutes: int | None = None
     max_hours: int | None = None
+
+
+def new_token() -> tuple[str, bytes]:
+    """A fresh session token: the cookie's value, and the digest stored for it."""
+    token = secrets.token_bytes(TOKEN_BYTES)
+    return base64.urlsafe_b64encode(token).rstrip(b"=").decode(), hashlib.sha256(token).digest()
 
 
 def token_hash(cookie: str) -> bytes | None:
@@ -106,3 +116,16 @@ async def signed_in_user(database: Database, cookie: str | None) -> SignedInUser
         role=standing.role,
         must_change_password=standing.must_change_password,
     )
+
+
+async def sign_out(database: Database, cookie: str | None) -> None:
+    """End the cookie's session where it is still running; a cookie naming none changes nothing."""
+    hashed = token_hash(cookie) if cookie else None
+    if hashed is None:
+        return
+    async with database.transaction() as transaction:
+        session = (await transaction.execute(SESSION, {"token": hashed})).one_or_none()
+        if session is None or session.ended_at is not None:
+            return
+        await transaction.execute(ACTING_FOR, {"user": str(session.owner_id)})
+        await transaction.execute(SIGN_OUT, {"id": session.id})

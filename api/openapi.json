@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -179,6 +192,112 @@
         ],
         "title": "SessionResponse",
         "type": "object"
+      },
+      "SignInRefused": {
+        "description": "Why a sign-in was refused, and until when where it is paused.",
+        "properties": {
+          "paused_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Until"
+          },
+          "reason": {
+            "enum": [
+              "wrong_credentials",
+              "paused",
+              "disabled"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "paused_until"
+        ],
+        "title": "SignInRefused",
+        "type": "object"
+      },
+      "SignInRefusedResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/SignInRefused"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "SignInRefusedResponse",
+        "type": "object"
+      },
+      "SignInRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "SignInRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
       }
     }
   },
@@ -188,6 +307,71 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/auth/sign-in": {
+      "post": {
+        "operationId": "sign_in",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInRefusedResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign In",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/sign-out": {
+      "post": {
+        "operationId": "sign_out",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sign Out",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health",

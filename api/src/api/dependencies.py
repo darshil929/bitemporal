@@ -14,12 +14,18 @@ def database(request: Request) -> Database:
     return cast(Database, request.app.state.database)
 
 
+def settings(request: Request) -> ApiSettings:
+    return cast(ApiSettings, request.app.state.settings)
+
+
 DatabaseDependency = Annotated[Database, Depends(database)]
+SettingsDependency = Annotated[ApiSettings, Depends(settings)]
 
 
-async def signed_in(request: Request, database: DatabaseDependency) -> SignedInUser:
+async def signed_in(
+    request: Request, database: DatabaseDependency, settings: SettingsDependency
+) -> SignedInUser:
     """The person the request's session acts for; a request without a running one is refused."""
-    settings = cast(ApiSettings, request.app.state.settings)
     try:
         return await signed_in_user(database, request.cookies.get(settings.session_cookie_name))
     except NotSignedIn as refused:
