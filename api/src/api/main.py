@@ -9,7 +9,7 @@ from fastapi.routing import APIRoute
 from api.config import ApiSettings
 from api.db.database import Database
 from api.log_format import configure_logging
-from api.routers import health, sessions
+from api.routers import auth, health, sessions
 
 
 def operation_id(route: APIRoute) -> str:
@@ -39,6 +39,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         generate_unique_id_function=operation_id,
     )
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(sessions.router)
     return app
 
