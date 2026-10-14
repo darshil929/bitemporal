@@ -3,15 +3,16 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# One DATABASE_URL serves the API and the pipelines; the API connects through psycopg whichever
-# driver the URL names.
+# The API connects as a role of its own, which owns nothing and which row security binds, through
+# API_DATABASE_URL; the migrations, dbt and the flows connect through DATABASE_URL. Whichever
+# driver the URL names, the API connects through psycopg.
 ASYNC_DRIVER = "postgresql+psycopg"
 
 
 class ApiSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = Field(default="postgresql+psycopg://bitemporal@localhost:5432/bitemporal")
+    api_database_url: str
     data_env: str = Field(default="fixture", pattern="^(fixture|dev|full)$")
     database_connect_timeout_seconds: int = Field(default=5, gt=0)
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
@@ -22,5 +23,5 @@ class ApiSettings(BaseSettings):
 
     @property
     def async_database_url(self) -> str:
-        _, _, rest = self.database_url.partition("://")
+        _, _, rest = self.api_database_url.partition("://")
         return f"{ASYNC_DRIVER}://{rest}"
