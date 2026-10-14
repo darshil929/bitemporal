@@ -49,6 +49,18 @@
   --spacing-gutter: 1.5rem;
   --spacing-section: 1.5rem;
   --spacing-control: 2rem;
+
+  --animate-pulse: pulse 1.6s ease-in-out infinite;
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 0.9;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
 }
 
 /* The names shadcn components draw focus and invalid states with. */
