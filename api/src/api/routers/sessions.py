@@ -2,14 +2,14 @@
 
 from fastapi import APIRouter, status
 
-from api.dependencies import SignedInDependency
+from api.dependencies import SessionHolderDependency
 from api.schemas.sessions import NotSignedInResponse, SessionResponse
 
 router = APIRouter(tags=["sessions"])
 
 
 @router.get("/session", responses={status.HTTP_401_UNAUTHORIZED: {"model": NotSignedInResponse}})
-async def session(user: SignedInDependency) -> SessionResponse:
+async def session(user: SessionHolderDependency) -> SessionResponse:
     return SessionResponse(
         id=user.id,
         username=user.username,

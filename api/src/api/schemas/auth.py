@@ -21,3 +21,11 @@ class SignInRefused(BaseModel):
 
 class SignInRefusedResponse(BaseModel):
     detail: SignInRefused
+
+
+class NewPasswordRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class PasswordRefusedResponse(BaseModel):
+    detail: str

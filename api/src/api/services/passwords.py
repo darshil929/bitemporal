@@ -2,12 +2,33 @@
 
 import secrets
 from functools import cache
+from typing import Literal
 
 import anyio
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 
 PASSWORDS = PasswordHash((Argon2Hasher(),))
+
+# Length is the rule, with no rule on the kinds of character; a password may not contain the
+# account's own names or the application's.
+SHORTEST_PASSWORD = 15
+LONGEST_PASSWORD = 128
+APPLICATION_NAME = "bitemporal"
+
+PasswordProblem = Literal["too_short", "too_long", "contains_a_name"]
+
+
+def password_problem(password: str, *names: str) -> PasswordProblem | None:
+    """What makes the password unusable for an account with these names, or None."""
+    if len(password) < SHORTEST_PASSWORD:
+        return "too_short"
+    if len(password) > LONGEST_PASSWORD:
+        return "too_long"
+    lowered = password.casefold()
+    if any(name.casefold() in lowered for name in (*names, APPLICATION_NAME) if name):
+        return "contains_a_name"
+    return None
 
 
 def hash_password(password: str) -> str:

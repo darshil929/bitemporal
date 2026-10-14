@@ -28,6 +28,21 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "NewPasswordRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "NewPasswordRequest",
+        "type": "object"
+      },
       "NotSignedInResponse": {
         "properties": {
           "detail": {
@@ -38,6 +53,19 @@
           "detail"
         ],
         "title": "NotSignedInResponse",
+        "type": "object"
+      },
+      "PasswordRefusedResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "PasswordRefusedResponse",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -212,7 +240,8 @@
             "enum": [
               "wrong_credentials",
               "paused",
-              "disabled"
+              "disabled",
+              "temporary_password_expired"
             ],
             "title": "Reason",
             "type": "string"
@@ -307,6 +336,51 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/auth/password": {
+      "post": {
+        "description": "Replace the temporary password an admin set with one the person chooses.",
+        "operationId": "change_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordRefusedResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordRefusedResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/sign-in": {
       "post": {
         "operationId": "sign_in",

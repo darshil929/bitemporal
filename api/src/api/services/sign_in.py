@@ -20,7 +20,7 @@ LONGEST_PAUSE = timedelta(hours=1)
 # The start of the browser's User-Agent kept with the session, enough to tell devices apart.
 USER_AGENT_LENGTH = 200
 
-SignInRefusal = Literal["wrong_credentials", "paused", "disabled"]
+SignInRefusal = Literal["wrong_credentials", "paused", "disabled", "temporary_password_expired"]
 
 CANDIDATE = text("select *, now() as now from sign_in_candidate(:username)")
 RECORD_FAILURE = text("select record_failed_sign_in(:account, :until)")
@@ -64,7 +64,8 @@ async def sign_in(
     database: Database, username: str, password: str, user_agent: str | None
 ) -> SignedIn:
     """A new session for the account the password opens. A wrong username and a wrong password are
-    refused alike; a disabled account is named only once its password is right."""
+    refused alike; a disabled account, or a temporary password past its day, is named only once the
+    password is right."""
     async with database.transaction() as transaction:
         candidate = (await transaction.execute(CANDIDATE, {"username": username})).one_or_none()
     if candidate is None:
@@ -82,6 +83,9 @@ async def sign_in(
         raise SignInRefused("paused", until) if until else SignInRefused("wrong_credentials")
     if candidate.disabled_at is not None:
         raise SignInRefused("disabled")
+    expires = candidate.temporary_password_expires_at
+    if candidate.must_change_password and expires is not None and expires <= candidate.now:
+        raise SignInRefused("temporary_password_expired")
 
     cookie, token_hash = new_token()
     agent = user_agent[:USER_AGENT_LENGTH] if user_agent else None
