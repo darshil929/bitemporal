@@ -15,6 +15,18 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "NotSignedInResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/SessionEnded"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "NotSignedInResponse",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "properties": {
           "database_schema": {
@@ -64,6 +76,108 @@
           "reason"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "SessionEnded": {
+        "description": "Why the request's session is not running; every field absent where it never was.",
+        "properties": {
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "idle_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Minutes"
+          },
+          "max_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Hours"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "idle",
+                  "limit",
+                  "signed_out",
+                  "signed_out_elsewhere",
+                  "disabled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "reason",
+          "ended_at",
+          "idle_minutes",
+          "max_hours"
+        ],
+        "title": "SessionEnded",
+        "type": "object"
+      },
+      "SessionResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "must_change_password": {
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "must_change_password"
+        ],
+        "title": "SessionResponse",
         "type": "object"
       }
     }
@@ -123,6 +237,37 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/session": {
+      "get": {
+        "operationId": "session",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Session",
+        "tags": [
+          "sessions"
         ]
       }
     }

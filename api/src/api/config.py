@@ -16,10 +16,17 @@ class ApiSettings(BaseSettings):
     data_env: str = Field(default="fixture", pattern="^(fixture|dev|full)$")
     database_connect_timeout_seconds: int = Field(default=5, gt=0)
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
+    # Served over HTTPS the session cookie is Secure and takes the __Host- prefix, which binds it to
+    # the host that set it; a deployment served over plain HTTP on its own network turns this off.
+    session_cookie_secure: bool = True
 
     @property
     def schema_name(self) -> str:
         return self.data_env
+
+    @property
+    def session_cookie_name(self) -> str:
+        return "__Host-bitemporal_session" if self.session_cookie_secure else "bitemporal_session"
 
     @property
     def async_database_url(self) -> str:
