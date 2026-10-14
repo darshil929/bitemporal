@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Dark styles apply under data-theme="dark", which the account's setting sets. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme static {
   --color-*: initial;
   --color-surface: #ffffff;
@@ -46,6 +49,12 @@
   --spacing-gutter: 1.5rem;
   --spacing-section: 1.5rem;
   --spacing-control: 2rem;
+}
+
+/* The names shadcn components draw focus and invalid states with. */
+@theme inline {
+  --color-ring: var(--color-accent);
+  --color-destructive: var(--color-flag);
 }
 
 [data-theme="dark"] {

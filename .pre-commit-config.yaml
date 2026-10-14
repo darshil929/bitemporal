@@ -50,7 +50,8 @@ repos:
         language: system
         entry: npm --prefix web exec -- prettier --write --ignore-unknown
         files: ^web/
-        exclude: ^web/(node_modules|\.next)/
+        # Components shadcn generates stay as the CLI wrote them.
+        exclude: ^web/(node_modules|\.next|src/components/ui)/
 
       - id: sqlfluff
         name: sqlfluff
