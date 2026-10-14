@@ -1,7 +1,7 @@
 """Reading corporate actions a year of ex-dates at a time, by invoking the asset with recorded responses."""
 
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,6 +26,7 @@ TATA_MOTORS = ("500570", "INE155A01022")
 SHRIRAM_CODE = "511218"
 SHRIRAM_OLD = "INE721A01013"
 SHRIRAM_NEW = "INE721A01047"
+JB_CHEMICALS = ("506943", "INE572A01036")
 
 YEAR_2024 = (date(2024, 1, 1), date(2024, 12, 31))
 YEAR_2025 = (date(2025, 1, 1), date(2025, 12, 31))
@@ -98,6 +99,7 @@ def database(migrated: Config, postgres_dsn: str) -> Iterator[PointedDatabase]:
 
     with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
         for table in (
+            "price_daily",
             "corporate_action",
             "ingestion_log",
             "instrument_succession",
@@ -111,6 +113,17 @@ def database(migrated: Config, postgres_dsn: str) -> Iterator[PointedDatabase]:
 def rows(dsn: str, sql: str, params: tuple[str, ...] = ()) -> list[tuple]:
     with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
         return open_.execute(sql, params).fetchall()
+
+
+def trade(dsn: str, isin: str, venue: str, day: date) -> None:
+    """Stores a bar of the instrument at the venue on the day."""
+    with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        open_.execute(
+            "insert into price_daily (isin, venue, trade_date, as_of_date, open, high, low, close,"
+            " volume, local_symbol) values (%s, %s, %s, %s, 100, 100, 100, 100, 1, %s)",
+            (isin, venue, day, day, isin),
+        )
+        open_.commit()
 
 
 def run(
@@ -188,7 +201,11 @@ def test_an_answer_holding_ex_dates_outside_its_range_is_refused(
 def test_an_answer_lacking_an_action_already_stored_is_refused(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """A range the venue cut short reads the same as a year with fewer actions in it."""
+    """A range the venue cut short reads the same as a year with fewer actions in it.
+
+    A bar 30 days before collection still counts as the venue trading the instrument.
+    """
+    trade(postgres_dsn, RELIANCE[1], "BSE", COLLECTED_ON - timedelta(days=30))
     with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
         persist_actions(
             open_,
@@ -212,6 +229,56 @@ def test_an_answer_lacking_an_action_already_stored_is_refused(
     assert metadata["failed"] == 1
     assert "lacks 1 actions already stored" in logged[0][1]
     assert rows(postgres_dsn, "select count(*) from corporate_action")[0][0] == 1
+
+
+def test_an_answer_lacking_the_actions_of_an_instrument_the_venue_no_longer_trades_is_read(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """The venue's answer leaves out every action of a scrip that has left it, as after an amalgamation."""
+    code, isin = JB_CHEMICALS
+    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        open_.execute(
+            "insert into instrument_master (isin, name, country, instrument_type)"
+            " values (%s, %s, 'IN', 'equity')",
+            (isin, isin),
+        )
+        open_.execute(
+            "insert into listing (isin, exchange, local_symbol, scrip_code, listing_date)"
+            " values (%s, 'BSE', 'JBCHEPHARM', %s, '2023-09-18')",
+            (isin, code),
+        )
+        persist_actions(
+            open_,
+            [
+                CorporateActionRecord(
+                    isin=isin,
+                    action_type="dividend",
+                    ex_date=date(2024, 2, 16),
+                    source_id="bse_corporate_actions",
+                    as_of_date=date(2026, 9, 22),
+                    qualifier="interim",
+                    dividend_amount=Decimal("5.5"),
+                )
+            ],
+        )
+        open_.commit()
+    trade(postgres_dsn, isin, "BSE", date(2026, 7, 16))
+
+    metadata = run(database, RecordedActions(), YEAR_2024)
+
+    logged = rows(postgres_dsn, "select outcome, detail from ingestion_log")
+    kept = rows(postgres_dsn, "select ex_date::text from corporate_action where isin = %s", (isin,))
+    assert (metadata["failed"], metadata["excused"], metadata["written"]) == (0, 1, 7)
+    assert logged == [
+        (
+            "succeeded",
+            (
+                "lacks 1 actions of instruments untraded at BSE for 30 days:"
+                f" {isin} dividend 2024-02-16 interim"
+            ),
+        )
+    ]
+    assert kept == [("2024-02-16",)]
 
 
 def test_an_action_read_again_with_the_same_terms_is_not_stored_again(

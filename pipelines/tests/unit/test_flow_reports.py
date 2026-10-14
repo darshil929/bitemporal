@@ -97,6 +97,13 @@ def test_a_check_of_warning_severity_is_reported_and_fails_nothing() -> None:
     assert f"  check warned: {ONE_SIDED}, 17 rows" in warned.lines()
 
 
+def test_actions_excused_from_a_venue_s_answer_are_counted_and_fail_nothing() -> None:
+    excused = report(counts={"corporate_actions": {"ranges": 28, "failed": 0, "excused": 9}})
+
+    assert excused.is_clean
+    assert "  corporate_actions      ranges 28  failed 0  excused 9" in excused.lines()
+
+
 def test_checks_are_counted_by_their_outcome_and_severity() -> None:
     """dbt's warnings arrive as checks of warning severity that did not pass."""
     checks = [
