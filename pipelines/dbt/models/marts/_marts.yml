@@ -398,6 +398,48 @@ models:
         data_type: date
         description: The day that row became knowable.
 
+  - name: mart_venue_daily_figures
+    description: >
+      One row per instrument, venue and day the venue traded: the day's close and the figures the
+      daily features carry for the primary venue, each computed on this venue's own whole series of
+      adjusted prices, so on a primary-venue day they equal the features. Returns are fractions,
+      0.0124 being 1.24 percent. Each figure looks back along the series, so a read names its
+      instruments.
+    columns:
+      - name: isin
+        data_type: varchar(12)
+        description: The ISIN the instrument trades under now.
+      - name: venue
+        data_type: varchar(12)
+        description: BSE or NSE.
+      - name: trade_date
+        data_type: date
+        description: The day the figures describe.
+      - name: close
+        data_type: numeric(18,4)
+        description: The venue's close as traded, in rupees; missing where the venue published none.
+      - name: change_1d
+        data_type: double precision
+        description: >
+          The adjusted close less the venue's previous one, in the day's own price scale; missing
+          where either close is.
+      - name: return_1d
+        data_type: double precision
+        description: The adjusted close over the venue's previous one, less one.
+      - name: return_1m
+        data_type: double precision
+        description: The adjusted close over the venue's one 21 bars earlier, less one.
+      - name: delivery_pct_1d
+        data_type: double precision
+        description: >
+          Delivered shares over shares traded at the venue, times 100; missing without a delivery
+          figure.
+      - name: as_of_date
+        data_type: date
+        description: >
+          The latest day on which the venue's bars up to the day and the factors applied on or
+          before it were knowable.
+
 unit_tests:
   - name: an_action_both_venues_report_is_listed_once_as_bse_records_it
     model: mart_corporate_actions
@@ -620,3 +662,87 @@ unit_tests:
       rows:
         - {isin: INE002A01018, primary_venue: NSE, trade_date: "2026-10-09",
            as_of_date: "2026-10-10"}
+
+  - name: a_missing_close_blanks_its_day_and_the_next
+    model: mart_venue_daily_figures
+    given:
+      - input: ref('int_continuous_prices')
+        rows:
+          - {isin: INE009A01021, venue: BSE, trade_date: "2026-10-07", as_of_date: "2026-10-07",
+             close: 100, close_as_traded: 100, adjustment_factor: 1, volume: 10}
+          - {isin: INE009A01021, venue: BSE, trade_date: "2026-10-08", as_of_date: "2026-10-08",
+             close: null, close_as_traded: null, adjustment_factor: 1, volume: 10}
+          - {isin: INE009A01021, venue: BSE, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             close: 110, close_as_traded: 110, adjustment_factor: 1, volume: 10}
+          - {isin: INE009A01021, venue: BSE, trade_date: "2026-10-12", as_of_date: "2026-10-12",
+             close: 121, close_as_traded: 121, adjustment_factor: 1, volume: 10}
+      - input: ref('int_applied_action_dates')
+        rows: []
+    expect:
+      rows:
+        - {trade_date: "2026-10-07", change_1d: null, return_1d: null}
+        - {trade_date: "2026-10-08", change_1d: null, return_1d: null}
+        - {trade_date: "2026-10-09", change_1d: null, return_1d: null}
+        - {trade_date: "2026-10-12", change_1d: "11", return_1d: "0.1"}
+
+  - name: a_change_reads_in_the_price_scale_of_its_own_day
+    description: >
+      A 1 for 1 bonus took effect on 9 Oct, so the closes before it are halved in the adjusted
+      series; the change on 8 Oct reads in that day's prices, as traded.
+    model: mart_venue_daily_figures
+    given:
+      - input: ref('int_continuous_prices')
+        rows:
+          - {isin: INE040A01034, venue: NSE, trade_date: "2026-10-07", as_of_date: "2026-10-07",
+             close: 49, close_as_traded: 98, adjustment_factor: 0.5, volume: 10}
+          - {isin: INE040A01034, venue: NSE, trade_date: "2026-10-08", as_of_date: "2026-10-08",
+             close: 50, close_as_traded: 100, adjustment_factor: 0.5, volume: 10}
+          - {isin: INE040A01034, venue: NSE, trade_date: "2026-10-09", as_of_date: "2026-10-09",
+             close: 51, close_as_traded: 51, adjustment_factor: 1, volume: 10}
+      - input: ref('int_applied_action_dates')
+        rows:
+          - {isin: INE040A01034, ex_date: "2026-10-09", as_of_date: "2026-09-25"}
+    expect:
+      rows:
+        - {trade_date: "2026-10-07", close: "98.0000", change_1d: null, return_1d: null}
+        - {trade_date: "2026-10-08", close: "100.0000", change_1d: "2", return_1d: "0.02040816326530612"}
+        - {trade_date: "2026-10-09", close: "51.0000", change_1d: "1", return_1d: "0.02"}
+
+  - name: a_delivery_share_needs_a_delivery_figure
+    model: mart_venue_daily_figures
+    given:
+      - input: ref('int_continuous_prices')
+        rows:
+          - {isin: INE002A01018, venue: BSE, trade_date: "2026-10-08", close: 100,
+             adjustment_factor: 1, volume: 200, delivery_quantity: 50}
+          - {isin: INE002A01018, venue: BSE, trade_date: "2026-10-09", close: 100,
+             adjustment_factor: 1, volume: 200, delivery_quantity: null}
+      - input: ref('int_applied_action_dates')
+        rows: []
+    expect:
+      rows:
+        - {trade_date: "2026-10-08", delivery_pct_1d: "25"}
+        - {trade_date: "2026-10-09", delivery_pct_1d: null}
+
+  - name: a_figure_is_dated_by_the_factors_applied_before_it
+    description: >
+      An NSE-only factor of 1 Oct became knowable on 7 Oct, once the prices confirmed it; the day
+      before it reads by its own bars.
+    model: mart_venue_daily_figures
+    given:
+      - input: ref('int_continuous_prices')
+        rows:
+          - {isin: INE0NCC01015, venue: NSE, trade_date: "2026-09-30", as_of_date: "2026-09-30",
+             close: 10, adjustment_factor: 0.5, volume: 10}
+          - {isin: INE0NCC01015, venue: NSE, trade_date: "2026-10-01", as_of_date: "2026-10-01",
+             close: 10, adjustment_factor: 1, volume: 10}
+          - {isin: INE0NCC01015, venue: NSE, trade_date: "2026-10-08", as_of_date: "2026-10-09",
+             close: 10, adjustment_factor: 1, volume: 10}
+      - input: ref('int_applied_action_dates')
+        rows:
+          - {isin: INE0NCC01015, ex_date: "2026-10-01", as_of_date: "2026-10-07"}
+    expect:
+      rows:
+        - {trade_date: "2026-09-30", as_of_date: "2026-09-30"}
+        - {trade_date: "2026-10-01", as_of_date: "2026-10-07"}
+        - {trade_date: "2026-10-08", as_of_date: "2026-10-09"}

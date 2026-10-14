@@ -220,6 +220,21 @@ models:
               arguments:
                 values: [agree, differ, bse_only, nse_only]
 
+  - name: int_applied_action_dates
+    description: >
+      The day each factor the continuous series applies became knowable, one row per instrument and
+      ex-date. A factor NSE alone reports is known once the prices after its ex-date confirm it.
+    columns:
+      - name: isin
+        description: The ISIN the instrument trades under now.
+        data_tests: [not_null]
+      - name: ex_date
+        description: The day the factor takes effect.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The latest day on which the reports and the prices deciding the factor were knowable.
+        data_tests: [not_null]
+
 unit_tests:
   - name: the_spread_is_measured_against_the_midpoint
     description: A one rupee gap on a hundred rupee midpoint is a hundred basis points.
