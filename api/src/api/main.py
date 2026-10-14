@@ -22,7 +22,8 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        active = settings or ApiSettings()
+        # The environment supplies the API's database URL.
+        active = settings or ApiSettings()  # type: ignore[call-arg]
         configure_logging(active.log_level)
         app.state.database = Database(active)
         try:
