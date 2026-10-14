@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.database import Database
 from api.services.passwords import unmatched_hash, verify
@@ -87,15 +88,18 @@ async def sign_in(
     if candidate.must_change_password and expires is not None and expires <= candidate.now:
         raise SignInRefused("temporary_password_expired")
 
-    cookie, token_hash = new_token()
-    agent = user_agent[:USER_AGENT_LENGTH] if user_agent else None
     async with database.transaction(candidate.id) as transaction:
-        await transaction.execute(
-            START, {"owner": candidate.id, "token": token_hash, "agent": agent}
-        )
         await transaction.execute(CLEAR_FAILURES, {"id": candidate.id})
         if rehashed is not None:
             await transaction.execute(REHASH, {"id": candidate.id, "hash": rehashed})
-        account = (await transaction.execute(ACCOUNT, {"id": candidate.id})).one()
+        return await open_session(transaction, candidate.id, user_agent)
+
+
+async def open_session(transaction: AsyncSession, owner: int, user_agent: str | None) -> SignedIn:
+    """A new session for the account, in a transaction acting for it."""
+    cookie, token_hash = new_token()
+    agent = user_agent[:USER_AGENT_LENGTH] if user_agent else None
+    await transaction.execute(START, {"owner": owner, "token": token_hash, "agent": agent})
+    account = (await transaction.execute(ACCOUNT, {"id": owner})).one()
     # The account's first five columns are the signed-in person's, in order.
     return SignedIn(SignedInUser(*account[:5]), cookie, account.session_max_hours)

@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
+from api.config import ApiSettings
 from api.dependencies import DatabaseDependency, SessionHolderDependency, SettingsDependency
 from api.schemas.auth import (
     NewPasswordRequest,
@@ -14,10 +15,24 @@ from api.schemas.sessions import SessionResponse
 from api.services import sign_in as signing_in
 from api.services.sessions import PasswordRefused, replace_temporary_password
 from api.services.sessions import sign_out as end_session
+from api.services.sign_in import SignedIn
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 HOUR = 3600
+
+
+def set_session_cookie(response: Response, settings: ApiSettings, signed_in: SignedIn) -> None:
+    """The session's cookie, lasting no longer than the server honours the session."""
+    response.set_cookie(
+        settings.session_cookie_name,
+        signed_in.cookie,
+        max_age=signed_in.max_hours * HOUR,
+        path="/",
+        secure=settings.session_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
 
 
 @router.post("/sign-in", responses={status.HTTP_401_UNAUTHORIZED: {"model": SignInRefusedResponse}})
@@ -37,16 +52,7 @@ async def sign_in(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=detail.model_dump(mode="json")
         ) from refused
-    # The cookie lasts no longer than the server honours the session.
-    response.set_cookie(
-        settings.session_cookie_name,
-        signed_in.cookie,
-        max_age=signed_in.max_hours * HOUR,
-        path="/",
-        secure=settings.session_cookie_secure,
-        httponly=True,
-        samesite="lax",
-    )
+    set_session_cookie(response, settings, signed_in)
     return SessionResponse.model_validate(signed_in.user, from_attributes=True)
 
 
