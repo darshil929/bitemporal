@@ -2,10 +2,17 @@
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from api.dependencies import DatabaseDependency, SettingsDependency
-from api.schemas.auth import SignInRefused, SignInRefusedResponse, SignInRequest
+from api.dependencies import DatabaseDependency, SessionHolderDependency, SettingsDependency
+from api.schemas.auth import (
+    NewPasswordRequest,
+    PasswordRefusedResponse,
+    SignInRefused,
+    SignInRefusedResponse,
+    SignInRequest,
+)
 from api.schemas.sessions import SessionResponse
 from api.services import sign_in as signing_in
+from api.services.sessions import PasswordRefused, replace_temporary_password
 from api.services.sessions import sign_out as end_session
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -51,3 +58,25 @@ async def sign_out(
     response.delete_cookie(
         settings.session_cookie_name, path="/", secure=settings.session_cookie_secure, httponly=True
     )
+
+
+@router.post(
+    "/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_409_CONFLICT: {"model": PasswordRefusedResponse},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": PasswordRefusedResponse},
+    },
+)
+async def change_password(
+    body: NewPasswordRequest, user: SessionHolderDependency, database: DatabaseDependency
+) -> None:
+    """Replace the temporary password an admin set with one the person chooses."""
+    try:
+        await replace_temporary_password(database, user, body.password)
+    except PasswordRefused as refused:
+        due = refused.reason != "no_change_due"
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT if due else status.HTTP_409_CONFLICT,
+            detail=refused.reason,
+        ) from refused

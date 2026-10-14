@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
+import anyio
 from sqlalchemy import text
 
 from api.db.database import ACTING_FOR, Database
+from api.services.passwords import hash_password, password_problem
 
 # A session token is 32 random bytes, carried in the cookie as unpadded base64url and stored as its
 # SHA-256 digest.
@@ -129,3 +131,30 @@ async def sign_out(database: Database, cookie: str | None) -> None:
             return
         await transaction.execute(ACTING_FOR, {"user": str(session.owner_id)})
         await transaction.execute(SIGN_OUT, {"id": session.id})
+
+
+NEW_PASSWORD = text(
+    "update app_user set password_hash = :hash, must_change_password = false,"
+    " temporary_password_expires_at = null where id = :id"
+)
+NAMES = text("select username, display_name from app_user where id = :id")
+
+
+class PasswordRefused(Exception):
+    """A new password the rule does not admit, or a change no temporary password calls for."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+async def replace_temporary_password(database: Database, user: SignedInUser, password: str) -> None:
+    """Set the password a person chose in place of the temporary one an admin gave them."""
+    if not user.must_change_password:
+        raise PasswordRefused("no_change_due")
+    async with database.transaction(user.id) as transaction:
+        names = (await transaction.execute(NAMES, {"id": user.id})).one()
+        if problem := password_problem(password, *names):
+            raise PasswordRefused(problem)
+        hashed = await anyio.to_thread.run_sync(hash_password, password)
+        await transaction.execute(NEW_PASSWORD, {"id": user.id, "hash": hashed})

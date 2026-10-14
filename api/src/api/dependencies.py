@@ -22,7 +22,7 @@ DatabaseDependency = Annotated[Database, Depends(database)]
 SettingsDependency = Annotated[ApiSettings, Depends(settings)]
 
 
-async def signed_in(
+async def session_holder(
     request: Request, database: DatabaseDependency, settings: SettingsDependency
 ) -> SignedInUser:
     """The person the request's session acts for; a request without a running one is refused."""
@@ -33,6 +33,19 @@ async def signed_in(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=ended.model_dump(mode="json")
         ) from refused
+
+
+SessionHolderDependency = Annotated[SignedInUser, Depends(session_holder)]
+
+
+def signed_in(user: SessionHolderDependency) -> SignedInUser:
+    """The session's person once they have replaced a temporary password; until then only their
+    session and the password change are open to them."""
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail={"reason": "password_change_required"}
+        )
+    return user
 
 
 SignedInDependency = Annotated[SignedInUser, Depends(signed_in)]
