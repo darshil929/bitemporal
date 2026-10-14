@@ -2,9 +2,12 @@
 
 from typing import Annotated, cast
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 
+from api.config import ApiSettings
 from api.db.database import Database
+from api.schemas.sessions import SessionEnded
+from api.services.sessions import NotSignedIn, SignedInUser, signed_in_user
 
 
 def database(request: Request) -> Database:
@@ -12,3 +15,28 @@ def database(request: Request) -> Database:
 
 
 DatabaseDependency = Annotated[Database, Depends(database)]
+
+
+async def signed_in(request: Request, database: DatabaseDependency) -> SignedInUser:
+    """The person the request's session acts for; a request without a running one is refused."""
+    settings = cast(ApiSettings, request.app.state.settings)
+    try:
+        return await signed_in_user(database, request.cookies.get(settings.session_cookie_name))
+    except NotSignedIn as refused:
+        ended = SessionEnded.model_validate(refused, from_attributes=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=ended.model_dump(mode="json")
+        ) from refused
+
+
+SignedInDependency = Annotated[SignedInUser, Depends(signed_in)]
+
+
+def admin(user: SignedInDependency) -> SignedInUser:
+    """The signed-in person where they are an admin; anyone else is refused."""
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admins only")
+    return user
+
+
+AdminDependency = Annotated[SignedInUser, Depends(admin)]
