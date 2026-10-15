@@ -57,6 +57,185 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "InstrumentNotFound": {
+        "properties": {
+          "reason": {
+            "const": "instrument_not_found",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "InstrumentNotFound",
+        "type": "object"
+      },
+      "InstrumentNotFoundResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/InstrumentNotFound"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "InstrumentNotFoundResponse",
+        "type": "object"
+      },
+      "InstrumentResponse": {
+        "description": "An instrument under the names a reader knows it by, with every stretch it was listed for;\n`superseded_by` is the ISIN that took it over at a change of face value, `primary_venue` the\nvenue its pages open on, absent where no daily features were computed for it.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "instrument_type": {
+            "title": "Instrument Type",
+            "type": "string"
+          },
+          "is_single_listed": {
+            "title": "Is Single Listed",
+            "type": "boolean"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "listings": {
+            "items": {
+              "$ref": "#/components/schemas/ListingResponse"
+            },
+            "title": "Listings",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "primary_venue": {
+            "anyOf": [
+              {
+                "enum": [
+                  "BSE",
+                  "NSE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Venue"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
+          "venues": {
+            "items": {
+              "enum": [
+                "BSE",
+                "NSE"
+              ],
+              "type": "string"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "isin",
+          "name",
+          "display_name",
+          "instrument_type",
+          "superseded_by",
+          "primary_venue",
+          "venues",
+          "is_single_listed",
+          "listings"
+        ],
+        "title": "InstrumentResponse",
+        "type": "object"
+      },
+      "ListingResponse": {
+        "properties": {
+          "closure_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "delisted",
+                  "renamed",
+                  "merged",
+                  "superseded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closure Reason"
+          },
+          "delisting_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delisting Date"
+          },
+          "exchange": {
+            "enum": [
+              "BSE",
+              "NSE"
+            ],
+            "title": "Exchange",
+            "type": "string"
+          },
+          "listing_date": {
+            "format": "date",
+            "title": "Listing Date",
+            "type": "string"
+          },
+          "local_symbol": {
+            "title": "Local Symbol",
+            "type": "string"
+          },
+          "scrip_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scrip Code"
+          }
+        },
+        "required": [
+          "exchange",
+          "local_symbol",
+          "scrip_code",
+          "listing_date",
+          "delisting_date",
+          "closure_reason"
+        ],
+        "title": "ListingResponse",
+        "type": "object"
+      },
       "MarketDataUpdating": {
         "properties": {
           "reason": {
@@ -623,6 +802,79 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/instruments/{isin}": {
+      "get": {
+        "operationId": "instrument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "isin",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Z]{2}[A-Z0-9]{9}[0-9]$",
+              "title": "Isin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentNotFoundResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Instrument",
+        "tags": [
+          "instruments"
         ]
       }
     },

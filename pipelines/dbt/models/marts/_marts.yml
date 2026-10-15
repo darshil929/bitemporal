@@ -51,12 +51,14 @@ models:
         description: The first day of the stretch the stored history holds.
       - name: delisting_date
         data_type: date
-        description: The last day of the stretch, absent while it remains open.
+        description: The last day the stretch traded, absent while it remains open.
       - name: closure_reason
         data_type: text
         description: >
-          Why the stretch closed: delisted, renamed, merged, or superseded where another ISIN took
-          the instrument over under the same venue-local identifier at a change of face value.
+          Why the stretch closed: delisted where it had not traded at the venue for 90 days before
+          the venue's latest stored day, which says nothing of the venue's own status for it;
+          renamed; merged; or superseded where another ISIN took the instrument over under the
+          same venue-local identifier at a change of face value.
 
   - name: mart_trading_days
     description: One verdict per venue and trading day, the latest reached.
