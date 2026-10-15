@@ -57,6 +57,88 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "MarketDataUpdating": {
+        "properties": {
+          "reason": {
+            "const": "market_data_updating",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "MarketDataUpdating",
+        "type": "object"
+      },
+      "MarketDataUpdatingResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/MarketDataUpdating"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "MarketDataUpdatingResponse",
+        "type": "object"
+      },
+      "MarketDayResponse": {
+        "description": "The day the market pages show; every field absent before the first publish of the daily\nfeatures.",
+        "properties": {
+          "last_complete_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Complete Day"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "published_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Day"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/VenueSessionResponse"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "published_day",
+          "published_at",
+          "venues",
+          "last_complete_day"
+        ],
+        "title": "MarketDayResponse",
+        "type": "object"
+      },
       "NewPasswordRequest": {
         "properties": {
           "password": {
@@ -382,6 +464,28 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VenueSessionResponse": {
+        "properties": {
+          "is_complete": {
+            "title": "Is Complete",
+            "type": "boolean"
+          },
+          "venue": {
+            "enum": [
+              "BSE",
+              "NSE"
+            ],
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "venue",
+          "is_complete"
+        ],
+        "title": "VenueSessionResponse",
+        "type": "object"
       }
     }
   },
@@ -519,6 +623,48 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/market/day": {
+      "get": {
+        "description": "The day the market pages show, each venue's verdict on it, and the latest day up to it\ncomplete at every venue in session.",
+        "operationId": "market_day",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDayResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Market Day",
+        "tags": [
+          "market"
         ]
       }
     },

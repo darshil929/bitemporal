@@ -1,4 +1,4 @@
-"""daily features are derived
+"""daily features
 
 Revision ID: 0015
 Revises: 0014

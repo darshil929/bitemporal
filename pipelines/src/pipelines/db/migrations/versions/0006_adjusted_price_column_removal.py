@@ -1,4 +1,4 @@
-"""adjusted prices are derived
+"""adjusted price column removal
 
 Revision ID: 0006
 Revises: 0005

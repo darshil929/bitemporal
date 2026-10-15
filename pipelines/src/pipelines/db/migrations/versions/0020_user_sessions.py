@@ -1,4 +1,4 @@
-"""sessions belong to the people who hold them
+"""user sessions
 
 A session is a person's sign-in on one device, kept once it ends. Row security, forced, lets the
 API's role see a person's own sessions, and an admin end anyone's; the cookie's token is found

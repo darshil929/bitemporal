@@ -1,4 +1,4 @@
-"""a bar records the name the venue used
+"""bar venue identifiers
 
 Revision ID: 0012
 Revises: 0011

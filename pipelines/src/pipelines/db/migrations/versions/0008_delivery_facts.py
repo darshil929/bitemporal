@@ -1,4 +1,4 @@
-"""delivery is its own fact
+"""delivery facts
 
 Revision ID: 0008
 Revises: 0007

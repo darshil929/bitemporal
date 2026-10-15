@@ -22,6 +22,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "change_password",
         "create_first_admin",
         "health",
+        "market_day",
         "ready",
         "session",
         "setup",

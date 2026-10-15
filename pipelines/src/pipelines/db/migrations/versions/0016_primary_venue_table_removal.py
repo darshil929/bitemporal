@@ -1,4 +1,4 @@
-"""the primary venue is carried by the daily features
+"""primary venue table removal
 
 Each daily feature row names the venue its figures are read from, designated with them from the
 bars. The downgrade recreates the table of designated stretches empty; its rows are not restored.

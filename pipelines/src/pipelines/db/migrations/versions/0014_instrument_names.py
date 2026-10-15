@@ -1,4 +1,4 @@
-"""an instrument is named from a list
+"""instrument names
 
 Revision ID: 0014
 Revises: 0013

@@ -1,4 +1,4 @@
-"""close outside traded range
+"""price bar consistency check
 
 Revision ID: 0005
 Revises: 0004
