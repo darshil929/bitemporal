@@ -21,9 +21,9 @@ API_ROLE = "bitemporal_api"
 API_ROLE_PASSWORD = "api-tests"
 
 SESSION_COOKIE = "__Host-bitemporal_session"
-NEW_MEMBER = (
+NEW_ACCOUNT = (
     "insert into app_user (username, display_name, role, password_hash)"
-    " values (%s, %s, 'member', 'unused') returning id"
+    " values (%s, %s, %s, 'unused') returning id"
 )
 NEW_SESSION = "insert into app_session (owner_id, token_hash) values (%s, %s)"
 
@@ -70,13 +70,13 @@ def dataset_settings(seeded_models: psycopg.Connection, seeded_postgres: str) ->
     return settings_for(as_api_role(seeded_postgres), SEED_SCHEMA)
 
 
-def member_session(dsn: str, schema: str, username: str) -> dict[str, str]:
-    """Request headers carrying a running session of a new member, written by the tables' owner."""
+def account_session(dsn: str, schema: str, username: str, role: str = "member") -> dict[str, str]:
+    """Request headers carrying a running session of a new account, written by the tables' owner."""
     token = secrets.token_bytes(32)
     with psycopg.connect(dsn, options=f"-csearch_path={schema},public", autocommit=True) as owner:
-        member = owner.execute(NEW_MEMBER, (username, username.title())).fetchone()
-        assert member is not None
-        owner.execute(NEW_SESSION, (member[0], hashlib.sha256(token).digest()))
+        account = owner.execute(NEW_ACCOUNT, (username, username.title(), role)).fetchone()
+        assert account is not None
+        owner.execute(NEW_SESSION, (account[0], hashlib.sha256(token).digest()))
     cookie = base64.urlsafe_b64encode(token).rstrip(b"=").decode()
     return {"Cookie": f"{SESSION_COOKIE}={cookie}"}
 
@@ -84,7 +84,13 @@ def member_session(dsn: str, schema: str, username: str) -> dict[str, str]:
 @pytest.fixture
 def member_headers(migrated: Config, postgres_dsn: str) -> dict[str, str]:
     """A member signed in to the schema `migrated_settings` serves."""
-    return member_session(postgres_dsn, MIGRATION_SCHEMA, "reader")
+    return account_session(postgres_dsn, MIGRATION_SCHEMA, "reader")
+
+
+@pytest.fixture
+def admin_headers(migrated: Config, postgres_dsn: str) -> dict[str, str]:
+    """An admin signed in to the schema `migrated_settings` serves."""
+    return account_session(postgres_dsn, MIGRATION_SCHEMA, "meera", role="admin")
 
 
 @pytest.fixture(scope="session")
@@ -92,7 +98,7 @@ def dataset_member_headers(
     seeded_models: psycopg.Connection, seeded_postgres: str
 ) -> dict[str, str]:
     """A member signed in to the seed dataset, written once for the whole test session."""
-    return member_session(seeded_postgres, SEED_SCHEMA, "dataset-reader")
+    return account_session(seeded_postgres, SEED_SCHEMA, "dataset-reader")
 
 
 @pytest.fixture
