@@ -23,6 +23,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "create_first_admin",
         "health",
         "instrument",
+        "instrument_day",
         "instrument_prices",
         "market_day",
         "ready",
