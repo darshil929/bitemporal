@@ -14,11 +14,11 @@ from api.schemas.instruments import (
 )
 from api.schemas.key_figures import KeyFiguresResponse
 from api.schemas.market import Venue
-from api.schemas.prices import PriceHistoryResponse, PriceRange
+from api.schemas.price_history import PriceHistoryResponse, PriceRange
 from api.services import (
     corporate_actions,
+    instrument_identity,
     instrument_search,
-    instruments,
     key_figures,
     price_history,
 )
@@ -61,7 +61,7 @@ async def search_instruments(
 
 @router.get("/{isin}", responses=NOT_FOUND_RESPONSES)
 async def instrument(isin: IsinPath, database: DatabaseDependency) -> InstrumentResponse:
-    found = await instruments.instrument(database, isin)
+    found = await instrument_identity.instrument(database, isin)
     if found is None:
         raise instrument_not_found()
     return InstrumentResponse.model_validate(found)

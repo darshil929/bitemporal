@@ -4,14 +4,14 @@ from fastapi import APIRouter, HTTPException, status
 
 from api.dependencies import AdminDependency, DatabaseDependency
 from api.schemas.audit import AuditEntryResponse
-from api.schemas.people import (
+from api.schemas.sessions import NotSignedInResponse
+from api.schemas.user_management import (
     AddedPersonResponse,
     NewPersonRequest,
     PersonRefusedResponse,
     PersonResponse,
 )
-from api.schemas.sessions import NotSignedInResponse
-from api.services import people as managing
+from api.services import user_management
 from api.services.audit import recent_admin_actions
 
 router = APIRouter(
@@ -33,7 +33,7 @@ async def admin_actions(
 @router.get("/users")
 async def people(admin: AdminDependency, database: DatabaseDependency) -> list[PersonResponse]:
     """Every account, newest first."""
-    found = await managing.people(database, admin.id)
+    found = await user_management.people(database, admin.id)
     return [PersonResponse.model_validate(person) for person in found]
 
 
@@ -47,10 +47,10 @@ async def add_person(
 ) -> AddedPersonResponse:
     """Add a person, with a temporary password they replace at first sign-in."""
     try:
-        added = await managing.add_person(
+        added = await user_management.add_person(
             database, admin.id, body.username, body.display_name, body.role
         )
-    except managing.PersonRefused as refused:
+    except user_management.PersonRefused as refused:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=refused.reason
         ) from refused

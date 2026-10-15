@@ -4,16 +4,16 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from api.dependencies import DatabaseDependency, SettingsDependency
 from api.routers.auth import set_session_cookie
+from api.schemas.first_admin_setup import FirstAdminRequest, SetupRefusedResponse, SetupResponse
 from api.schemas.sessions import SessionResponse
-from api.schemas.setup import FirstAdminRequest, SetupRefusedResponse, SetupResponse
-from api.services import setup as setting_up
+from api.services import first_admin_setup
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 
 
 @router.get("")
 async def setup(database: DatabaseDependency) -> SetupResponse:
-    return SetupResponse(admin_exists=await setting_up.admin_exists(database))
+    return SetupResponse(admin_exists=await first_admin_setup.admin_exists(database))
 
 
 @router.post(
@@ -32,14 +32,14 @@ async def create_first_admin(
     settings: SettingsDependency,
 ) -> SessionResponse:
     try:
-        signed_in = await setting_up.create_first_admin(
+        signed_in = await first_admin_setup.create_first_admin(
             database,
             body.username,
             body.display_name,
             body.password,
             request.headers.get("user-agent"),
         )
-    except setting_up.SetupRefused as refused:
+    except first_admin_setup.SetupRefused as refused:
         conflict = refused.reason == "admin_exists"
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT
