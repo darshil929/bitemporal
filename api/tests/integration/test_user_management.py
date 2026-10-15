@@ -10,14 +10,14 @@ import pytest
 
 from api.config import ApiSettings
 from api.main import create_app
-from api.services.temporary_passwords import temporary_password, words
+from api.services.temporary_passwords import temporary_password
 from fixtures.database import MIGRATION_SCHEMA
 
 pytestmark = pytest.mark.anyio
 
 SAME_ORIGIN = {"Sec-Fetch-Site": "same-origin"}
 RAVI = {"username": "Ravi", "display_name": "Ravi Kumar", "role": "member"}
-TEMPORARY = re.compile(r"^[a-z]+-[a-z]+-[a-z]+-[0-9]{4}$")
+TEMPORARY = re.compile(r"^[A-Za-z0-9]{16}$")
 EXPIRY = (
     "select temporary_password_expires_at - now() between interval '23 hours 59 minutes'"
     " and interval '24 hours' from app_user where username = 'ravi'"
@@ -103,9 +103,9 @@ async def test_people_are_refused_without_a_session(api: httpx.AsyncClient) -> N
     assert (await api.get("/admin/users")).status_code == 401
 
 
-def test_a_temporary_password_is_three_words_and_four_digits_the_rule_admits() -> None:
-    passwords = [temporary_password("acid", "Acid Rain") for _ in range(200)]
+def test_a_temporary_password_is_random_letters_and_digits_the_rule_admits() -> None:
+    passwords = [temporary_password("xyz", "Xyz Abc") for _ in range(200)]
 
-    assert len(words()) == 1295
-    assert all(TEMPORARY.match(password) and len(password) >= 15 for password in passwords)
-    assert not any("acid" in password for password in passwords)
+    assert all(TEMPORARY.match(password) for password in passwords)
+    assert not any("xyz" in password.casefold() for password in passwords)
+    assert len(set(passwords)) == len(passwords)
