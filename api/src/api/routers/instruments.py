@@ -1,6 +1,6 @@
 """What the application knows each instrument by, for people signed in."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
@@ -11,7 +11,9 @@ from api.schemas.instruments import (
     InstrumentNotFoundResponse,
     InstrumentResponse,
 )
-from api.services import instrument_search, instruments
+from api.schemas.market import Venue
+from api.schemas.prices import PriceHistoryResponse, PriceRange
+from api.services import instrument_search, instruments, price_history
 
 # Two letters for the issuing country, nine characters naming the security, a check digit.
 ISIN_PATTERN = "^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
@@ -26,6 +28,17 @@ router = APIRouter(
     responses=MARKET_READ_RESPONSES,
 )
 
+IsinPath = Annotated[str, Path(pattern=ISIN_PATTERN)]
+NOT_FOUND_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status.HTTP_404_NOT_FOUND: {"model": InstrumentNotFoundResponse}
+}
+
+
+def instrument_not_found() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail={"reason": "instrument_not_found"}
+    )
+
 
 @router.get("")
 async def search_instruments(
@@ -38,13 +51,23 @@ async def search_instruments(
     return [InstrumentMatchResponse.model_validate(match) for match in found]
 
 
-@router.get("/{isin}", responses={status.HTTP_404_NOT_FOUND: {"model": InstrumentNotFoundResponse}})
-async def instrument(
-    isin: Annotated[str, Path(pattern=ISIN_PATTERN)], database: DatabaseDependency
-) -> InstrumentResponse:
+@router.get("/{isin}", responses=NOT_FOUND_RESPONSES)
+async def instrument(isin: IsinPath, database: DatabaseDependency) -> InstrumentResponse:
     found = await instruments.instrument(database, isin)
     if found is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail={"reason": "instrument_not_found"}
-        )
+        raise instrument_not_found()
     return InstrumentResponse.model_validate(found)
+
+
+@router.get("/{isin}/prices", responses=NOT_FOUND_RESPONSES)
+async def instrument_prices(
+    isin: IsinPath,
+    venue: Venue,
+    database: DatabaseDependency,
+    period: Annotated[PriceRange, Query(alias="range")] = "6M",
+) -> PriceHistoryResponse:
+    """The instrument's daily series at the venue over the range, as its price chart draws it."""
+    found = await price_history.price_history(database, isin, venue, period)
+    if found is None:
+        raise instrument_not_found()
+    return PriceHistoryResponse.model_validate(found)

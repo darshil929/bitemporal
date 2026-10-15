@@ -401,6 +401,292 @@
         "title": "PasswordRefusedResponse",
         "type": "object"
       },
+      "PriceDayResponse": {
+        "description": "A trading day at the venue: the candle, volume and delivery adjusted for every later action,\nthe close as traded with the factor between the two, the other venue's adjusted close, the\nspread and whether it diverged, and the overlays in the candle's scale, absent on a day whose\ndaily features were computed on the other venue.",
+        "properties": {
+          "adjustment_factor": {
+            "title": "Adjustment Factor",
+            "type": "number"
+          },
+          "bollinger_20_lower": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bollinger 20 Lower"
+          },
+          "bollinger_20_upper": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bollinger 20 Upper"
+          },
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "close_as_traded": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close As Traded"
+          },
+          "delivery_quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Quantity"
+          },
+          "ema_20": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ema 20"
+          },
+          "ema_50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ema 50"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "is_diverging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Diverging"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "open": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open"
+          },
+          "other_venue_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Venue Close"
+          },
+          "sma_20": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sma 20"
+          },
+          "sma_200": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sma 200"
+          },
+          "sma_50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sma 50"
+          },
+          "trade_date": {
+            "format": "date",
+            "title": "Trade Date",
+            "type": "string"
+          },
+          "venue_spread_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Spread Bps"
+          },
+          "volume": {
+            "title": "Volume",
+            "type": "number"
+          }
+        },
+        "required": [
+          "trade_date",
+          "open",
+          "high",
+          "low",
+          "close",
+          "close_as_traded",
+          "adjustment_factor",
+          "volume",
+          "delivery_quantity",
+          "other_venue_close",
+          "venue_spread_bps",
+          "is_diverging",
+          "sma_20",
+          "sma_50",
+          "sma_200",
+          "ema_20",
+          "ema_50",
+          "bollinger_20_upper",
+          "bollinger_20_lower"
+        ],
+        "title": "PriceDayResponse",
+        "type": "object"
+      },
+      "PriceHistoryResponse": {
+        "description": "The days of the range at the venue, ending on the instrument's newest day there up to the\npublished day; a replaced ISIN's own days alone.",
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/PriceDayResponse"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "first_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Day"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "last_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Day"
+          },
+          "range": {
+            "enum": [
+              "1M",
+              "3M",
+              "6M",
+              "1Y",
+              "All"
+            ],
+            "title": "Range",
+            "type": "string"
+          },
+          "venue": {
+            "enum": [
+              "BSE",
+              "NSE"
+            ],
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "isin",
+          "venue",
+          "range",
+          "first_day",
+          "last_day",
+          "days"
+        ],
+        "title": "PriceHistoryResponse",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "properties": {
           "database_schema": {
@@ -985,6 +1271,110 @@
           }
         },
         "summary": "Instrument",
+        "tags": [
+          "instruments"
+        ]
+      }
+    },
+    "/instruments/{isin}/prices": {
+      "get": {
+        "description": "The instrument's daily series at the venue over the range, as its price chart draws it.",
+        "operationId": "instrument_prices",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "isin",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Z]{2}[A-Z0-9]{9}[0-9]$",
+              "title": "Isin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": true,
+            "schema": {
+              "enum": [
+                "BSE",
+                "NSE"
+              ],
+              "title": "Venue",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "6M",
+              "enum": [
+                "1M",
+                "3M",
+                "6M",
+                "1Y",
+                "All"
+              ],
+              "title": "Range",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentNotFoundResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Instrument Prices",
         "tags": [
           "instruments"
         ]
