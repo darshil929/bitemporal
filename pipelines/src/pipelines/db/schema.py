@@ -3,6 +3,7 @@ derived from them."""
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -23,7 +24,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
 # Deterministic constraint names, required for a downgrade to drop them by name.
@@ -49,6 +52,18 @@ PRIMARY_VENUES = ("BSE", "NSE")
 USER_ROLES = ("admin", "member")
 SESSION_END_REASONS = ("idle", "limit", "signed_out", "signed_out_elsewhere", "disabled")
 THEMES = ("light", "dark")
+ADMIN_ACTIONS = (
+    "first_admin_created",
+    "person_added",
+    "role_changed",
+    "account_disabled",
+    "account_enabled",
+    "password_reset",
+    "session_limits_changed",
+    "sync_started",
+    "bootstrap_started",
+    "run_cancelled",
+)
 
 PRICE = Numeric(18, 4)
 RATIO = Numeric(18, 6)
@@ -571,6 +586,24 @@ class AppSetting(Base):
         CheckConstraint("session_idle_minutes between 5 and 1440", name="idle_minutes"),
         CheckConstraint("session_max_hours between 1 and 72", name="max_hours"),
     )
+
+
+class AuditEvent(Base):
+    """A change an admin made, recorded once and never changed, which admins alone read."""
+
+    __tablename__ = "audit_event"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    actor_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"))
+    action: Mapped[str] = mapped_column(Text)
+    # The account acted on, where the action has one.
+    subject_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("app_user.id"))
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+    __table_args__ = (CheckConstraint(_in_list("action", ADMIN_ACTIONS), name="action"),)
 
 
 class UserSetting(Base):

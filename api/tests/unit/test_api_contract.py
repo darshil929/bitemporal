@@ -19,6 +19,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
 
     assert len(names) == len(set(names))
     assert sorted(names) == [
+        "admin_actions",
         "change_password",
         "create_first_admin",
         "health",

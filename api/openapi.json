@@ -1,6 +1,78 @@
 {
   "components": {
     "schemas": {
+      "AuditEntryResponse": {
+        "description": "An admin action: when, who acted, what they did, on whose account where it names one, and\nthe rest of what changed.",
+        "properties": {
+          "action": {
+            "enum": [
+              "first_admin_created",
+              "person_added",
+              "role_changed",
+              "account_disabled",
+              "account_enabled",
+              "password_reset",
+              "session_limits_changed",
+              "sync_started",
+              "bootstrap_started",
+              "run_cancelled"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "integer"
+          },
+          "actor_name": {
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "subject_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Name"
+          }
+        },
+        "required": [
+          "occurred_at",
+          "actor_id",
+          "actor_name",
+          "action",
+          "subject_id",
+          "subject_name",
+          "detail"
+        ],
+        "title": "AuditEntryResponse",
+        "type": "object"
+      },
       "CorporateActionResponse": {
         "description": "An action with its terms as an announcement states them, the factor it applies to earlier\nprices or the dividend in rupees a share, the venue's own text where its terms are unknown, who\nreported it, whether the two venues' records differ, whether its factor is applied, and the\nsource of the record shown, absent for a fund's unit split read from the prices.",
         "properties": {
@@ -1379,6 +1451,42 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/audit": {
+      "get": {
+        "description": "The newest admin actions, newest first.",
+        "operationId": "admin_actions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEntryResponse"
+                  },
+                  "title": "Response Admin Actions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Admin Actions",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/auth/password": {
       "post": {
         "description": "Replace the temporary password an admin set with one the person chooses.",
