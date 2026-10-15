@@ -1,6 +1,35 @@
 {
   "components": {
     "schemas": {
+      "FirstAdminRequest": {
+        "properties": {
+          "display_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 3,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "display_name",
+          "password"
+        ],
+        "title": "FirstAdminRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -219,6 +248,32 @@
           "must_change_password"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SetupRefusedResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "SetupRefusedResponse",
+        "type": "object"
+      },
+      "SetupResponse": {
+        "properties": {
+          "admin_exists": {
+            "title": "Admin Exists",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "admin_exists"
+        ],
+        "title": "SetupResponse",
         "type": "object"
       },
       "SignInRefused": {
@@ -526,6 +581,78 @@
         "summary": "Session",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/setup": {
+      "get": {
+        "operationId": "setup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Setup",
+        "tags": [
+          "setup"
+        ]
+      }
+    },
+    "/setup/admin": {
+      "post": {
+        "operationId": "create_first_admin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirstAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupRefusedResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupRefusedResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create First Admin",
+        "tags": [
+          "setup"
         ]
       }
     }

@@ -18,4 +18,13 @@ def test_each_operation_carries_its_endpoint_name() -> None:
     names = [operation["operationId"] for path in paths.values() for operation in path.values()]
 
     assert len(names) == len(set(names))
-    assert sorted(names) == ["change_password", "health", "ready", "session", "sign_in", "sign_out"]
+    assert sorted(names) == [
+        "change_password",
+        "create_first_admin",
+        "health",
+        "ready",
+        "session",
+        "setup",
+        "sign_in",
+        "sign_out",
+    ]

@@ -10,7 +10,7 @@ from api.config import ApiSettings
 from api.cross_site import refuse_cross_site
 from api.db.database import Database
 from api.log_format import configure_logging
-from api.routers import auth, health, sessions
+from api.routers import auth, health, sessions, setup
 
 
 def operation_id(route: APIRoute) -> str:
@@ -43,6 +43,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(sessions.router)
+    app.include_router(setup.router)
     return app
 
 
