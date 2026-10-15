@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from api.db.database import ACTING_FOR, Database
+from api.services.audit import record_admin_action
 from api.services.passwords import hash_password, password_problem
 from api.services.sign_in import SignedIn, open_session
 
@@ -39,6 +40,7 @@ async def create_first_admin(
         async with database.transaction() as transaction:
             admin = (await transaction.execute(CREATE_FIRST_ADMIN, values)).scalar_one()
             await transaction.execute(ACTING_FOR, {"user": str(admin)})
+            await record_admin_action(transaction, admin, "first_admin_created", subject_id=admin)
             return await open_session(transaction, admin, user_agent)
     except DBAPIError as error:
         # The function raises once an admin exists, under a lock no second setup gets past.
