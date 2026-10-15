@@ -10,7 +10,8 @@ from api.config import ApiSettings
 from api.cross_site import refuse_cross_site
 from api.db.database import Database
 from api.log_format import configure_logging
-from api.routers import auth, health, sessions, setup
+from api.routers import auth, health, market, sessions, setup
+from api.services.market_reads import MarketDataUpdating
 
 
 def operation_id(route: APIRoute) -> str:
@@ -40,10 +41,12 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         generate_unique_id_function=operation_id,
     )
     app.middleware("http")(refuse_cross_site)
+    app.add_exception_handler(MarketDataUpdating, market.market_data_updating)
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(sessions.router)
     app.include_router(setup.router)
+    app.include_router(market.router)
     return app
 
 

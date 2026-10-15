@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
@@ -16,6 +19,13 @@ UNREACHABLE_DSN = "postgresql://nobody:nothing@127.0.0.1:1/nowhere"
 
 API_ROLE = "bitemporal_api"
 API_ROLE_PASSWORD = "api-tests"
+
+SESSION_COOKIE = "__Host-bitemporal_session"
+NEW_MEMBER = (
+    "insert into app_user (username, display_name, role, password_hash)"
+    " values (%s, %s, 'member', 'unused') returning id"
+)
+NEW_SESSION = "insert into app_session (owner_id, token_hash) values (%s, %s)"
 
 StartApi = Callable[[ApiSettings], AbstractAsyncContextManager[httpx.AsyncClient]]
 
@@ -58,6 +68,31 @@ def owner_settings(migrated: Config, postgres_dsn: str) -> ApiSettings:
 def dataset_settings(seeded_models: psycopg.Connection, seeded_postgres: str) -> ApiSettings:
     """The API pointed at the seed dataset, its models built and its daily features stored."""
     return settings_for(as_api_role(seeded_postgres), SEED_SCHEMA)
+
+
+def member_session(dsn: str, schema: str, username: str) -> dict[str, str]:
+    """Request headers carrying a running session of a new member, written by the tables' owner."""
+    token = secrets.token_bytes(32)
+    with psycopg.connect(dsn, options=f"-csearch_path={schema},public", autocommit=True) as owner:
+        member = owner.execute(NEW_MEMBER, (username, username.title())).fetchone()
+        assert member is not None
+        owner.execute(NEW_SESSION, (member[0], hashlib.sha256(token).digest()))
+    cookie = base64.urlsafe_b64encode(token).rstrip(b"=").decode()
+    return {"Cookie": f"{SESSION_COOKIE}={cookie}"}
+
+
+@pytest.fixture
+def member_headers(migrated: Config, postgres_dsn: str) -> dict[str, str]:
+    """A member signed in to the schema `migrated_settings` serves."""
+    return member_session(postgres_dsn, MIGRATION_SCHEMA, "reader")
+
+
+@pytest.fixture(scope="session")
+def dataset_member_headers(
+    seeded_models: psycopg.Connection, seeded_postgres: str
+) -> dict[str, str]:
+    """A member signed in to the seed dataset, written once for the whole test session."""
+    return member_session(seeded_postgres, SEED_SCHEMA, "dataset-reader")
 
 
 @pytest.fixture
