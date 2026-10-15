@@ -1,12 +1,15 @@
 """What admins alone read and change."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
 
 from api.dependencies import AdminDependency, DatabaseDependency
 from api.schemas.audit import AuditEntryResponse
 from api.schemas.sessions import NotSignedInResponse
 from api.schemas.user_management import (
-    AddedPersonResponse,
+    AccountChangeRequest,
+    IssuedPasswordResponse,
     NewPersonRequest,
     PersonRefusedResponse,
     PersonResponse,
@@ -19,6 +22,20 @@ router = APIRouter(
     tags=["admin"],
     responses={status.HTTP_401_UNAUTHORIZED: {"model": NotSignedInResponse}},
 )
+
+# An account the API does not hold answers 404; every other refusal 409.
+REFUSED_AS = {"person_not_found": status.HTTP_404_NOT_FOUND}
+NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    status.HTTP_404_NOT_FOUND: {"model": PersonRefusedResponse}
+}
+CONFLICT: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {"model": PersonRefusedResponse}
+}
+
+
+def refusal(refused: user_management.PersonRefused) -> HTTPException:
+    code = REFUSED_AS.get(refused.reason, status.HTTP_409_CONFLICT)
+    return HTTPException(status_code=code, detail=refused.reason)
 
 
 @router.get("/audit")
@@ -37,21 +54,41 @@ async def people(admin: AdminDependency, database: DatabaseDependency) -> list[P
     return [PersonResponse.model_validate(person) for person in found]
 
 
-@router.post(
-    "/users",
-    status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_409_CONFLICT: {"model": PersonRefusedResponse}},
-)
+@router.post("/users", status_code=status.HTTP_201_CREATED, responses=CONFLICT)
 async def add_person(
     body: NewPersonRequest, admin: AdminDependency, database: DatabaseDependency
-) -> AddedPersonResponse:
+) -> IssuedPasswordResponse:
     """Add a person, with a temporary password they replace at first sign-in."""
     try:
         added = await user_management.add_person(
             database, admin.id, body.username, body.display_name, body.role
         )
     except user_management.PersonRefused as refused:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=refused.reason
-        ) from refused
-    return AddedPersonResponse.model_validate(added)
+        raise refusal(refused) from refused
+    return IssuedPasswordResponse.model_validate(added)
+
+
+@router.patch("/users/{person_id}", responses=NOT_FOUND | CONFLICT)
+async def change_account(
+    person_id: int, body: AccountChangeRequest, admin: AdminDependency, database: DatabaseDependency
+) -> PersonResponse:
+    """Change an account's role or whether it is disabled."""
+    try:
+        changed = await user_management.change_account(
+            database, admin.id, person_id, body.role, body.disabled
+        )
+    except user_management.PersonRefused as refused:
+        raise refusal(refused) from refused
+    return PersonResponse.model_validate(changed)
+
+
+@router.post("/users/{person_id}/password", responses=NOT_FOUND)
+async def reset_password(
+    person_id: int, admin: AdminDependency, database: DatabaseDependency
+) -> IssuedPasswordResponse:
+    """Replace an account's password with a temporary one, ending its sessions."""
+    try:
+        issued = await user_management.reset_password(database, admin.id, person_id)
+    except user_management.PersonRefused as refused:
+        raise refusal(refused) from refused
+    return IssuedPasswordResponse.model_validate(issued)

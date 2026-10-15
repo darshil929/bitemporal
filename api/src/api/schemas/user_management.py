@@ -1,8 +1,9 @@
 """Bodies of the people an admin manages."""
 
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from api.services.sessions import Role
 
@@ -29,8 +30,21 @@ class NewPersonRequest(BaseModel):
     role: Role
 
 
-class AddedPersonResponse(BaseModel):
-    """The account added, and the temporary password its holder signs in with, shown this once."""
+class AccountChangeRequest(BaseModel):
+    """A new role, or whether the account is disabled; at least one."""
+
+    role: Role | None = None
+    disabled: bool | None = None
+
+    @model_validator(mode="after")
+    def names_a_change(self) -> Self:
+        if self.role is None and self.disabled is None:
+            raise ValueError("a change names a role or whether the account is disabled")
+        return self
+
+
+class IssuedPasswordResponse(BaseModel):
+    """The account, and the temporary password just issued for it, shown this once."""
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,22 +1,37 @@
 {
   "components": {
     "schemas": {
-      "AddedPersonResponse": {
-        "description": "The account added, and the temporary password its holder signs in with, shown this once.",
+      "AccountChangeRequest": {
+        "description": "A new role, or whether the account is disabled; at least one.",
         "properties": {
-          "person": {
-            "$ref": "#/components/schemas/PersonResponse"
+          "disabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled"
           },
-          "temporary_password": {
-            "title": "Temporary Password",
-            "type": "string"
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin",
+                  "member"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
           }
         },
-        "required": [
-          "person",
-          "temporary_password"
-        ],
-        "title": "AddedPersonResponse",
+        "title": "AccountChangeRequest",
         "type": "object"
       },
       "AuditEntryResponse": {
@@ -417,6 +432,24 @@
           "listings"
         ],
         "title": "InstrumentResponse",
+        "type": "object"
+      },
+      "IssuedPasswordResponse": {
+        "description": "The account, and the temporary password just issued for it, shown this once.",
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/PersonResponse"
+          },
+          "temporary_password": {
+            "title": "Temporary Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "person",
+          "temporary_password"
+        ],
+        "title": "IssuedPasswordResponse",
         "type": "object"
       },
       "KeyFiguresResponse": {
@@ -1672,7 +1705,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AddedPersonResponse"
+                  "$ref": "#/components/schemas/IssuedPasswordResponse"
                 }
               }
             },
@@ -1710,6 +1743,152 @@
           }
         },
         "summary": "Add Person",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/users/{person_id}": {
+      "patch": {
+        "description": "Change an account's role or whether it is disabled.",
+        "operationId": "change_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonRefusedResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Account",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/users/{person_id}/password": {
+      "post": {
+        "description": "Replace an account's password with a temporary one, ending its sessions.",
+        "operationId": "reset_password",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person_id",
+            "required": true,
+            "schema": {
+              "title": "Person Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedPasswordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Password",
         "tags": [
           "admin"
         ]

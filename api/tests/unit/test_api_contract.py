@@ -21,6 +21,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
     assert sorted(names) == [
         "add_person",
         "admin_actions",
+        "change_account",
         "change_password",
         "create_first_admin",
         "health",
@@ -31,6 +32,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "market_day",
         "people",
         "ready",
+        "reset_password",
         "search_instruments",
         "session",
         "setup",
