@@ -11,9 +11,10 @@ from api.schemas.instruments import (
     InstrumentNotFoundResponse,
     InstrumentResponse,
 )
+from api.schemas.key_figures import KeyFiguresResponse
 from api.schemas.market import Venue
 from api.schemas.prices import PriceHistoryResponse, PriceRange
-from api.services import instrument_search, instruments, price_history
+from api.services import instrument_search, instruments, key_figures, price_history
 
 # Two letters for the issuing country, nine characters naming the security, a check digit.
 ISIN_PATTERN = "^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
@@ -71,3 +72,14 @@ async def instrument_prices(
     if found is None:
         raise instrument_not_found()
     return PriceHistoryResponse.model_validate(found)
+
+
+@router.get("/{isin}/day", responses=NOT_FOUND_RESPONSES)
+async def instrument_day(
+    isin: IsinPath, venue: Venue, database: DatabaseDependency
+) -> KeyFiguresResponse:
+    """The instrument's newest day at the venue, as its key figures show it."""
+    found = await key_figures.key_figures(database, isin, venue)
+    if found is None:
+        raise instrument_not_found()
+    return KeyFiguresResponse.model_validate(found)

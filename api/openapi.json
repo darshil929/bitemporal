@@ -208,6 +208,230 @@
         "title": "InstrumentResponse",
         "type": "object"
       },
+      "KeyFiguresResponse": {
+        "description": "The instrument's newest day at the venue up to the published day: the day as traded, its\nchange and return on the adjusted series, its delivery share, the spread to the other venue and\nwhether it diverged, the venue's verdict on the day, whether the day is older than the published\none, and the sources read. Every figure is absent where the instrument never traded there.",
+        "properties": {
+          "change_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change 1D"
+          },
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "delivery_pct_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Pct 1D"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "is_day_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Day Complete"
+          },
+          "is_diverging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Diverging"
+          },
+          "is_stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Stale"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "open": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open"
+          },
+          "previous_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Close"
+          },
+          "return_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return 1D"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "trade_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Count"
+          },
+          "trade_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Date"
+          },
+          "turnover": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnover"
+          },
+          "venue": {
+            "enum": [
+              "BSE",
+              "NSE"
+            ],
+            "title": "Venue",
+            "type": "string"
+          },
+          "venue_spread_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Spread Bps"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "isin",
+          "venue",
+          "trade_date",
+          "is_stale",
+          "is_day_complete",
+          "open",
+          "high",
+          "low",
+          "close",
+          "previous_close",
+          "volume",
+          "turnover",
+          "trade_count",
+          "change_1d",
+          "return_1d",
+          "delivery_pct_1d",
+          "venue_spread_bps",
+          "is_diverging",
+          "sources"
+        ],
+        "title": "KeyFiguresResponse",
+        "type": "object"
+      },
       "ListingResponse": {
         "properties": {
           "closure_reason": {
@@ -933,6 +1157,37 @@
         "title": "SignInRequest",
         "type": "object"
       },
+      "SourceResponse": {
+        "description": "A source figures are read from, with its trust tier and the SEBI curation row naming it.",
+        "properties": {
+          "sebi_curation_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sebi Curation Ref"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "tier",
+          "sebi_curation_ref"
+        ],
+        "title": "SourceResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1271,6 +1526,93 @@
           }
         },
         "summary": "Instrument",
+        "tags": [
+          "instruments"
+        ]
+      }
+    },
+    "/instruments/{isin}/day": {
+      "get": {
+        "description": "The instrument's newest day at the venue, as its key figures show it.",
+        "operationId": "instrument_day",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "isin",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Z]{2}[A-Z0-9]{9}[0-9]$",
+              "title": "Isin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": true,
+            "schema": {
+              "enum": [
+                "BSE",
+                "NSE"
+              ],
+              "title": "Venue",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyFiguresResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentNotFoundResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Instrument Day",
         "tags": [
           "instruments"
         ]
