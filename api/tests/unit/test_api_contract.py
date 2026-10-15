@@ -25,6 +25,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "instrument",
         "market_day",
         "ready",
+        "search_instruments",
         "session",
         "setup",
         "sign_in",

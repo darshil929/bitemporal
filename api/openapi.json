@@ -57,6 +57,49 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "InstrumentMatchResponse": {
+        "description": "An instrument a search found, under the ISIN it trades under now, with the symbol a reader\nknows it by and the venues it is listed at now.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "venues": {
+            "items": {
+              "enum": [
+                "BSE",
+                "NSE"
+              ],
+              "type": "string"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "isin",
+          "display_name",
+          "symbol",
+          "venues"
+        ],
+        "title": "InstrumentMatchResponse",
+        "type": "object"
+      },
       "InstrumentNotFound": {
         "properties": {
           "reason": {
@@ -802,6 +845,75 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/instruments": {
+      "get": {
+        "description": "Up to ten instruments whose name holds the text, or whose symbol or ISIN starts with it, or\nwhose scrip code is it; instruments listed now first.",
+        "operationId": "search_instruments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "pattern": "^\\S.*\\S$",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InstrumentMatchResponse"
+                  },
+                  "title": "Response Search Instruments",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Search Instruments",
+        "tags": [
+          "instruments"
         ]
       }
     },
