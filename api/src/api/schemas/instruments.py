@@ -39,6 +39,18 @@ class InstrumentResponse(BaseModel):
     listings: list[ListingResponse]
 
 
+class InstrumentMatchResponse(BaseModel):
+    """An instrument a search found, under the ISIN it trades under now, with the symbol a reader
+    knows it by and the venues it is listed at now."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    isin: str
+    display_name: str
+    symbol: str | None
+    venues: list[Venue]
+
+
 class InstrumentNotFound(BaseModel):
     reason: Literal["instrument_not_found"]
 
