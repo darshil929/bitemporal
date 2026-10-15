@@ -1,4 +1,4 @@
-"""daily features are published
+"""daily feature publication
 
 The daily features live in two tables and are read through the view mart_daily_features, which
 reads the table holding the published computation; a computation is written into the other table.

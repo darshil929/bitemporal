@@ -1,4 +1,4 @@
-"""setup knows whether an admin exists
+"""admin existence check
 
 The application offers its first-run setup only while no admin exists. No one is signed in to ask,
 and row security shows the API's role no account without one, so a function owned by the schema's

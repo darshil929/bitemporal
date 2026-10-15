@@ -1,4 +1,4 @@
-"""accounts belong to the people who hold them
+"""user accounts
 
 People sign in with accounts the application holds. Row security, forced on both tables here, lets
 the API's role see a person's own rows and, for an admin, every account; the user is the

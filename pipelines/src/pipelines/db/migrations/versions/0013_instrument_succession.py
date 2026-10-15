@@ -1,4 +1,4 @@
-"""a successor isin is recorded
+"""instrument succession
 
 Revision ID: 0013
 Revises: 0012

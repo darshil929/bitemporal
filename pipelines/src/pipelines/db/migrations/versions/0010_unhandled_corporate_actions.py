@@ -1,4 +1,4 @@
-"""unhandled actions are recorded
+"""unhandled corporate actions
 
 Revision ID: 0010
 Revises: 0009

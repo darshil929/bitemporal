@@ -1,4 +1,4 @@
-"""the api reads as a role of its own
+"""api database role
 
 The API connects as bitemporal_api, a role that bypasses no row security, owns nothing and reads
 what the application shows. A role belongs to the whole cluster while each environment is a schema,

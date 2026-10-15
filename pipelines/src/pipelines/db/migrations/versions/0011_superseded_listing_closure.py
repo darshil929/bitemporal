@@ -1,4 +1,4 @@
-"""a change of isin supersedes a listing
+"""superseded listing closure
 
 Revision ID: 0011
 Revises: 0010
