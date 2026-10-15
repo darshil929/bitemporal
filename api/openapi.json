@@ -1,6 +1,127 @@
 {
   "components": {
     "schemas": {
+      "CorporateActionResponse": {
+        "description": "An action with its terms as an announcement states them, the factor it applies to earlier\nprices or the dividend in rupees a share, the venue's own text where its terms are unknown, who\nreported it, whether the two venues' records differ, whether its factor is applied, and the\nsource of the record shown, absent for a fund's unit split read from the prices.",
+        "properties": {
+          "action_type": {
+            "enum": [
+              "split",
+              "bonus",
+              "consolidation",
+              "rights",
+              "dividend",
+              "unhandled"
+            ],
+            "title": "Action Type",
+            "type": "string"
+          },
+          "adjustment_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Factor"
+          },
+          "dividend_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividend Amount"
+          },
+          "ex_date": {
+            "format": "date",
+            "title": "Ex Date",
+            "type": "string"
+          },
+          "is_applied": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Applied"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "qualifier": {
+            "title": "Qualifier",
+            "type": "string"
+          },
+          "reported_by": {
+            "enum": [
+              "BSE",
+              "NSE",
+              "both",
+              "prices"
+            ],
+            "title": "Reported By",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "terms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms"
+          },
+          "venues_differ": {
+            "title": "Venues Differ",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ex_date",
+          "action_type",
+          "qualifier",
+          "terms",
+          "adjustment_factor",
+          "dividend_amount",
+          "purpose",
+          "reported_by",
+          "venues_differ",
+          "is_applied",
+          "source_id"
+        ],
+        "title": "CorporateActionResponse",
+        "type": "object"
+      },
       "FirstAdminRequest": {
         "properties": {
           "display_name": {
@@ -1526,6 +1647,84 @@
           }
         },
         "summary": "Instrument",
+        "tags": [
+          "instruments"
+        ]
+      }
+    },
+    "/instruments/{isin}/actions": {
+      "get": {
+        "description": "The instrument's corporate actions up to the published day, newest first.",
+        "operationId": "instrument_actions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "isin",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Z]{2}[A-Z0-9]{9}[0-9]$",
+              "title": "Isin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CorporateActionResponse"
+                  },
+                  "title": "Response Instrument Actions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentNotFoundResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Instrument Actions",
         "tags": [
           "instruments"
         ]

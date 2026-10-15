@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from api.dependencies import DatabaseDependency, signed_in
 from api.routers.market import MARKET_READ_RESPONSES
+from api.schemas.corporate_actions import CorporateActionResponse
 from api.schemas.instruments import (
     InstrumentMatchResponse,
     InstrumentNotFoundResponse,
@@ -14,7 +15,13 @@ from api.schemas.instruments import (
 from api.schemas.key_figures import KeyFiguresResponse
 from api.schemas.market import Venue
 from api.schemas.prices import PriceHistoryResponse, PriceRange
-from api.services import instrument_search, instruments, key_figures, price_history
+from api.services import (
+    corporate_actions,
+    instrument_search,
+    instruments,
+    key_figures,
+    price_history,
+)
 
 # Two letters for the issuing country, nine characters naming the security, a check digit.
 ISIN_PATTERN = "^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
@@ -83,3 +90,14 @@ async def instrument_day(
     if found is None:
         raise instrument_not_found()
     return KeyFiguresResponse.model_validate(found)
+
+
+@router.get("/{isin}/actions", responses=NOT_FOUND_RESPONSES)
+async def instrument_actions(
+    isin: IsinPath, database: DatabaseDependency
+) -> list[CorporateActionResponse]:
+    """The instrument's corporate actions up to the published day, newest first."""
+    found = await corporate_actions.corporate_actions(database, isin)
+    if found is None:
+        raise instrument_not_found()
+    return [CorporateActionResponse.model_validate(action) for action in found]
