@@ -9,7 +9,7 @@ import {
 import { cn } from "cn";
 
 // Up and down mean price direction alone; a figure that reads as zero takes no colour.
-const TONES: Record<Direction, string> = {
+export const DIRECTION_TONES: Record<Direction, string> = {
   up: "text-up",
   down: "text-down",
   flat: "text-text",
@@ -33,7 +33,12 @@ export function DeltaCell({ value, kind, nullReason }: DeltaCellProps) {
   const formatted =
     kind === "return" ? formatReturn(value) : formatChange(value);
   return (
-    <span className={cn("text-cell tabular-nums", TONES[direction(formatted)])}>
+    <span
+      className={cn(
+        "text-cell tabular-nums",
+        DIRECTION_TONES[direction(formatted)],
+      )}
+    >
       {formatted.text}
     </span>
   );
