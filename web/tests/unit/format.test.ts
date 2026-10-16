@@ -13,6 +13,7 @@ import {
   formatMultiple,
   formatPrice,
   formatReturn,
+  formatShortDate,
   formatVolume,
 } from "@/lib/format";
 
@@ -81,6 +82,10 @@ describe("figures", () => {
 describe("days and moments", () => {
   test("a day reads day, short month, year", () => {
     expect(formatDate("2026-09-16")).toBe("16 Sep 2026");
+  });
+
+  test("a day beside a figure reads day and short month", () => {
+    expect(formatShortDate("2025-06-13")).toBe("13 Jun");
   });
 
   test("a moment reads in India time", () => {
