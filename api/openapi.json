@@ -1385,6 +1385,64 @@
         "title": "SessionEnded",
         "type": "object"
       },
+      "SessionLimitsChangeRequest": {
+        "description": "A new idle limit, a new maximum, or both.",
+        "properties": {
+          "session_idle_minutes": {
+            "anyOf": [
+              {
+                "maximum": 1440.0,
+                "minimum": 5.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Idle Minutes"
+          },
+          "session_max_hours": {
+            "anyOf": [
+              {
+                "maximum": 72.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Max Hours"
+          }
+        },
+        "title": "SessionLimitsChangeRequest",
+        "type": "object"
+      },
+      "SessionLimitsResponse": {
+        "description": "Minutes a session may go unused, hours it may last at most, and when either last changed.",
+        "properties": {
+          "session_idle_minutes": {
+            "title": "Session Idle Minutes",
+            "type": "integer"
+          },
+          "session_max_hours": {
+            "title": "Session Max Hours",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_idle_minutes",
+          "session_max_hours",
+          "updated_at"
+        ],
+        "title": "SessionLimitsResponse",
+        "type": "object"
+      },
       "SessionResponse": {
         "properties": {
           "display_name": {
@@ -1647,6 +1705,88 @@
           }
         },
         "summary": "Admin Actions",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/settings": {
+      "get": {
+        "description": "The session limits in force for everyone.",
+        "operationId": "session_limits",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionLimitsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Session Limits",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "Set the idle limit, the maximum, or both; running sessions are held to them at once.",
+        "operationId": "change_session_limits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionLimitsChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionLimitsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Session Limits",
         "tags": [
           "admin"
         ]
