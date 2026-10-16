@@ -20,14 +20,21 @@ CURRENT = text(
     " (select trade_date from feature_release order by release_id desc limit 1) as published_day"
     " from mart_instruments where isin = :isin"
 )
-# Every view is named its instrument and day, so each reads that day alone.
+# Every view is named its instrument and day, so each reads that day alone. A day is behind by
+# the venue's own sessions that passed every check: a session only the other venue held, or a day
+# that failed its checks, is not one the instrument missed.
 DAY = text(
     """
     select
         bars.open, bars.high, bars.low, bars.close, bars.previous_close, bars.volume,
         bars.turnover, bars.trade_count, figures.change_1d, figures.return_1d,
         figures.delivery_pct_1d, spread.venue_spread_bps, features.is_diverging,
-        verdicts.is_complete
+        verdicts.is_complete,
+        (
+            select count(*) from mart_trading_days as sessions
+            where sessions.venue = :venue and sessions.is_complete
+                and sessions.trade_date > :day and sessions.trade_date <= :published
+        ) as trading_days_behind
     from mart_price_daily as bars
     left join mart_venue_daily_figures as figures
         on figures.isin = :current and figures.venue = :venue and figures.trade_date = :day
@@ -54,14 +61,16 @@ class Source:
 
 @dataclass(frozen=True)
 class KeyFigures:
-    """The venue's newest day up to the published day as traded, its change on the adjusted series,
-    its delivery share, the spread to the other venue, the day's verdict, and the sources read; every
-    figure absent where the instrument never traded at the venue."""
+    """The venue's newest day up to the published day as traded, how many of the venue's complete
+    trading days it is behind the published day, its change on the adjusted series, its delivery
+    share, the spread to the other venue, the day's verdict, and the sources read; every figure
+    absent where the instrument never traded at the venue."""
 
     isin: str
     venue: str
     trade_date: date | None = None
     is_stale: bool | None = None
+    trading_days_behind: int | None = None
     is_day_complete: bool | None = None
     open: float | None = None
     high: float | None = None
@@ -99,7 +108,8 @@ async def key_figures(database: Database, isin: str, venue: str) -> KeyFigures |
         day = (await transaction.execute(LAST_DAY, scope)).scalar_one()
         if day is None:
             return KeyFigures(isin, venue)
-        row = (await transaction.execute(DAY, scope | {"day": day})).one()
+        published = found.published_day
+        row = (await transaction.execute(DAY, scope | {"day": day, "published": published})).one()
         names = sources_read(venue, row.delivery_pct_1d, row.venue_spread_bps)
         listed = {
             source.source_id: Source(*source)
@@ -109,7 +119,8 @@ async def key_figures(database: Database, isin: str, venue: str) -> KeyFigures |
             isin=isin,
             venue=venue,
             trade_date=day,
-            is_stale=found.published_day is not None and day < found.published_day,
+            is_stale=published is not None and day < published,
+            trading_days_behind=None if published is None else row.trading_days_behind,
             is_day_complete=row.is_complete,
             open=number(row.open),
             high=number(row.high),

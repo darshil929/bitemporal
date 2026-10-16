@@ -64,11 +64,12 @@ async def test_the_newest_day_reads_as_traded_with_its_change_on_the_adjusted_se
     body = (await key_figures(HDFC_BANK, venue)).json()
 
     assert bar is not None and figures is not None and features is not None
-    assert (body["trade_date"], body["is_stale"], body["is_day_complete"]) == (
-        LAST_DAY,
-        False,
-        True,
-    )
+    assert (
+        body["trade_date"],
+        body["is_stale"],
+        body["trading_days_behind"],
+        body["is_day_complete"],
+    ) == (LAST_DAY, False, 0, True)
     shown = (
         body["open"],
         body["close"],
@@ -95,10 +96,16 @@ async def test_a_single_listed_instrument_has_no_spread(key_figures: KeyFigures)
     assert sources(body) == [("bse_bhavcopy_equity", 1), ("bse_delivery", 1)]
 
 
-async def test_a_day_older_than_the_published_one_is_stale(key_figures: KeyFigures) -> None:
+async def test_a_day_older_than_the_published_one_is_stale_by_the_venues_trading_days(
+    key_figures: KeyFigures,
+) -> None:
     body = (await key_figures(PIRAMAL_ENTERPRISES, "NSE")).json()
 
-    assert (body["trade_date"], body["is_stale"]) == ("2025-09-22", True)
+    assert (body["trade_date"], body["is_stale"], body["trading_days_behind"]) == (
+        "2025-09-22",
+        True,
+        68,
+    )
     assert body["delivery_pct_1d"] is None
     assert sources(body) == [("nse_bhavcopy_equity", 1), ("bse_bhavcopy_equity", 1)]
 
@@ -108,7 +115,12 @@ async def test_a_venue_the_instrument_never_traded_at_has_no_figures(
 ) -> None:
     body = (await key_figures(SPICEJET, "NSE")).json()
 
-    assert (body["trade_date"], body["close"], body["sources"]) == (None, None, [])
+    assert (body["trade_date"], body["close"], body["trading_days_behind"], body["sources"]) == (
+        None,
+        None,
+        None,
+        [],
+    )
 
 
 async def test_an_unknown_isin_is_not_found(key_figures: KeyFigures) -> None:
