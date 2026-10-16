@@ -453,7 +453,7 @@
         "type": "object"
       },
       "KeyFiguresResponse": {
-        "description": "The instrument's newest day at the venue up to the published day: the day as traded, its\nchange and return on the adjusted series, its delivery share, the spread to the other venue and\nwhether it diverged, the venue's verdict on the day, whether the day is older than the published\none, and the sources read. Every figure is absent where the instrument never traded there.",
+        "description": "The instrument's newest day at the venue up to the published day: the day as traded, its\nchange and return on the adjusted series, its delivery share, the spread to the other venue and\nwhether it diverged, the venue's verdict on the day, whether the day is older than the published\none and by how many of the venue's complete trading days, and the sources read. Every figure is\nabsent where the instrument never traded there.",
         "properties": {
           "change_1d": {
             "anyOf": [
@@ -610,6 +610,17 @@
             ],
             "title": "Trade Date"
           },
+          "trading_days_behind": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trading Days Behind"
+          },
           "turnover": {
             "anyOf": [
               {
@@ -657,6 +668,7 @@
           "venue",
           "trade_date",
           "is_stale",
+          "trading_days_behind",
           "is_day_complete",
           "open",
           "high",

@@ -21,7 +21,8 @@ class KeyFiguresResponse(BaseModel):
     """The instrument's newest day at the venue up to the published day: the day as traded, its
     change and return on the adjusted series, its delivery share, the spread to the other venue and
     whether it diverged, the venue's verdict on the day, whether the day is older than the published
-    one, and the sources read. Every figure is absent where the instrument never traded there."""
+    one and by how many of the venue's complete trading days, and the sources read. Every figure is
+    absent where the instrument never traded there."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,6 +30,7 @@ class KeyFiguresResponse(BaseModel):
     venue: Venue
     trade_date: date | None
     is_stale: bool | None
+    trading_days_behind: int | None
     is_day_complete: bool | None
     open: float | None
     high: float | None

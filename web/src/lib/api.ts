@@ -542,7 +542,8 @@ export interface components {
          * @description The instrument's newest day at the venue up to the published day: the day as traded, its
          *     change and return on the adjusted series, its delivery share, the spread to the other venue and
          *     whether it diverged, the venue's verdict on the day, whether the day is older than the published
-         *     one, and the sources read. Every figure is absent where the instrument never traded there.
+         *     one and by how many of the venue's complete trading days, and the sources read. Every figure is
+         *     absent where the instrument never traded there.
          */
         KeyFiguresResponse: {
             /** Change 1D */
@@ -575,6 +576,8 @@ export interface components {
             trade_count: number | null;
             /** Trade Date */
             trade_date: string | null;
+            /** Trading Days Behind */
+            trading_days_behind: number | null;
             /** Turnover */
             turnover: number | null;
             /**
