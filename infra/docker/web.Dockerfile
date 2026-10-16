@@ -6,6 +6,10 @@ RUN npm ci
 
 FROM node:24-slim AS build
 
+# The address /api is forwarded to is written into the build.
+ARG API_URL
+ENV API_URL=$API_URL
+
 WORKDIR /app
 COPY --from=deps /app/node_modules node_modules
 COPY web .
