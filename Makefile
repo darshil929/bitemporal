@@ -90,12 +90,14 @@ test-dbt:
 	cd pipelines/dbt && uv run dbt build --profiles-dir . --target fixture
 
 test-web:
+	npm --prefix web run api-client:check
 	npm --prefix web run typecheck
 	npm --prefix web run test
 
-# Writes the API's OpenAPI document, the reviewed contract the web client is generated from.
+# Writes the API's OpenAPI document, the reviewed contract, and the web client generated from it.
 openapi:
 	uv run python -m api.contract > api/openapi.json
+	npm --prefix web run api-client
 
 ci: lint test-engine test-python test-dbt test-web
 

@@ -27,6 +27,8 @@ services:
       API_DATABASE_URL: postgresql+psycopg://bitemporal_api:${API_DATABASE_PASSWORD:-replace-me}@postgres:5432/${POSTGRES_DB:-bitemporal}
       DATA_ENV: ${DATA_ENV:-dev}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # The address people open the web app at, checked on a change a browser sends without Sec-Fetch-Site.
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -56,8 +58,11 @@ services:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
+      # The web server forwards /api to the API, and pages read from it, at this address.
+      args:
+        API_URL: http://api:8000
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      API_URL: http://api:8000
     ports:
       - "3000:3000"
     depends_on:
