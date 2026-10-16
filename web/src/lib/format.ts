@@ -122,6 +122,12 @@ export function formatDate(isoDate: string): string {
   return `${day} ${MONTHS[month - 1]} ${year}`;
 }
 
+/** A calendar day without its year, beside a figure whose year is evident: `16 Sep`. */
+export function formatShortDate(isoDate: string): string {
+  const [, month, day] = isoDate.split("-").map(Number);
+  return `${day} ${MONTHS[month - 1]}`;
+}
+
 const indiaParts = new Intl.DateTimeFormat("en-GB", {
   timeZone: INDIA,
   year: "numeric",
