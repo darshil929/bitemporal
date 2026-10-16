@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from api.dependencies import AdminDependency, DatabaseDependency
 from api.schemas.audit import AuditEntryResponse
+from api.schemas.session_limit_settings import SessionLimitsChangeRequest, SessionLimitsResponse
 from api.schemas.sessions import NotSignedInResponse
 from api.schemas.user_management import (
     AccountChangeRequest,
@@ -14,7 +15,7 @@ from api.schemas.user_management import (
     PersonRefusedResponse,
     PersonResponse,
 )
-from api.services import user_management
+from api.services import session_limit_settings, user_management
 from api.services.audit import recent_admin_actions
 
 router = APIRouter(
@@ -92,3 +93,23 @@ async def reset_password(
     except user_management.PersonRefused as refused:
         raise refusal(refused) from refused
     return IssuedPasswordResponse.model_validate(issued)
+
+
+@router.get("/settings")
+async def session_limits(
+    admin: AdminDependency, database: DatabaseDependency
+) -> SessionLimitsResponse:
+    """The session limits in force for everyone."""
+    limits = await session_limit_settings.session_limits(database, admin.id)
+    return SessionLimitsResponse.model_validate(limits)
+
+
+@router.patch("/settings")
+async def change_session_limits(
+    body: SessionLimitsChangeRequest, admin: AdminDependency, database: DatabaseDependency
+) -> SessionLimitsResponse:
+    """Set the idle limit, the maximum, or both; running sessions are held to them at once."""
+    limits = await session_limit_settings.change_session_limits(
+        database, admin.id, body.session_idle_minutes, body.session_max_hours
+    )
+    return SessionLimitsResponse.model_validate(limits)
