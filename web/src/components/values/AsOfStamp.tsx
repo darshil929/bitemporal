@@ -4,8 +4,8 @@ import { formatDate } from "@/lib/format";
 
 type AsOfStampProps = Readonly<{
   isoDate: string;
-  /** The day a figure is from, or the day a change is measured against. */
-  lead?: "As of" | "Changes against";
+  /** The day a figure is from, a change is measured against, or figures were published. */
+  lead?: "As of" | "Changes against" | "Published";
 }>;
 
 export function AsOfStamp({ isoDate, lead = "As of" }: AsOfStampProps) {
