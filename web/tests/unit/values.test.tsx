@@ -1,9 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { AsOfStamp } from "@/components/values/AsOfStamp";
 import { BpsCell } from "@/components/values/BpsCell";
 import { CompactValue } from "@/components/values/CompactValue";
 import { DeltaCell } from "@/components/values/DeltaCell";
+import { HeroFigure } from "@/components/values/HeroFigure";
+import { InstrumentCell } from "@/components/values/InstrumentCell";
 import { PriceCell } from "@/components/values/PriceCell";
 import { StaleValue } from "@/components/values/StaleValue";
 
@@ -115,4 +118,79 @@ test("a stale price carries the day it is from before it", () => {
 
   expect(container.firstElementChild?.textContent).toBe("13 Jun₹9,331.00");
   expect(screen.getByText("13 Jun").classList).toContain("text-text-muted");
+});
+
+test("the hero figure keeps proportional figures, its change and return coloured beside it", () => {
+  const { container } = render(
+    <HeroFigure
+      close={1570.4}
+      change={0.3}
+      returnFraction={0.0003}
+      nullReason={NO_DELIVERY}
+    />,
+  );
+
+  const [close, change, ret] = [
+    ...(container.firstElementChild?.children ?? []),
+  ];
+  expect(close.textContent).toBe("₹1,570.40");
+  expect(close.classList).toContain("text-hero");
+  expect(close.classList).not.toContain("tabular-nums");
+  expect(screen.getByText("₹").classList).toContain("text-text-subtle");
+  expect([change.textContent, ret.textContent]).toEqual(["+0.30", "+0.03%"]);
+  expect([
+    change.classList.contains("text-up"),
+    ret.classList.contains("text-up"),
+  ]).toEqual([true, true]);
+});
+
+test("a hero figure with no close is a dash that says why", () => {
+  render(
+    <HeroFigure
+      close={null}
+      change={null}
+      returnFraction={null}
+      nullReason="No trade today"
+    />,
+  );
+
+  expect(screen.getAllByLabelText("No trade today")).toHaveLength(3);
+});
+
+test.each([
+  [undefined, "As of 9 Oct 2026"],
+  ["Changes against", "Changes against 9 Oct 2026"],
+] as const)("a stamp led by %s reads %s, its day emphasised", (lead, text) => {
+  const { container } = render(<AsOfStamp isoDate="2026-10-09" lead={lead} />);
+
+  expect(container.firstElementChild?.textContent).toBe(text);
+  expect(screen.getByText("9 Oct 2026").classList).toContain("text-text-muted");
+});
+
+test("an instrument cell links its name to the instrument's page over its symbol", () => {
+  render(
+    <InstrumentCell
+      displayName="HDFC Bank Ltd"
+      symbol="HDFCBANK"
+      isin="INE040A01034"
+    />,
+  );
+
+  expect(
+    screen.getByRole("link", { name: "HDFC Bank Ltd" }).getAttribute("href"),
+  ).toBe("/instrument/INE040A01034");
+  expect(screen.getByText("HDFCBANK").classList).toContain("font-mono");
+});
+
+test("an instrument cell can carry the ISIN beside the symbol", () => {
+  render(
+    <InstrumentCell
+      displayName="Bajaj Finance Ltd"
+      symbol="BAJFINANCE"
+      isin="INE296A01024"
+      showIsin
+    />,
+  );
+
+  expect(screen.getByText("BAJFINANCE · INE296A01024")).toBeTruthy();
 });
