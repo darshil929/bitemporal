@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
-import { AppShell } from "@/components/layout/AppShell";
 import { QueryProvider } from "@/components/layout/QueryProvider";
 
 import "./globals.css";
@@ -29,9 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body>
-        <QueryProvider>
-          <AppShell>{children}</AppShell>
-        </QueryProvider>
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
   );
