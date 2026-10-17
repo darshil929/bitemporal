@@ -10,3 +10,14 @@ export function returnAddress(next: string | undefined): string {
   }
   return next;
 }
+
+// The address a page request asked for, carried to the page in a request header: a server component
+// is not told its own address.
+export const REQUESTED_ADDRESS_HEADER = "x-requested-address";
+
+// Sign-in, holding the page to return to once signed in.
+export function signInAddress(next: string): string {
+  return next === "/"
+    ? "/sign-in"
+    : `/sign-in?${new URLSearchParams({ next })}`;
+}
