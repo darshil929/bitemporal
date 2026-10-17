@@ -140,3 +140,26 @@ test("a read stays current for five minutes and is retried only while market dat
   ).toBe(false);
   expect(retriesMarketData(0, new TypeError("Failed to fetch"))).toBe(false);
 });
+
+test("a read refused for an ended session opens sign-in, returning here after; the sign-in form's own refusal does not", async () => {
+  const page = window.location;
+  const assign = vi.fn();
+  vi.stubGlobal("location", {
+    href: "http://localhost:3000/screener?page=2",
+    pathname: "/screener",
+    search: "?page=2",
+    assign,
+  });
+  const ended = { detail: { reason: "idle" } };
+  fetchMock
+    .mockResolvedValueOnce(answer(ended, 401))
+    .mockResolvedValueOnce(answer(ended, 401));
+
+  await apiClient.GET("/instruments", { params: { query: { q: "hdfc" } } });
+  await apiClient.POST("/auth/sign-in", {
+    body: { username: "darshil929", password: "wrong" },
+  });
+
+  vi.stubGlobal("location", page);
+  expect(assign.mock.calls).toEqual([["/sign-in?next=%2Fscreener%3Fpage%3D2"]]);
+});
