@@ -29,6 +29,9 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       # The address people open the web app at, checked on a change a browser sends without Sec-Fetch-Site.
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      # The stack serves plain http, where a browser discards a cookie marked secure (Safari even on
+      # localhost); a deployment served over https sets this to true.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
