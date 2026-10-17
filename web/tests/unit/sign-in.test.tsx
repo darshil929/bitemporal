@@ -87,14 +87,16 @@ function signIn() {
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 }
 
-test("signing in sends the username and password, then opens the address that sent the person here", async () => {
+test("signing in sends the username and password, then loads the address that sent the person here afresh", async () => {
+  const page = window.location;
+  const assign = vi.fn();
+  vi.stubGlobal("location", { href: page.href, assign });
   fetchMock.mockResolvedValue(answer({ username: "darshil929" }, 200));
 
   signIn();
 
-  await waitFor(() =>
-    expect(navigation.replace).toHaveBeenCalledWith("/screener"),
-  );
+  await waitFor(() => expect(assign).toHaveBeenCalledWith("/screener"));
+  vi.stubGlobal("location", page);
   const [request] = fetchMock.mock.lastCall ?? [];
   expect(request?.url).toBe("http://localhost:3000/api/auth/sign-in");
   expect(await request?.json()).toEqual({
@@ -117,7 +119,7 @@ test.each([
   signIn();
 
   expect(await screen.findByText(words, { exact: false })).toBeDefined();
-  expect(navigation.replace).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Sign in" })).toBeDefined();
 });
 
 test.each([

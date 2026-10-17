@@ -1,7 +1,6 @@
 "use client";
 
 import { Clock, Info, TriangleAlert } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
 import { Button } from "@/components/controls/Button";
@@ -23,7 +22,6 @@ type SignInFormProps = Readonly<{
 }>;
 
 export function SignInForm({ sessionNotice, next }: SignInFormProps) {
-  const router = useRouter();
   const [notice, setNotice] = useState(sessionNotice);
   const [error, setError] = useState<string>();
   const [isBusy, setBusy] = useState(false);
@@ -38,9 +36,10 @@ export function SignInForm({ sessionNotice, next }: SignInFormProps) {
         password: String(form.get("password")),
       },
     });
+    // The next page opens by a whole page load and reads the new session afresh, so a browser that
+    // kept no session comes back to a fresh form rather than one left waiting.
     if (response.ok) {
-      router.replace(next);
-      router.refresh();
+      window.location.assign(next);
       return;
     }
     setBusy(false);
