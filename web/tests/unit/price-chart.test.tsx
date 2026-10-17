@@ -3,7 +3,8 @@ import { type Time, TickMarkType } from "lightweight-charts";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { PriceChart } from "@/components/charts/PriceChart";
-import { formatPriceTick } from "@/lib/format";
+import { barSegments } from "@/components/charts/volume-bars";
+import { formatPriceTick, formatVolumeTick } from "@/lib/format";
 
 // The chart draws on a canvas the test DOM lacks, so the library is replaced by a record of what
 // the chart is given.
@@ -32,6 +33,9 @@ vi.mock("lightweight-charts", async (actual) => {
       return {
         addSeries: (_definition: unknown, options: Record<string, unknown>) =>
           series(options),
+        addCustomSeries: (_view: unknown, options: Record<string, unknown>) =>
+          series(options),
+        panes: () => [{ setHeight: () => {} }, { setHeight: () => {} }],
         timeScale: () => ({ fitContent: () => {} }),
         subscribeCrosshairMove: (handler: typeof drawn.onCrosshair) =>
           (drawn.onCrosshair = handler),
@@ -133,6 +137,40 @@ test("the readout reads the newest day, then the day under the crosshair", () =>
 
   expect(screen.getByText("30 Sep 2025")).toBeDefined();
   expect(screen.getByText("946.05")).toBeDefined();
+});
+
+test("the volume pane draws each day's shares traded and delivered as the API sends them", () => {
+  const days = [DAYS[0], { ...DAYS[1], delivery_quantity: 6_512_300 }];
+  render(<PriceChart venue="NSE" days={days} />);
+
+  expect(drawn.series[1].data).toEqual([
+    { time: "2025-09-30", volume: 15_123_456, delivered: null },
+    { time: "2025-10-01", volume: 15_123_456, delivered: 6_512_300 },
+  ]);
+  expect(screen.getByText("No delivery figure")).toBeDefined();
+});
+
+test("a bar holds the delivered shares at its base and the rest above a gap; without a figure it is whole", () => {
+  const toY = (shares: number) => 100 - shares / 1000;
+
+  expect(barSegments({ volume: 60_000, delivered: 20_000 }, toY)).toEqual([
+    { top: 80, bottom: 100, tone: "delivered" },
+    { top: 40, bottom: 78, tone: "notDelivered" },
+  ]);
+  expect(barSegments({ volume: 20_500, delivered: 20_000 }, toY)).toEqual([
+    { top: 80, bottom: 100, tone: "delivered" },
+  ]);
+  expect(barSegments({ volume: 60_000, delivered: null }, toY)).toEqual([
+    { top: 40, bottom: 100, tone: "noFigure" },
+  ]);
+});
+
+test.each([
+  [50_000_000, "5 Cr"],
+  [250_000, "2.5 L"],
+  [84_231, "84,231"],
+])("the volume axis reads %d as %s", (shares, shown) => {
+  expect(formatVolumeTick(shares)).toBe(shown);
 });
 
 test.each([
