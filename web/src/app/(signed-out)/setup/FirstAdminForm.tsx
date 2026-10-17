@@ -8,14 +8,7 @@ import { FormField } from "@/components/controls/FormField";
 import { PasswordField } from "@/components/controls/PasswordField";
 import { TextField } from "@/components/controls/TextField";
 import { apiClient } from "@/lib/api-client";
-
-// The password rule's refusals, in the words the field shows.
-const PASSWORD_PROBLEMS: Partial<Record<string, string>> = {
-  too_short: "At least 15 characters",
-  too_long: "At most 128 characters",
-  contains_a_name:
-    "The password may not contain the username, the display name or Bitemporal",
-};
+import { PASSWORD_PROBLEMS, PASSWORDS_DIFFER } from "@/lib/password-rule";
 
 type Errors = Readonly<{ password?: string; again?: string; form?: string }>;
 
@@ -31,7 +24,7 @@ export function FirstAdminForm() {
     const form = new FormData(event.currentTarget);
     const password = String(form.get("password"));
     if (password !== String(form.get("again"))) {
-      setErrors({ again: "The two passwords differ" });
+      setErrors({ again: PASSWORDS_DIFFER });
       return;
     }
     setErrors({});

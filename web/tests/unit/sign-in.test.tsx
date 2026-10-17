@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { NewPasswordForm } from "@/app/(signed-out)/sign-in/NewPasswordForm";
 import SignInPage from "@/app/(signed-out)/sign-in/page";
 import { SignInForm } from "@/app/(signed-out)/sign-in/SignInForm";
 import { returnAddress } from "@/lib/return-address";
@@ -170,4 +171,75 @@ test.each([
   [undefined, "/"],
 ])("the return address %s opens %s", (next, opened) => {
   expect(returnAddress(next)).toBe(opened);
+});
+
+test("a session holding a temporary password chooses a new one in place of the form", async () => {
+  api.session = {
+    display_name: "Darshil Thakkar",
+    must_change_password: true,
+  };
+
+  render(await SignInPage({ searchParams: Promise.resolve({}) }));
+
+  expect(
+    screen.getByRole("heading", { name: "Choose a new password" }),
+  ).toBeDefined();
+  expect(
+    screen.getByText("Darshil Thakkar signed in with a temporary password.", {
+      exact: false,
+    }),
+  ).toBeDefined();
+  expect(screen.queryByLabelText("Username")).toBeNull();
+});
+
+function chooseNewPassword(again = "harbour-lantern-quince") {
+  render(<NewPasswordForm displayName="Darshil Thakkar" next="/screener" />);
+  type("New password", "harbour-lantern-quince");
+  type("New password again", again);
+  fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+}
+
+test.each([204, 409])(
+  "a new password answered %s opens the address that sent the person here",
+  async (status) => {
+    fetchMock.mockResolvedValue(
+      status === 204
+        ? new Response(null, { status })
+        : answer({ detail: "no_change_due" }, status),
+    );
+
+    chooseNewPassword();
+
+    await waitFor(() =>
+      expect(navigation.replace).toHaveBeenCalledWith("/screener"),
+    );
+    const [request] = fetchMock.mock.lastCall ?? [];
+    expect(request?.url).toBe("http://localhost:3000/api/auth/password");
+    expect(await request?.json()).toEqual({
+      password: "harbour-lantern-quince",
+    });
+  },
+);
+
+test("two new passwords that differ are refused before anything is sent", () => {
+  chooseNewPassword("harbour-lantern-quinces");
+
+  expect(screen.getByText("The two passwords differ")).toBeDefined();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test.each([
+  [
+    422,
+    "contains_a_name",
+    "The password may not contain the username, the display name or Bitemporal",
+  ],
+  [503, "unavailable", "The password could not be saved. Try again."],
+])("a new password refused %s %s says why", async (status, detail, words) => {
+  fetchMock.mockResolvedValue(answer({ detail }, status));
+
+  chooseNewPassword();
+
+  expect(await screen.findByText(words)).toBeDefined();
+  expect(navigation.replace).not.toHaveBeenCalled();
 });
