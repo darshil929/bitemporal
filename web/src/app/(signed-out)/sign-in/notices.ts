@@ -28,6 +28,8 @@ const DISABLED = refused(
   "This account is disabled. An administrator can enable it.",
 );
 
+export const SIGNED_OUT = ended("Signed out.");
+
 // Why the previous session is not running, its limits as the administrator set them.
 export function sessionNotice(session: SessionEnded): Notice | undefined {
   const { reason, idle_minutes: idle, max_hours: hours } = session;
@@ -47,7 +49,7 @@ export function sessionNotice(session: SessionEnded): Notice | undefined {
     return ended("Signed out from another session.");
   }
   if (reason === "signed_out") {
-    return ended("Signed out.");
+    return SIGNED_OUT;
   }
   return reason === "disabled" ? DISABLED : undefined;
 }
