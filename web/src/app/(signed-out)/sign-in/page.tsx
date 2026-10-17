@@ -5,6 +5,7 @@ import { SignedOutHeader } from "@/components/layout/SignedOutHeader";
 import { returnAddress } from "@/lib/return-address";
 import { serverApiClient } from "@/lib/server-api-client";
 
+import { NewPasswordForm } from "./NewPasswordForm";
 import { SIGNED_OUT, sessionNotice } from "./notices";
 import { SignInForm } from "./SignInForm";
 
@@ -13,7 +14,8 @@ type SignInPageProps = Readonly<{
 }>;
 
 // Setup comes first while no admin exists; someone already signed in goes on to where they were
-// headed; otherwise the form, with why the previous session ended.
+// headed, once a temporary password is replaced here; otherwise the form, with why the previous
+// session ended.
 export default async function SignInPage({ searchParams }: SignInPageProps) {
   const { next: requested, ended } = await searchParams;
   const next = returnAddress(requested);
@@ -23,8 +25,8 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     redirect("/setup");
   }
   const session = await client.GET("/session");
-  // A temporary password is replaced here before any page opens.
-  if (session.data && !session.data.must_change_password) {
+  const person = session.data;
+  if (person && !person.must_change_password) {
     redirect(next);
   }
   // Signing out deletes the session's cookie, so a sign-out is known from the address alone.
@@ -35,7 +37,11 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     <>
       <SignedOutHeader />
       <main className="flex flex-wrap items-start justify-center gap-12 px-gutter pt-24 pb-30">
-        <SignInForm sessionNotice={notice} next={next} />
+        {person ? (
+          <NewPasswordForm displayName={person.display_name} next={next} />
+        ) : (
+          <SignInForm sessionNotice={notice} next={next} />
+        )}
         <div className="w-[440px]">
           <Disclaimer />
         </div>
