@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { InstrumentSearch } from "@/components/controls/InstrumentSearch";
 import { ShellNavigation } from "@/components/layout/ShellNavigation";
 
 export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
@@ -10,6 +11,7 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
           Bitemporal
         </span>
         <ShellNavigation />
+        <InstrumentSearch shortcutKey="/" className="ml-auto w-80" />
       </header>
       <main className="flex flex-col gap-section p-gutter">{children}</main>
     </>

@@ -2,20 +2,26 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { QueryProvider } from "@/components/layout/QueryProvider";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 const location = vi.hoisted(() => ({ pathname: "/" }));
 
-vi.mock("next/navigation", () => ({ usePathname: () => location.pathname }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => location.pathname,
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 afterEach(cleanup);
 
 function shellAt(pathname: string) {
   location.pathname = pathname;
   render(
-    <AppShell>
-      <p>Page</p>
-    </AppShell>,
+    <QueryProvider>
+      <AppShell>
+        <p>Page</p>
+      </AppShell>
+    </QueryProvider>,
   );
 }
 
@@ -41,6 +47,15 @@ test.each([
   shellAt(pathname);
 
   expect(screen.getByRole("link", { current: "page" }).textContent).toBe(label);
+});
+
+test("the shell holds the instrument search, reached from anywhere with /", () => {
+  shellAt("/");
+
+  expect(
+    screen.getByRole("combobox", { name: "Search instruments" }),
+  ).toBeDefined();
+  expect(screen.getByText("/").tagName).toBe("KBD");
 });
 
 test("a page outside the three marks none open", () => {
