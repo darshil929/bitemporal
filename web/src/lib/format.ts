@@ -149,6 +149,17 @@ export function formatDateTime(isoTimestamp: string): string {
   return `${formatDate(day)}, ${parts.hour}:${parts.minute}`;
 }
 
+const MINUTES_IN_HOUR = 60;
+
+/** A length of time given in minutes, in whole hours where it divides evenly: `2 hours`, `90 minutes`. */
+export function formatDuration(minutes: number): string {
+  const [count, unit] =
+    minutes % MINUTES_IN_HOUR === 0
+      ? [minutes / MINUTES_IN_HOUR, "hour"]
+      : [minutes, "minute"];
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
+}
+
 /** Which way a signed figure moved, read from the sign it shows, so a change that rounds to
  * nothing takes no colour. */
 export function direction({ text }: Formatted): Direction {

@@ -9,6 +9,7 @@ import {
   formatDateTime,
   formatDeliveryShare,
   formatDividend,
+  formatDuration,
   formatLargeValue,
   formatMultiple,
   formatPrice,
@@ -94,6 +95,13 @@ describe("days and moments", () => {
 
   test("a moment late in the evening in UTC is the next day in India", () => {
     expect(formatDateTime("2026-10-10T19:30:00Z")).toBe("11 Oct 2026, 01:00");
+  });
+
+  test.each([
+    [120, "2 hours"],
+    [90, "90 minutes"],
+  ])("%i minutes read as %s", (minutes, expected) => {
+    expect(formatDuration(minutes)).toBe(expected);
   });
 });
 
