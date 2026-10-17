@@ -1,6 +1,6 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
+import { Clock, Info, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
@@ -13,14 +13,18 @@ import { apiClient } from "@/lib/api-client";
 
 import { type Notice, refusalNotice } from "./notices";
 
+const GLYPHS = { clock: Clock, info: Info, alert: TriangleAlert } as const;
+
 type SignInFormProps = Readonly<{
+  /** Why the previous session ended, read on the server. */
+  sessionNotice?: Notice;
   /** The address to open once signed in, already held to this site. */
   next: string;
 }>;
 
-export function SignInForm({ next }: SignInFormProps) {
+export function SignInForm({ sessionNotice, next }: SignInFormProps) {
   const router = useRouter();
-  const [notice, setNotice] = useState<Notice>();
+  const [notice, setNotice] = useState(sessionNotice);
   const [error, setError] = useState<string>();
   const [isBusy, setBusy] = useState(false);
 
@@ -61,7 +65,11 @@ export function SignInForm({ next }: SignInFormProps) {
       <h1 className="text-[20px] font-semibold tracking-[-0.01em] text-text">
         Sign in
       </h1>
-      {notice ? <Banner tone="flag">{notice.text}</Banner> : null}
+      {notice ? (
+        <Banner tone={notice.tone} icon={GLYPHS[notice.glyph]}>
+          {notice.text}
+        </Banner>
+      ) : null}
       <FormField label="Username">
         {({ isInvalid, ...control }) => (
           <TextField

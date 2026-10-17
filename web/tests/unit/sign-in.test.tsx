@@ -45,6 +45,7 @@ vi.mock("next/navigation", () => ({
 const api = vi.hoisted(() => ({
   adminExists: true,
   session: null as unknown,
+  ended: null as unknown,
 }));
 
 vi.mock("@/lib/server-api-client", () => ({
@@ -52,14 +53,17 @@ vi.mock("@/lib/server-api-client", () => ({
     GET: async (path: string) =>
       path === "/setup"
         ? { data: { admin_exists: api.adminExists } }
-        : { data: api.session },
+        : {
+            data: api.session,
+            error: api.ended ? { detail: api.ended } : null,
+          },
   }),
 }));
 
 beforeEach(() => {
   fetchMock.mockReset();
   navigation.replace.mockReset();
-  Object.assign(api, { adminExists: true, session: null });
+  Object.assign(api, { adminExists: true, session: null, ended: null });
 });
 
 afterEach(cleanup);
@@ -113,6 +117,19 @@ test.each([
 
   expect(await screen.findByText(words, { exact: false })).toBeDefined();
   expect(navigation.replace).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["idle", "Signed out after 2 hours without activity."],
+  ["limit", "Signed out at the 12-hour limit. Sign in again to continue."],
+  ["signed_out_elsewhere", "Signed out from another session."],
+])("a session that ended, %s, says why", async (reason, words) => {
+  api.ended = { reason, ended_at: PAUSED, idle_minutes: 120, max_hours: 12 };
+
+  render(await SignInPage({ searchParams: Promise.resolve({}) }));
+
+  expect(screen.getByText(words)).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Disclaimer" })).toBeDefined();
 });
 
 test("sign-in gives way to setup while no admin exists, and to the next page for someone signed in", async () => {
