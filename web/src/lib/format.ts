@@ -86,6 +86,11 @@ export function formatVolume(shares: number): Formatted {
   return compact(shares);
 }
 
+/** A price on a chart's axis, whole where the tick is: `1,000`, `987.50`. */
+export function formatPriceTick(rupees: number): string {
+  return digits(rupees, Number.isInteger(rupees) ? 0 : 2);
+}
+
 /** A change in price: `+15.30`, `−2.05`. */
 export function formatChange(change: number): Formatted {
   return { text: signed(change, 2) };
@@ -126,6 +131,11 @@ export function formatDate(isoDate: string): string {
 export function formatShortDate(isoDate: string): string {
   const [, month, day] = isoDate.split("-").map(Number);
   return `${day} ${MONTHS[month - 1]}`;
+}
+
+/** A month on a chart's time axis, numbered from 1: `Sep`. */
+export function formatMonth(month: number): string {
+  return MONTHS[month - 1];
 }
 
 const indiaParts = new Intl.DateTimeFormat("en-GB", {
