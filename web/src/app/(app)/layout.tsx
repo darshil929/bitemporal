@@ -6,6 +6,6 @@ import { requireSession } from "@/lib/page-access";
 export default async function SignedInLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  await requireSession();
-  return <AppShell>{children}</AppShell>;
+  const person = await requireSession();
+  return <AppShell person={person}>{children}</AppShell>;
 }

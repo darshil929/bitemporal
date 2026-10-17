@@ -5,17 +5,18 @@ import { SignedOutHeader } from "@/components/layout/SignedOutHeader";
 import { returnAddress } from "@/lib/return-address";
 import { serverApiClient } from "@/lib/server-api-client";
 
-import { sessionNotice } from "./notices";
+import { SIGNED_OUT, sessionNotice } from "./notices";
 import { SignInForm } from "./SignInForm";
 
 type SignInPageProps = Readonly<{
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; ended?: string }>;
 }>;
 
 // Setup comes first while no admin exists; someone already signed in goes on to where they were
 // headed; otherwise the form, with why the previous session ended.
 export default async function SignInPage({ searchParams }: SignInPageProps) {
-  const next = returnAddress((await searchParams).next);
+  const { next: requested, ended } = await searchParams;
+  const next = returnAddress(requested);
   const client = await serverApiClient();
   const setup = await client.GET("/setup");
   if (setup.data && !setup.data.admin_exists) {
@@ -26,9 +27,10 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
   if (session.data && !session.data.must_change_password) {
     redirect(next);
   }
-  const notice = session.error
-    ? sessionNotice(session.error.detail)
-    : undefined;
+  // Signing out deletes the session's cookie, so a sign-out is known from the address alone.
+  const notice =
+    (session.error && sessionNotice(session.error.detail)) ??
+    (ended === "signed_out" ? SIGNED_OUT : undefined);
   return (
     <>
       <SignedOutHeader />

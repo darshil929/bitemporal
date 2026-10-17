@@ -132,6 +132,23 @@ test.each([
   expect(screen.getByRole("heading", { name: "Disclaimer" })).toBeDefined();
 });
 
+test("after signing out, sign-in says so", async () => {
+  api.ended = {
+    reason: null,
+    ended_at: null,
+    idle_minutes: null,
+    max_hours: null,
+  };
+
+  render(
+    await SignInPage({
+      searchParams: Promise.resolve({ ended: "signed_out" }),
+    }),
+  );
+
+  expect(screen.getByText("Signed out.")).toBeDefined();
+});
+
 test("sign-in gives way to setup while no admin exists, and to the next page for someone signed in", async () => {
   api.adminExists = false;
   await expect(

@@ -14,11 +14,19 @@ vi.mock("next/navigation", () => ({
 
 afterEach(cleanup);
 
+const ADMIN = {
+  id: 1,
+  username: "darshil929",
+  display_name: "Darshil Thakkar",
+  role: "admin",
+  must_change_password: false,
+} as const;
+
 function shellAt(pathname: string) {
   location.pathname = pathname;
   render(
     <QueryProvider>
-      <AppShell>
+      <AppShell person={ADMIN}>
         <p>Page</p>
       </AppShell>
     </QueryProvider>,

@@ -21,3 +21,6 @@ export function signInAddress(next: string): string {
     ? "/sign-in"
     : `/sign-in?${new URLSearchParams({ next })}`;
 }
+
+// Sign-in once signed out, saying so.
+export const SIGNED_OUT_ADDRESS = "/sign-in?ended=signed_out";

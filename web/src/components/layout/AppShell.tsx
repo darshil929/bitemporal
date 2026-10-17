@@ -1,9 +1,14 @@
 import type { ReactNode } from "react";
 
 import { InstrumentSearch } from "@/components/controls/InstrumentSearch";
+import { AccountMenu } from "@/components/layout/AccountMenu";
 import { ShellNavigation } from "@/components/layout/ShellNavigation";
+import type { SignedInPerson } from "@/lib/page-access";
 
-export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
+export function AppShell({
+  person,
+  children,
+}: Readonly<{ person: SignedInPerson; children: ReactNode }>) {
   return (
     <>
       <header className="flex h-14 items-center gap-8 border-b border-border bg-surface px-gutter">
@@ -11,7 +16,10 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
           Bitemporal
         </span>
         <ShellNavigation />
-        <InstrumentSearch shortcutKey="/" className="ml-auto w-80" />
+        <div className="ml-auto flex items-center gap-2.5">
+          <InstrumentSearch shortcutKey="/" className="w-70" />
+          <AccountMenu person={person} />
+        </div>
       </header>
       <main className="flex flex-col gap-section p-gutter">{children}</main>
     </>
