@@ -1,7 +1,7 @@
 """Reading NSE corporate actions a year of ex-dates at a time, by invoking the asset with recorded responses."""
 
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -168,6 +168,31 @@ def test_an_action_held_unhandled_is_answered_by_the_terms_read_from_it(
     split = rows(postgres_dsn, "select isin from corporate_action where action_type = 'split'")
     assert result.metadata["failed"] == 0
     assert split == [(SHRIRAM_NEW,)]
+
+
+def test_a_text_the_answer_replaces_with_terms_is_withdrawn_once(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """The text is withdrawn on the day noticed; the demerger the answer still holds stays."""
+    hold_unhandled(postgres_dsn, SHRIRAM_NEW, date(2025, 1, 10), SHRIRAM_SPLIT)
+
+    first = ingest_nse_actions(
+        build_asset_context(), database, RecordedActions(), [YEAR_2025], COLLECTED_ON
+    )
+    again = ingest_nse_actions(
+        build_asset_context(),
+        database,
+        RecordedActions(),
+        [YEAR_2025],
+        COLLECTED_ON + timedelta(days=1),
+    )
+
+    withdrawn = rows(
+        postgres_dsn,
+        "select isin, qualifier, as_of_date::text from corporate_action where is_withdrawn",
+    )
+    assert withdrawn == [(SHRIRAM_NEW, SHRIRAM_SPLIT.lower(), "2026-09-26")]
+    assert (first.metadata["withdrawn"], again.metadata["withdrawn"]) == (1, 0)
 
 
 def test_an_action_held_unhandled_on_a_day_the_answer_lacks_is_refused(

@@ -30,7 +30,7 @@ DELIVERY_KEY = "(isin, venue, trade_date, as_of_date)"
 
 ACTION_COLUMNS = (
     "isin, action_type, ex_date, source_id, as_of_date, qualifier, ratio_from, ratio_to,"
-    " dividend_amount, purpose"
+    " dividend_amount, purpose, is_withdrawn"
 )
 ACTION_KEY = "(isin, action_type, ex_date, source_id, as_of_date, qualifier)"
 
@@ -115,6 +115,7 @@ def persist_actions(
             action.ratio_to,
             action.dividend_amount,
             action.purpose,
+            action.is_withdrawn,
         )
         for action in actions
     ]
