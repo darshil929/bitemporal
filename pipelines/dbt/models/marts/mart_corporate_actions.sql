@@ -6,10 +6,10 @@
 ) }}
 
 -- Each corporate action once, keyed on the ISIN the instrument trades under now. Both venues report
--- most actions, so BSE's record stands wherever BSE reports that kind of action that day, as it
+-- most actions, so BSE's record stands wherever BSE states that kind of action that day, as it
 -- does for the price adjustment, and NSE's stands otherwise. A split of a fund's units no venue
 -- records is listed as read from the prices.
-with actions as (
+with recorded as (
     select
         lineage.current_isin,
         actions.isin,
@@ -22,9 +22,61 @@ with actions as (
         actions.ratio_to,
         actions.dividend_amount,
         actions.purpose,
-        actions.adjustment_factor
+        actions.adjustment_factor,
+        -- A text naming one dividend and no other action, in words the venue's reader left whole:
+        -- BSE names a dividend before it states the amount, and NSE wrote amounts and percentages
+        -- of face value in shorthand ("1st Int Div-Rs.2/- Per Sh", "Dividend - 25%").
+        coalesce(
+            actions.action_type = 'unhandled'
+            and actions.purpose ~* '\mdiv(?!is)'
+            and actions.purpose !~* (
+                'bonus|\mbon\M|split|splt|\mfv\M|sub-div|consolid|right|buy ?back|demerg|spin'
+                || '|scheme|amalg|arrange|reduction|warrant|debenture|capital'
+            )
+            and actions.purpose !~* '\+|(fin|int).*(spl|special)|(spl|special).*(fin|int)',
+            false
+        ) as is_dividend_text
     from {{ ref('stg_corporate_actions') }} as actions
     inner join {{ ref('int_instrument_lineage') }} as lineage on actions.isin = lineage.isin
+),
+
+-- A dividend text is a dividend whose amount is not stated, nothing where it says nil.
+actions as (
+    select
+        current_isin,
+        isin,
+        ex_date,
+        source_id,
+        as_of_date,
+        ratio_from,
+        ratio_to,
+        purpose,
+        adjustment_factor,
+        case when is_dividend_text then 'dividend' else action_type end as action_type,
+        case
+            when not is_dividend_text then qualifier
+            when purpose ~* '\mint(erim)?\M' then 'interim'
+            when purpose ~* '\mfin(al)?\M' then 'final'
+            when purpose ~* '\m(spl|special)\M' then 'special'
+            else 'ordinary'
+        end as qualifier,
+        case
+            when is_dividend_text and purpose ~* '\mnil\M' then 0 else dividend_amount
+        end as dividend_amount,
+        is_dividend_text and purpose !~* '\mnil\M' as is_unstated
+    from recorded
+),
+
+-- An unstated dividend stands only where no record that day states an amount, and then once for
+-- its kind, BSE's text before NSE's and the latest before the earlier.
+ordered as (
+    select
+        *,
+        row_number() over (
+            partition by current_isin, ex_date, action_type, qualifier
+            order by source_id = 'bse_corporate_actions' desc, as_of_date desc, purpose asc
+        ) as place
+    from actions
 ),
 
 reported as (
@@ -34,11 +86,13 @@ reported as (
         action_type,
         bool_or(source_id = 'bse_corporate_actions') as by_bse,
         bool_or(source_id = 'nse_corporate_actions') as by_nse,
+        bool_or(source_id = 'bse_corporate_actions' and not is_unstated) as stated_by_bse,
+        bool_or(not is_unstated) as is_stated,
         array_agg(dividend_amount order by dividend_amount) filter (
-            where source_id = 'bse_corporate_actions'
+            where source_id = 'bse_corporate_actions' and not is_unstated
         ) as bse_amounts,
         array_agg(dividend_amount order by dividend_amount) filter (
-            where source_id = 'nse_corporate_actions'
+            where source_id = 'nse_corporate_actions' and not is_unstated
         ) as nse_amounts
     from actions
     group by current_isin, ex_date, action_type
@@ -65,8 +119,8 @@ listed as (
         end as reported_by,
         coalesce(
             actions.action_type = 'dividend'
-            and reported.by_bse
-            and reported.by_nse
+            and reported.bse_amounts is not null
+            and reported.nse_amounts is not null
             and reported.bse_amounts is distinct from reported.nse_amounts,
             false
         ) as venues_differ,
@@ -75,7 +129,7 @@ listed as (
             when actions.source_id = 'bse_corporate_actions' then factors.basis = 'bse'
             else coalesce(factors.basis = 'nse_confirmed', false)
         end as is_applied
-    from actions
+    from ordered as actions
     inner join reported
         on
             actions.current_isin = reported.current_isin
@@ -85,7 +139,9 @@ listed as (
         on
             actions.current_isin = factors.isin
             and actions.ex_date = factors.ex_date
-    where actions.source_id = 'bse_corporate_actions' or not reported.by_bse
+    where
+        (actions.source_id = 'bse_corporate_actions' or not reported.stated_by_bse)
+        and (not actions.is_unstated or (not reported.is_stated and actions.place = 1))
 ),
 
 read_from_prices as (
