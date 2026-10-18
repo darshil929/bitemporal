@@ -52,19 +52,44 @@ QUALIFIER_LIMIT = 64
 
 # The subject is free text, worded one way since about 2019 and several ways before. A bonus and a
 # split can share one subject, and a dividend is sometimes stated as a percentage of face value,
-# which is left as text. A bonus of debentures issues no shares. Subjects from about 2016 abbreviate a
-# face value split as "Fv Splt Frm Rs 2 To Re 1".
-BONUS = re.compile(r"\bbonus\b(?![^0-9]*debenture)\s*-?\s*(\d+)\s*:\s*(\d+)", re.IGNORECASE)
+# which is left as text. A bonus of debentures, preference shares or shares with other voting rights
+# issues no equity shares, and names its instrument between the word and the ratio. Subjects from
+# about 2016 abbreviate a face value split as "Fv Splt Frm Rs 2 To Re 1", and older ones abbreviate a
+# bonus as "Bon 1:1" and a dividend as "1st Int Div-Rs.2/- Per Sh", sometimes with a second kind
+# after a plus or an "and", "Div - Fin Rs.3 + Spl Rs.5".
+RATIO = r"(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)"
+BONUS = re.compile(
+    r"\bbon(?:us)?(?![a-z])(?![^0-9]*debenture)"
+    rf"(?:\s+issue|\s+shares\s+in\s+the\s+ratio\s+of)?\s*-?\s*{RATIO}",
+    re.IGNORECASE,
+)
 FACE_VALUE_CHANGE = re.compile(
     r"(split|splt|sub-division|consolidation)[^0-9]*?(?:from|frm)\s*r[es]\.?\s*([\d.]+)"
     r"[^0-9]*?to\s*r[es]\.?\s*([\d.]+)",
     re.IGNORECASE,
 )
-DIVIDEND = re.compile(
-    r"(interim|final|special)?\s*dividend\s*(?:of\s*)?[-:]?\s*r[es]\.?\s*([\d.]+)", re.IGNORECASE
+# "Iinterim" is a misspelling the venue has used, as are the forms of the word dividend below.
+KIND = r"i?interim|int|final|fin|f|special|spl"
+AMOUNT = r"\s*(?:of|@)?\s*[-:]?\s*r[es]\.?\s*-?\s*(?P<amount>\d+(?:\.\d+)?)"
+# A stored dividend keeps the kind it was read with, since an answer that reads a stored action under
+# another kind lacks it and the year check refuses the range. The whole word therefore takes its kind
+# only from a whole word before it, and "Int Dividend" reads as ordinary.
+WHOLE_WORD = r"(?P<word_kind>i?interim|final|special)?\s*div(?!is|est)[a-z]+"
+SHORTHAND = rf"(?:\b(?P<short_kind>{KIND})\.?\s*|\b)div\b"
+AFTER_KIND = rf"(?:\s*-?\s*(?P<after_kind>{KIND})\b\.?)?"
+DIVIDEND = re.compile(rf"(?:{WHOLE_WORD}|{SHORTHAND})\.?{AFTER_KIND}{AMOUNT}", re.IGNORECASE)
+# A further kind's amount sometimes comes without the currency.
+FURTHER_DIVIDEND = re.compile(
+    r"(?:\s*(?:/-|per\s+(?:equity\s+)?sh(?:are)?|each))*\s*(?:\+|\band\b)"
+    rf"\s*(?P<kind>{KIND})\b\.?\s*(?:of|@)?\s*[-:]?\s*(?:r[es]\.?\s*-?\s*)?"
+    r"(?P<amount>\d+(?:\.\d+)?)",
+    re.IGNORECASE,
 )
+KINDS = {"iinterim": "interim", "int": "interim", "fin": "final", "f": "final", "spl": "special"}
 # A dividend the subject names but states in no parsable amount, such as a percentage of face value.
-UNSTATED_DIVIDEND = re.compile(r"\bdiv(?!is)", re.IGNORECASE)
+UNSTATED_DIVIDEND = re.compile(r"\b(?:int|fin|final|spl)?div(?!is)", re.IGNORECASE)
+# A face value split the subject names in words not read as terms.
+NAMED_SPLIT = re.compile(r"\bfv\b|split|splt|sub-?div", re.IGNORECASE)
 # A subject naming only a meeting or a book closure, or nothing at all, announces no action.
 NOTICE = re.compile(
     r"\b(agm|egm|general meeting|book closure|election|postal ballot)\b", re.IGNORECASE
@@ -108,14 +133,24 @@ def parse_subject(subject: str) -> list[Terms]:
             found.append(("split", DEFAULT_QUALIFIER, Decimal(1), old_face / new_face, None))
 
     for match in DIVIDEND.finditer(text):
-        amount = _number(match.group(2))
-        if amount:
-            kind = (match.group(1) or DEFAULT_QUALIFIER).lower()
-            found.append(("dividend", kind, None, None, amount))
+        kind = match["word_kind"] or match["short_kind"] or match["after_kind"]
+        clauses = [(kind, match["amount"])]
+        position = match.end()
+        while further := FURTHER_DIVIDEND.match(text, position):
+            clauses.append((further["kind"], further["amount"]))
+            position = further.end()
+        for kind, amount in clauses:
+            value = _number(amount)
+            if value:
+                named = (kind or DEFAULT_QUALIFIER).lower()
+                found.append(("dividend", KINDS.get(named, named), None, None, value))
 
     unhandled: Terms = ("unhandled", text.lower()[:QUALIFIER_LIMIT], None, None, None)
     if found:
-        if UNSTATED_DIVIDEND.search(text) and not any(item[0] == "dividend" for item in found):
+        kinds = {item[0] for item in found}
+        unread_dividend = UNSTATED_DIVIDEND.search(text) and "dividend" not in kinds
+        unread_split = NAMED_SPLIT.search(text) and not kinds & {"split", "consolidation"}
+        if unread_dividend or unread_split:
             found.append(unhandled)
         return found
     if NOTICE.search(text) or text.strip("-. ").lower() in EMPTY_SUBJECTS:
