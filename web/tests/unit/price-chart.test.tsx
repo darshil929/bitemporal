@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type Time, TickMarkType } from "lightweight-charts";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { actionsAdjusting } from "@/components/charts/CrosshairCard";
 import { PriceChart } from "@/components/charts/PriceChart";
 import { spreadAxisTop } from "@/components/charts/spread-area";
 import { barSegments } from "@/components/charts/volume-bars";
@@ -14,7 +15,10 @@ const drawn = vi.hoisted(() => ({
   options: [] as Record<string, unknown>[],
   series: [] as { options: Record<string, unknown>[]; data: unknown[] }[],
   priceLines: [] as Record<string, unknown>[],
-  onCrosshair: (() => {}) as (event: { logical?: number }) => void,
+  onCrosshair: (() => {}) as (event: {
+    logical?: number;
+    point?: { x: number; y: number };
+  }) => void,
 }));
 
 vi.mock("lightweight-charts", async (actual) => {
@@ -155,15 +159,80 @@ test("candles take the theme's colours and follow a switch to dark", async () =>
   );
 });
 
+const POINT = { x: 120, y: 40 };
+
 test("the readout reads the newest day, then the day under the crosshair", () => {
   drawChart();
   expect(screen.getByText("1 Oct 2025")).toBeDefined();
   expect(screen.getByText("965.75")).toBeDefined();
 
-  act(() => drawn.onCrosshair({ logical: 0 }));
+  act(() => drawn.onCrosshair({ logical: 0, point: POINT }));
 
-  expect(screen.getByText("30 Sep 2025")).toBeDefined();
+  expect(screen.getAllByText("30 Sep 2025")).toHaveLength(2);
   expect(screen.getByText("946.05")).toBeDefined();
+});
+
+const BONUS = {
+  ex_date: "2025-10-01",
+  action_type: "bonus",
+  qualifier: "",
+  terms: "1 for 1",
+  adjustment_factor: 0.5,
+  dividend_amount: null,
+  purpose: null,
+  reported_by: "both",
+  venues_differ: false,
+  is_applied: true,
+  source_id: null,
+} as const;
+
+test("the crosshair card adds the other venue's close and the spread, and the close as traded with the action adjusting it", () => {
+  const [before] = DAYS;
+  drawChart(
+    [
+      {
+        ...before,
+        adjustment_factor: 0.5,
+        close_as_traded: 1908.4,
+        other_venue_close: 954.35,
+        venue_spread_bps: 1.5,
+      },
+    ],
+    1.5,
+  );
+
+  act(() => drawn.onCrosshair({ logical: 0, point: POINT }));
+
+  for (const words of ["BSE close, adjusted", "954.35", "1,908.40"]) {
+    expect(screen.getByText(words)).toBeDefined();
+  }
+  expect(screen.getByText("Factor 0.5", { exact: false }).textContent).toBe(
+    "Factor 0.5",
+  );
+});
+
+test("the card names the actions after a day that its factor brings it through", () => {
+  const [day] = DAYS;
+  const dividend = {
+    ...BONUS,
+    action_type: "dividend" as const,
+    adjustment_factor: null,
+  };
+
+  expect(actionsAdjusting(day, [BONUS, dividend])).toBe(
+    "the 1 for 1 bonus with ex-date 1 Oct 2025",
+  );
+  expect(actionsAdjusting({ ...day, trade_date: "2025-10-01" }, [BONUS])).toBe(
+    "",
+  );
+});
+
+test("a single-listed instrument's card has no other venue", () => {
+  drawChart(DAYS, null);
+
+  act(() => drawn.onCrosshair({ logical: 0, point: POINT }));
+
+  expect(screen.queryByText("BSE close, adjusted")).toBeNull();
 });
 
 test("the volume pane draws each day's shares traded and delivered as the API sends them", () => {
