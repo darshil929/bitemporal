@@ -38,31 +38,40 @@ LAST_DAY = text(
     "(select trade_date from feature_release order by release_id desc limit 1), 'infinity')"
 )
 # The spread is keyed on the ISIN each bar was published under; naming those ISINs lets its view
-# read their bars alone.
+# read their bars alone. The median spread is taken over the days the series returns.
 SERIES = text(
     """
-    select
-        bars.trade_date, bars.open, bars.high, bars.low, bars.close, bars.close_as_traded,
-        bars.adjustment_factor, bars.volume, bars.delivery_quantity,
-        other.close as other_venue_close, spread.venue_spread_bps, features.is_diverging,
-        features.primary_venue, features.sma_20, features.sma_50, features.sma_200,
-        features.ema_20, features.ema_50, features.bollinger_20_upper, features.bollinger_20_lower
-    from mart_adjusted_prices as bars
-    left join mart_adjusted_prices as other
-        on other.isin = bars.isin and other.trade_date = bars.trade_date
-        and other.venue <> bars.venue and other.trade_date > :after
-        and other.trade_date <= :last_day
-    left join mart_venue_spread as spread
-        on spread.isin = bars.source_isin and spread.trade_date = bars.trade_date
-        and spread.isin = any(:lineage) and spread.trade_date > :after
-        and spread.trade_date <= :last_day
-    left join mart_daily_features as features
-        on features.isin = bars.isin and features.trade_date = bars.trade_date
-        and features.trade_date > :after and features.trade_date <= :last_day
-    where bars.isin = :current and bars.venue = :venue
-        and (bars.source_isin = :isin or :isin = :current)
-        and bars.trade_date > :after and bars.trade_date <= :last_day
-    order by bars.trade_date
+    with series as (
+        select
+            bars.trade_date, bars.open, bars.high, bars.low, bars.close, bars.close_as_traded,
+            bars.adjustment_factor, bars.volume, bars.delivery_quantity,
+            other.close as other_venue_close, spread.venue_spread_bps, features.is_diverging,
+            features.primary_venue, features.sma_20, features.sma_50, features.sma_200,
+            features.ema_20, features.ema_50, features.bollinger_20_upper, features.bollinger_20_lower
+        from mart_adjusted_prices as bars
+        left join mart_adjusted_prices as other
+            on other.isin = bars.isin and other.trade_date = bars.trade_date
+            and other.venue <> bars.venue and other.trade_date > :after
+            and other.trade_date <= :last_day
+        left join mart_venue_spread as spread
+            on spread.isin = bars.source_isin and spread.trade_date = bars.trade_date
+            and spread.isin = any(:lineage) and spread.trade_date > :after
+            and spread.trade_date <= :last_day
+        left join mart_daily_features as features
+            on features.isin = bars.isin and features.trade_date = bars.trade_date
+            and features.trade_date > :after and features.trade_date <= :last_day
+        where bars.isin = :current and bars.venue = :venue
+            and (bars.source_isin = :isin or :isin = :current)
+            and bars.trade_date > :after and bars.trade_date <= :last_day
+    )
+    select series.*, median.venue_spread_median_bps
+    from series
+    cross join (
+        select percentile_cont(0.5) within group (order by venue_spread_bps)
+            as venue_spread_median_bps
+        from series
+    ) as median
+    order by series.trade_date
     """
 )
 
@@ -100,6 +109,7 @@ class PriceHistory:
     venue: str
     range: str
     days: tuple[PriceDay, ...]
+    venue_spread_median_bps: float | None = None
 
     @property
     def first_day(self) -> date | None:
@@ -163,7 +173,10 @@ async def price_history(
             "after": date.min if months is None else months_before(last_day, months),
             "last_day": last_day,
         }
-        rows = await transaction.execute(SERIES, scope | window)
-        return PriceHistory(isin, venue, period, tuple(price_day(row, venue) for row in rows))
+        rows = (await transaction.execute(SERIES, scope | window)).all()
+        median = number(rows[0].venue_spread_median_bps) if rows else None
+        return PriceHistory(
+            isin, venue, period, tuple(price_day(row, venue) for row in rows), median
+        )
 
     return await read_marts(database, read)
