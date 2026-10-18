@@ -21,6 +21,7 @@ import {
   formatMonth,
   formatPrice,
   formatPriceTick,
+  formatVolumeTick,
 } from "@/lib/format";
 
 import {
@@ -28,11 +29,21 @@ import {
   chartColours,
   onThemeChange,
 } from "./chart-colours";
+import {
+  type VolumeBar,
+  type VolumeBarOptions,
+  VolumeBars,
+} from "./volume-bars";
 
 type PriceDay = components["schemas"]["PriceDayResponse"];
 type Venue = components["schemas"]["PriceHistoryResponse"]["venue"];
 
 const PRICE_PANE_HEIGHT = 290;
+const VOLUME_HEADER_HEIGHT = 28;
+// Between the volume pane's header and its tallest bar.
+const VOLUME_HEADER_GAP = 6;
+const VOLUME_PANE_HEIGHT = VOLUME_HEADER_HEIGHT + 70;
+const PANE_SEPARATOR_HEIGHT = 1;
 const TIME_AXIS_HEIGHT = 28;
 const AXIS_WIDTH = 64;
 const AXIS_FONT_SIZE = 11;
@@ -105,6 +116,22 @@ function candleColours(colours: ChartColours): CandlestickSeriesPartialOptions {
   };
 }
 
+function volumeColours(colours: ChartColours): Partial<VolumeBarOptions> {
+  return {
+    deliveredColor: colours.textMuted,
+    notDeliveredColor: colours.borderStrong,
+    noFigureColor: colours.textSubtle,
+  };
+}
+
+function volumeBar(day: PriceDay): VolumeBar {
+  return {
+    time: day.trade_date,
+    volume: day.volume,
+    delivered: day.delivery_quantity,
+  };
+}
+
 function candle({ trade_date: time, open, high, low, close }: PriceDay) {
   return open === null || high === null || low === null || close === null
     ? { time }
@@ -117,8 +144,8 @@ type PriceChartProps = Readonly<{
   days: readonly PriceDay[];
 }>;
 
-// One venue's candles, adjusted for every later split and bonus; the row above reads the day under
-// the crosshair, or the newest day.
+// One venue's candles, adjusted for every later split and bonus, with the shares traded under
+// them; the row above reads the day under the crosshair, or the newest day.
 export function PriceChart({ venue, days }: PriceChartProps) {
   const container = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<number>();
@@ -143,7 +170,27 @@ export function PriceChart({ venue, days }: PriceChartProps) {
     candles.priceScale().applyOptions({
       scaleMargins: { top: PRICE_MARGIN, bottom: PRICE_MARGIN },
     });
+    const volume = chart.addCustomSeries(
+      new VolumeBars(),
+      {
+        ...volumeColours(colours),
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceFormat: { type: "custom", formatter: formatVolumeTick },
+      },
+      1,
+    );
+    volume.priceScale().applyOptions({
+      scaleMargins: {
+        top: VOLUME_HEADER_HEIGHT / VOLUME_PANE_HEIGHT,
+        bottom: 0,
+      },
+    });
     candles.setData(days.map(candle));
+    volume.setData(days.map(volumeBar));
+    const [pricePane, volumePane] = chart.panes();
+    pricePane.setHeight(PRICE_PANE_HEIGHT);
+    volumePane.setHeight(VOLUME_PANE_HEIGHT);
     chart.timeScale().fitContent();
     chart.subscribeCrosshairMove(({ logical }) =>
       setHovered(logical === undefined ? undefined : Math.round(logical)),
@@ -154,6 +201,7 @@ export function PriceChart({ venue, days }: PriceChartProps) {
         chartOptions(next, getComputedStyle(element).fontFamily),
       );
       candles.applyOptions(candleColours(next));
+      volume.applyOptions(volumeColours(next));
     });
     return () => {
       stopWatching();
@@ -178,9 +226,18 @@ export function PriceChart({ venue, days }: PriceChartProps) {
       </div>
       {shown ? <DayReadout day={shown} /> : null}
       <div
-        ref={container}
-        style={{ height: PRICE_PANE_HEIGHT + TIME_AXIS_HEIGHT }}
-      />
+        className="relative"
+        style={{
+          height:
+            PRICE_PANE_HEIGHT +
+            PANE_SEPARATOR_HEIGHT +
+            VOLUME_PANE_HEIGHT +
+            TIME_AXIS_HEIGHT,
+        }}
+      >
+        <div ref={container} className="absolute inset-0" />
+        <VolumeHeader top={PRICE_PANE_HEIGHT + PANE_SEPARATOR_HEIGHT} />
+      </div>
     </section>
   );
 }
@@ -208,5 +265,43 @@ function DayReadout({ day }: Readonly<{ day: PriceDay }>) {
         </span>
       ))}
     </p>
+  );
+}
+
+const VOLUME_KEYS = [
+  ["fill-text-muted", "Delivered"],
+  ["fill-border-strong", "Not delivered"],
+  ["fill-text-subtle", "No delivery figure"],
+] as const;
+
+// Sits over the top of the volume pane, which the chart leaves empty for it.
+function VolumeHeader({ top }: Readonly<{ top: number }>) {
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 z-10 flex items-center justify-between gap-4 bg-surface-raised"
+      style={{ top, height: VOLUME_HEADER_HEIGHT - VOLUME_HEADER_GAP }}
+    >
+      <div className="flex items-center gap-4">
+        <span className="text-cell font-medium text-text">Volume</span>
+        <span className="flex items-center gap-3.5 text-header font-normal text-text-muted">
+          {VOLUME_KEYS.map(([fill, label]) => (
+            <span key={label} className="flex items-center gap-[5px]">
+              <svg
+                aria-hidden="true"
+                width="10"
+                height="12"
+                viewBox="0 0 10 12"
+              >
+                <rect x="2" y="1" width="6" height="10" className={fill} />
+              </svg>
+              {label}
+            </span>
+          ))}
+        </span>
+      </div>
+      <span className="text-caption text-text-subtle">
+        Shares traded each day, adjusted for splits and bonuses
+      </span>
+    </div>
   );
 }

@@ -91,6 +91,16 @@ export function formatPriceTick(rupees: number): string {
   return digits(rupees, Number.isInteger(rupees) ? 0 : 2);
 }
 
+/** A count of shares on a chart's axis, to as few decimals as the tick needs: `5 Cr`, `2.5 L`. */
+export function formatVolumeTick(shares: number): string {
+  if (shares >= CRORE) {
+    return `${digits(shares / CRORE, 0, 2)} Cr`;
+  }
+  return shares >= LAKH
+    ? `${digits(shares / LAKH, 0, 2)} L`
+    : digits(shares, 0);
+}
+
 /** A change in price: `+15.30`, `−2.05`. */
 export function formatChange(change: number): Formatted {
   return { text: signed(change, 2) };
