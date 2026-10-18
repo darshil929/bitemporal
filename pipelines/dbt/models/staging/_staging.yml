@@ -382,7 +382,7 @@ unit_tests:
         rows:
           - {isin: INE721A01047, action_type: split, ex_date: "2025-01-10",
              qualifier: ordinary, source_id: bse_corporate_actions, as_of_date: "2025-01-10",
-             ratio_from: 1, ratio_to: 5, dividend_amount: , purpose: }
+             ratio_from: 1, ratio_to: 5, dividend_amount: , purpose: , is_withdrawn: false}
     expect:
       rows:
         - {isin: INE721A01047, action_type: split, adjustment_factor: "0.200000"}
@@ -397,7 +397,8 @@ unit_tests:
         rows:
           - {isin: INE155A01022, action_type: unhandled, ex_date: "2025-10-14",
              qualifier: spin off, source_id: bse_corporate_actions, as_of_date: "2025-12-31",
-             ratio_from: , ratio_to: , dividend_amount: , purpose: Spin Off}
+             ratio_from: , ratio_to: , dividend_amount: , purpose: Spin Off,
+             is_withdrawn: false}
     expect:
       rows:
         - {isin: INE155A01022, action_type: unhandled, purpose: Spin Off, adjustment_factor: }
@@ -410,10 +411,31 @@ unit_tests:
         rows:
           - {isin: INE002A01018, action_type: dividend, ex_date: "2025-08-14",
              qualifier: final, source_id: bse_corporate_actions, as_of_date: "2025-08-14",
-             ratio_from: , ratio_to: , dividend_amount: 5.5, purpose: }
+             ratio_from: , ratio_to: , dividend_amount: 5.5, purpose: , is_withdrawn: false}
     expect:
       rows:
         - {isin: INE002A01018, action_type: dividend, adjustment_factor: }
+
+  - name: a_text_a_later_answer_replaced_is_no_longer_listed
+    description: >
+      BSE named an interim dividend before stating its amount; once its answer held the dividend
+      with the amount and no longer the text, the text was withdrawn.
+    model: stg_corporate_actions
+    given:
+      - input: source('market', 'corporate_action')
+        rows:
+          - {isin: INE467B01029, action_type: unhandled, ex_date: "2026-10-14",
+             qualifier: interim dividend, source_id: bse_corporate_actions,
+             as_of_date: "2026-09-26", purpose: Interim Dividend, is_withdrawn: false}
+          - {isin: INE467B01029, action_type: unhandled, ex_date: "2026-10-14",
+             qualifier: interim dividend, source_id: bse_corporate_actions,
+             as_of_date: "2026-10-19", purpose: Interim Dividend, is_withdrawn: true}
+          - {isin: INE467B01029, action_type: dividend, ex_date: "2026-10-14", qualifier: interim,
+             source_id: bse_corporate_actions, as_of_date: "2026-10-10", dividend_amount: 12,
+             is_withdrawn: false}
+    expect:
+      rows:
+        - {isin: INE467B01029, action_type: dividend, dividend_amount: "12.0000"}
 
   - name: a_renamed_instrument_is_named_as_its_list_reads_now
     description: A list read after a company changed its name appends a name, and the later stands.

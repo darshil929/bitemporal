@@ -304,6 +304,8 @@ class CorporateAction(Base):
     dividend_amount: Mapped[Decimal | None] = mapped_column(PRICE)
     # The source text, which is the only record of what an unhandled action did.
     purpose: Mapped[str | None] = mapped_column(Text)
+    # A text a later answer replaced with the actions read from it, from this version on.
+    is_withdrawn: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
     __table_args__ = (
         CheckConstraint(_in_list("action_type", ACTION_TYPES), name="action_type"),
@@ -318,6 +320,10 @@ class CorporateAction(Base):
         CheckConstraint(
             "action_type <> 'unhandled' or purpose is not null",
             name="an_unhandled_action_keeps_its_text",
+        ),
+        CheckConstraint(
+            "not is_withdrawn or action_type = 'unhandled'",
+            name="a_withdrawal_is_of_an_unhandled_action",
         ),
         CheckConstraint("(ratio_from is null) = (ratio_to is null)", name="ratio_has_both_sides"),
         CheckConstraint(

@@ -15,7 +15,8 @@ class CorporateActionRecord(BaseModel):
 
     An action whose terms are not in the purpose text carries the type `unhandled`, no terms, and
     the text itself in `purpose`. Its `qualifier` is that text in lower case, which separates two
-    such actions sharing an ex-date.
+    such actions sharing an ex-date. A later answer that holds actions for that instrument and day
+    but no longer the text withdraws it, by a version marked `is_withdrawn`.
     """
 
     isin: str
@@ -28,3 +29,4 @@ class CorporateActionRecord(BaseModel):
     ratio_to: Decimal | None = None
     dividend_amount: Decimal | None = None
     purpose: str | None = None
+    is_withdrawn: bool = False
