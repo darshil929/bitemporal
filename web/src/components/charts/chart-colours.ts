@@ -8,6 +8,8 @@ const THEME_COLOURS = {
   textSubtle: "text-subtle",
   up: "up",
   down: "down",
+  flag: "flag",
+  flagSurface: "flag-surface",
 } as const;
 
 export type ChartColours = Record<keyof typeof THEME_COLOURS, string>;

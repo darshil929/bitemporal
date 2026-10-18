@@ -12,11 +12,13 @@ import {
   type Time,
   TickMarkType,
 } from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { NullValue } from "@/components/values/NullValue";
 import type { components } from "@/lib/api";
 import {
+  asText,
+  formatBps,
   formatDate,
   formatMonth,
   formatPrice,
@@ -29,6 +31,7 @@ import {
   chartColours,
   onThemeChange,
 } from "./chart-colours";
+import { addSpreadArea, SPREAD_LIMIT_BPS, spreadAxisTop } from "./spread-area";
 import {
   type VolumeBar,
   type VolumeBarOptions,
@@ -36,13 +39,15 @@ import {
 } from "./volume-bars";
 
 type PriceDay = components["schemas"]["PriceDayResponse"];
-type Venue = components["schemas"]["PriceHistoryResponse"]["venue"];
+type PriceHistory = components["schemas"]["PriceHistoryResponse"];
 
 const PRICE_PANE_HEIGHT = 290;
-const VOLUME_HEADER_HEIGHT = 28;
-// Between the volume pane's header and its tallest bar.
-const VOLUME_HEADER_GAP = 6;
-const VOLUME_PANE_HEIGHT = VOLUME_HEADER_HEIGHT + 70;
+// The volume and spread panes each hold a header above their plot.
+const PANE_HEADER_HEIGHT = 28;
+// Between a pane's header and the top of its plot.
+const PANE_HEADER_GAP = 6;
+const VOLUME_PANE_HEIGHT = PANE_HEADER_HEIGHT + 70;
+const SPREAD_PANE_HEIGHT = PANE_HEADER_HEIGHT + 72;
 const PANE_SEPARATOR_HEIGHT = 1;
 const TIME_AXIS_HEIGHT = 28;
 const AXIS_WIDTH = 64;
@@ -139,14 +144,16 @@ function candle({ trade_date: time, open, high, low, close }: PriceDay) {
 }
 
 type PriceChartProps = Readonly<{
-  venue: Venue;
-  /** The range's days at the venue, oldest first, as the price history read returns them. */
-  days: readonly PriceDay[];
+  /** The range's days at one venue, oldest first, as the price history read returns them. */
+  history: PriceHistory;
 }>;
 
 // One venue's candles, adjusted for every later split and bonus, with the shares traded under
-// them; the row above reads the day under the crosshair, or the newest day.
-export function PriceChart({ venue, days }: PriceChartProps) {
+// them and, where both venues list the instrument, the spread between their closes; the row above
+// reads the day under the crosshair, or the newest day.
+export function PriceChart({ history }: PriceChartProps) {
+  const { venue, days, venue_spread_median_bps: spreadMedian } = history;
+  const hasSpread = spreadMedian !== null;
   const container = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<number>();
 
@@ -182,15 +189,21 @@ export function PriceChart({ venue, days }: PriceChartProps) {
     );
     volume.priceScale().applyOptions({
       scaleMargins: {
-        top: VOLUME_HEADER_HEIGHT / VOLUME_PANE_HEIGHT,
+        top: PANE_HEADER_HEIGHT / VOLUME_PANE_HEIGHT,
         bottom: 0,
       },
     });
+    const spread = hasSpread
+      ? addSpreadArea(chart, days, 2, PANE_HEADER_HEIGHT / SPREAD_PANE_HEIGHT)
+      : undefined;
     candles.setData(days.map(candle));
     volume.setData(days.map(volumeBar));
-    const [pricePane, volumePane] = chart.panes();
-    pricePane.setHeight(PRICE_PANE_HEIGHT);
-    volumePane.setHeight(VOLUME_PANE_HEIGHT);
+    spread?.paint(colours);
+    // The container holds the panes' heights exactly, so shares of it give each its own.
+    const heights = [PRICE_PANE_HEIGHT, VOLUME_PANE_HEIGHT, SPREAD_PANE_HEIGHT];
+    chart
+      .panes()
+      .forEach((pane, index) => pane.setStretchFactor(heights[index]));
     chart.timeScale().fitContent();
     chart.subscribeCrosshairMove(({ logical }) =>
       setHovered(logical === undefined ? undefined : Math.round(logical)),
@@ -202,12 +215,13 @@ export function PriceChart({ venue, days }: PriceChartProps) {
       );
       candles.applyOptions(candleColours(next));
       volume.applyOptions(volumeColours(next));
+      spread?.paint(next);
     });
     return () => {
       stopWatching();
       chart.remove();
     };
-  }, [days]);
+  }, [days, hasSpread]);
 
   const shown =
     (hovered === undefined ? undefined : days[hovered]) ?? days.at(-1);
@@ -232,11 +246,30 @@ export function PriceChart({ venue, days }: PriceChartProps) {
             PRICE_PANE_HEIGHT +
             PANE_SEPARATOR_HEIGHT +
             VOLUME_PANE_HEIGHT +
+            (hasSpread ? PANE_SEPARATOR_HEIGHT + SPREAD_PANE_HEIGHT : 0) +
             TIME_AXIS_HEIGHT,
         }}
       >
         <div ref={container} className="absolute inset-0" />
-        <VolumeHeader top={PRICE_PANE_HEIGHT + PANE_SEPARATOR_HEIGHT} />
+        <PaneHeader
+          top={PRICE_PANE_HEIGHT + PANE_SEPARATOR_HEIGHT}
+          title="Volume"
+          caption="Shares traded each day, adjusted for splits and bonuses"
+        >
+          <VolumeKeys />
+        </PaneHeader>
+        {hasSpread ? (
+          <PaneHeader
+            top={
+              PRICE_PANE_HEIGHT +
+              PANE_SEPARATOR_HEIGHT +
+              VOLUME_PANE_HEIGHT +
+              PANE_SEPARATOR_HEIGHT
+            }
+            title="Venue spread"
+            caption={spreadCaption(spreadMedian, days)}
+          />
+        ) : null}
       </div>
     </section>
   );
@@ -274,34 +307,50 @@ const VOLUME_KEYS = [
   ["fill-text-subtle", "No delivery figure"],
 ] as const;
 
-// Sits over the top of the volume pane, which the chart leaves empty for it.
-function VolumeHeader({ top }: Readonly<{ top: number }>) {
+function VolumeKeys() {
+  return (
+    <span className="flex items-center gap-3.5 text-header font-normal text-text-muted">
+      {VOLUME_KEYS.map(([fill, label]) => (
+        <span key={label} className="flex items-center gap-[5px]">
+          <svg aria-hidden="true" width="10" height="12" viewBox="0 0 10 12">
+            <rect x="2" y="1" width="6" height="10" className={fill} />
+          </svg>
+          {label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// The range's median spread, and the limit where the axis stops short of it.
+function spreadCaption(median: number, days: readonly PriceDay[]): string {
+  const widest = Math.max(...days.map((day) => day.venue_spread_bps ?? 0));
+  const limit =
+    spreadAxisTop(widest) >= SPREAD_LIMIT_BPS
+      ? ""
+      : ` Limit ${SPREAD_LIMIT_BPS} bps, beyond the axis`;
+  return `Median ${asText(formatBps(median))} over the range.${limit}`;
+}
+
+type PaneHeaderProps = Readonly<{
+  top: number;
+  title: string;
+  caption: string;
+  children?: ReactNode;
+}>;
+
+// Sits over the top of a pane, which the chart leaves empty for it.
+function PaneHeader({ top, title, caption, children }: PaneHeaderProps) {
   return (
     <div
       className="pointer-events-none absolute inset-x-0 z-10 flex items-center justify-between gap-4 bg-surface-raised"
-      style={{ top, height: VOLUME_HEADER_HEIGHT - VOLUME_HEADER_GAP }}
+      style={{ top, height: PANE_HEADER_HEIGHT - PANE_HEADER_GAP }}
     >
       <div className="flex items-center gap-4">
-        <span className="text-cell font-medium text-text">Volume</span>
-        <span className="flex items-center gap-3.5 text-header font-normal text-text-muted">
-          {VOLUME_KEYS.map(([fill, label]) => (
-            <span key={label} className="flex items-center gap-[5px]">
-              <svg
-                aria-hidden="true"
-                width="10"
-                height="12"
-                viewBox="0 0 10 12"
-              >
-                <rect x="2" y="1" width="6" height="10" className={fill} />
-              </svg>
-              {label}
-            </span>
-          ))}
-        </span>
+        <span className="text-cell font-medium text-text">{title}</span>
+        {children}
       </div>
-      <span className="text-caption text-text-subtle">
-        Shares traded each day, adjusted for splits and bonuses
-      </span>
+      <span className="text-caption text-text-subtle">{caption}</span>
     </div>
   );
 }

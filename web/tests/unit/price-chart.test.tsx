@@ -3,7 +3,9 @@ import { type Time, TickMarkType } from "lightweight-charts";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { PriceChart } from "@/components/charts/PriceChart";
+import { spreadAxisTop } from "@/components/charts/spread-area";
 import { barSegments } from "@/components/charts/volume-bars";
+import type { components } from "@/lib/api";
 import { formatPriceTick, formatVolumeTick } from "@/lib/format";
 
 // The chart draws on a canvas the test DOM lacks, so the library is replaced by a record of what
@@ -11,6 +13,7 @@ import { formatPriceTick, formatVolumeTick } from "@/lib/format";
 const drawn = vi.hoisted(() => ({
   options: [] as Record<string, unknown>[],
   series: [] as { options: Record<string, unknown>[]; data: unknown[] }[],
+  priceLines: [] as Record<string, unknown>[],
   onCrosshair: (() => {}) as (event: { logical?: number }) => void,
 }));
 
@@ -24,6 +27,9 @@ vi.mock("lightweight-charts", async (actual) => {
       applyOptions: (next: Record<string, unknown>) =>
         record.options.push(next),
       priceScale: () => ({ applyOptions: () => {} }),
+      createPriceLine: (line: Record<string, unknown>) =>
+        drawn.priceLines.push(line),
+      removePriceLine: () => {},
     };
   };
   return {
@@ -35,7 +41,7 @@ vi.mock("lightweight-charts", async (actual) => {
           series(options),
         addCustomSeries: (_view: unknown, options: Record<string, unknown>) =>
           series(options),
-        panes: () => [{ setHeight: () => {} }, { setHeight: () => {} }],
+        panes: () => drawn.series.map(() => ({ setStretchFactor: () => {} })),
         timeScale: () => ({ fitContent: () => {} }),
         subscribeCrosshairMove: (handler: typeof drawn.onCrosshair) =>
           (drawn.onCrosshair = handler),
@@ -76,8 +82,29 @@ const DAYS = [
   close: Number(close),
 }));
 
+function drawChart(
+  days: components["schemas"]["PriceDayResponse"][] = DAYS,
+  spreadMedian: number | null = null,
+) {
+  render(
+    <PriceChart
+      history={{
+        isin: "INE040A01034",
+        venue: "NSE",
+        range: "6M",
+        first_day: days[0].trade_date,
+        last_day: days.at(-1)?.trade_date ?? null,
+        days,
+        venue_spread_median_bps: spreadMedian,
+      }}
+    />,
+  );
+}
+
 beforeEach(() => {
-  Object.assign(drawn, { options: [], series: [] });
+  Object.assign(drawn, { options: [], series: [], priceLines: [] });
+  document.documentElement.style.setProperty("--color-flag", "#9a6400");
+  document.documentElement.style.setProperty("--color-flag-surface", "#fdf8ee");
   document.documentElement.style.setProperty("--color-up", "#007b55");
   document.documentElement.removeAttribute("data-theme");
 });
@@ -85,7 +112,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 test("the chart draws the API's candles as given, months on its time axis, with the library's attribution", () => {
-  render(<PriceChart venue="NSE" days={DAYS} />);
+  drawChart();
 
   const [candles] = drawn.series;
   expect(candles.data).toEqual([
@@ -115,7 +142,7 @@ test("the chart draws the API's candles as given, months on its time axis, with 
 });
 
 test("candles take the theme's colours and follow a switch to dark", async () => {
-  render(<PriceChart venue="NSE" days={DAYS} />);
+  drawChart();
   expect(drawn.series[0].options[0]).toMatchObject({ upColor: "#007b55" });
 
   document.documentElement.style.setProperty("--color-up", "#4fc994");
@@ -129,7 +156,7 @@ test("candles take the theme's colours and follow a switch to dark", async () =>
 });
 
 test("the readout reads the newest day, then the day under the crosshair", () => {
-  render(<PriceChart venue="NSE" days={DAYS} />);
+  drawChart();
   expect(screen.getByText("1 Oct 2025")).toBeDefined();
   expect(screen.getByText("965.75")).toBeDefined();
 
@@ -141,7 +168,7 @@ test("the readout reads the newest day, then the day under the crosshair", () =>
 
 test("the volume pane draws each day's shares traded and delivered as the API sends them", () => {
   const days = [DAYS[0], { ...DAYS[1], delivery_quantity: 6_512_300 }];
-  render(<PriceChart venue="NSE" days={days} />);
+  drawChart(days);
 
   expect(drawn.series[1].data).toEqual([
     { time: "2025-09-30", volume: 15_123_456, delivered: null },
@@ -149,6 +176,59 @@ test("the volume pane draws each day's shares traded and delivered as the API se
   ]);
   expect(screen.getByText("No delivery figure")).toBeDefined();
 });
+
+test("both venues' closes compare in a spread pane under the range's median, divergent days in flag", () => {
+  const [calm, divergent] = DAYS;
+  drawChart(
+    [
+      { ...calm, venue_spread_bps: 2, is_diverging: false },
+      { ...divergent, venue_spread_bps: 4, is_diverging: true },
+    ],
+    3,
+  );
+
+  expect(drawn.series[2].data).toEqual([
+    { time: "2025-09-30", value: 2 },
+    {
+      time: "2025-10-01",
+      value: 4,
+      lineColor: "#9a6400",
+      topColor: "#fdf8ee",
+      bottomColor: "#fdf8ee",
+    },
+  ]);
+  expect(
+    screen.getByText(
+      "Median 3 bps over the range. Limit 500 bps, beyond the axis",
+    ),
+  ).toBeDefined();
+  expect(drawn.priceLines).toEqual([]);
+});
+
+test("a spread within reach of the limit brings the 500 bps line into view", () => {
+  drawChart([{ ...DAYS[0], venue_spread_bps: 320, is_diverging: true }], 320);
+
+  expect(drawn.priceLines).toMatchObject([{ price: 500, title: "Limit" }]);
+  expect(screen.getByText("Median 320 bps over the range.")).toBeDefined();
+});
+
+test("a single-listed instrument has no spread pane", () => {
+  drawChart(DAYS, null);
+
+  expect(drawn.series).toHaveLength(2);
+  expect(screen.queryByText("Venue spread")).toBeNull();
+});
+
+test.each([
+  [150, 187.5],
+  [250, 600],
+  [700, 875],
+])(
+  "the spread axis reaches %d bps up to %d, taking in the 500 bps line once within reach",
+  (widest, top) => {
+    expect(spreadAxisTop(widest)).toBe(top);
+  },
+);
 
 test("a bar holds the delivered shares at its base and the rest above a gap; without a figure it is whole", () => {
   const toY = (shares: number) => 100 - shares / 1000;
