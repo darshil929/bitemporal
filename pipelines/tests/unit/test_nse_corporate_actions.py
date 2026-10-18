@@ -108,6 +108,43 @@ def test_a_dividend_left_unread_beside_a_bonus_is_kept_as_text() -> None:
     assert [item[0] for item in terms("Agm/ Div-100%/Bonus 1:1")] == ["bonus", "unhandled"]
 
 
+def test_older_wordings_of_a_bonus_are_read_and_a_bonus_of_other_shares_is_not() -> None:
+    assert terms("Bonus Issue 1 : 1") == [("bonus", "ordinary", Decimal(1), Decimal(2), None)]
+    assert terms("BONUS 1.5:1") == [("bonus", "ordinary", Decimal(1), Decimal("2.5"), None)]
+    assert terms("BONUS 1:1.5") == [("bonus", "ordinary", Decimal("1.5"), Decimal("2.5"), None)]
+    assert [item[0] for item in terms("Div-Rs.4.20 Pr Sh/Bon 1:1")] == ["bonus", "dividend"]
+    for subject in ("Bonus Ncrps 4:1", "Bon 1 Dvr : 20 Eq Shares", "Bonus Preference Shares 21:1"):
+        assert [item[0] for item in terms(subject)] == ["unhandled"]
+
+
+def test_shorthand_wordings_of_a_dividend_are_read() -> None:
+    assert terms("1st Int Div-Rs.2/- Per Sh") == [("dividend", "interim", None, None, Decimal(2))]
+    assert terms("Agm/Div-Re.1/- Per Share") == [("dividend", "ordinary", None, None, Decimal(1))]
+    assert terms("Agm/Divdnd-Rs.1.20 Per Sh")[0][4] == Decimal("1.20")
+    assert terms("Int Dividend - Rs 0.75 Per Share")[0][1] == "ordinary"
+    assert terms("Dividend Rs - 1.30 Per Share (Date Revised)")[0][4] == Decimal("1.30")
+    assert terms("Dividend @ Re.0.10/- Per Share")[0][4] == Decimal("0.10")
+    assert terms("Interim Div. Of Re. 0.70/- Per Equity Share Re.1/- Each") == [
+        ("dividend", "interim", None, None, Decimal("0.70"))
+    ]
+
+
+def test_a_second_dividend_after_a_plus_keeps_its_kind() -> None:
+    assert terms("Div - Fin Rs.3 + Spl Rs.5") == [
+        ("dividend", "final", None, None, Decimal(3)),
+        ("dividend", "special", None, None, Decimal(5)),
+    ]
+    assert terms("Dividend - Final Rs 4/- And Special Re 1/- Per Share") == [
+        ("dividend", "final", None, None, Decimal(4)),
+        ("dividend", "special", None, None, Decimal(1)),
+    ]
+
+
+def test_a_split_left_unread_beside_a_bonus_is_kept_as_text() -> None:
+    for subject in ("Fv Spl-Rs10tore1/Bon-1:1", "Bonus 1:2 And Face Value Split Rs.10/- To Rs.5/-"):
+        assert [item[0] for item in terms(subject)] == ["bonus", "unhandled"]
+
+
 def test_a_sub_division_is_not_mistaken_for_a_dividend() -> None:
     subject = "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share"
 
