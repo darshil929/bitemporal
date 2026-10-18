@@ -751,7 +751,8 @@ export interface components {
         /**
          * PriceHistoryResponse
          * @description The days of the range at the venue, ending on the instrument's newest day there up to the
-         *     published day; a replaced ISIN's own days alone.
+         *     published day, a replaced ISIN's own days alone; and the median spread over those days, absent
+         *     where none has one.
          */
         PriceHistoryResponse: {
             /** Days */
@@ -772,6 +773,8 @@ export interface components {
              * @enum {string}
              */
             venue: "BSE" | "NSE";
+            /** Venue Spread Median Bps */
+            venue_spread_median_bps: number | null;
         };
         /** ReadinessResponse */
         ReadinessResponse: {

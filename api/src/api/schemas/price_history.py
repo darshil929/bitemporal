@@ -41,7 +41,8 @@ class PriceDayResponse(BaseModel):
 
 class PriceHistoryResponse(BaseModel):
     """The days of the range at the venue, ending on the instrument's newest day there up to the
-    published day; a replaced ISIN's own days alone."""
+    published day, a replaced ISIN's own days alone; and the median spread over those days, absent
+    where none has one."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,3 +52,4 @@ class PriceHistoryResponse(BaseModel):
     first_day: date | None
     last_day: date | None
     days: list[PriceDayResponse]
+    venue_spread_median_bps: float | None

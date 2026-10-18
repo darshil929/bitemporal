@@ -1,5 +1,6 @@
 """An instrument's daily series at one venue over a range, read over the seed dataset."""
 
+import statistics
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Any
@@ -84,6 +85,16 @@ async def test_a_single_listed_instrument_has_no_other_venue_or_spread(prices: P
     assert {(day["other_venue_close"], day["venue_spread_bps"]) for day in series.values()} == {
         (None, None)
     }
+
+
+async def test_the_median_spread_is_taken_over_the_days_returned(prices: Prices) -> None:
+    dual = (await prices(HDFC_BANK, venue="NSE")).json()
+    single = (await prices("INE285B01017", venue="BSE", range="1Y")).json()
+
+    spreads = [day["venue_spread_bps"] for day in dual["days"]]
+    assert None not in spreads
+    assert dual["venue_spread_median_bps"] == pytest.approx(statistics.median(spreads))
+    assert single["venue_spread_median_bps"] is None
 
 
 async def test_the_spread_reaches_days_published_under_a_replaced_isin(prices: Prices) -> None:
