@@ -31,6 +31,7 @@ import {
   chartColours,
   onThemeChange,
 } from "./chart-colours";
+import { CARD_WIDTH, CrosshairCard } from "./CrosshairCard";
 import { addSpreadArea, SPREAD_LIMIT_BPS, spreadAxisTop } from "./spread-area";
 import {
   type VolumeBar,
@@ -40,6 +41,7 @@ import {
 
 type PriceDay = components["schemas"]["PriceDayResponse"];
 type PriceHistory = components["schemas"]["PriceHistoryResponse"];
+type CorporateAction = components["schemas"]["CorporateActionResponse"];
 
 const PRICE_PANE_HEIGHT = 290;
 // The volume and spread panes each hold a header above their plot.
@@ -146,16 +148,18 @@ function candle({ trade_date: time, open, high, low, close }: PriceDay) {
 type PriceChartProps = Readonly<{
   /** The range's days at one venue, oldest first, as the price history read returns them. */
   history: PriceHistory;
+  /** The instrument's actions, which name what adjusts a day's prices. */
+  actions?: readonly CorporateAction[];
 }>;
 
 // One venue's candles, adjusted for every later split and bonus, with the shares traded under
 // them and, where both venues list the instrument, the spread between their closes; the row above
 // reads the day under the crosshair, or the newest day.
-export function PriceChart({ history }: PriceChartProps) {
+export function PriceChart({ history, actions = [] }: PriceChartProps) {
   const { venue, days, venue_spread_median_bps: spreadMedian } = history;
   const hasSpread = spreadMedian !== null;
   const container = useRef<HTMLDivElement>(null);
-  const [hovered, setHovered] = useState<number>();
+  const [hovered, setHovered] = useState<{ index: number; left: number }>();
 
   useEffect(() => {
     const element = container.current;
@@ -205,8 +209,15 @@ export function PriceChart({ history }: PriceChartProps) {
       .panes()
       .forEach((pane, index) => pane.setStretchFactor(heights[index]));
     chart.timeScale().fitContent();
-    chart.subscribeCrosshairMove(({ logical }) =>
-      setHovered(logical === undefined ? undefined : Math.round(logical)),
+    chart.subscribeCrosshairMove(({ logical, point }) =>
+      setHovered(
+        logical === undefined || point === undefined
+          ? undefined
+          : {
+              index: Math.round(logical),
+              left: cardLeft(point.x, element.clientWidth),
+            },
+      ),
     );
     const stopWatching = onThemeChange(() => {
       const next = chartColours();
@@ -223,8 +234,8 @@ export function PriceChart({ history }: PriceChartProps) {
     };
   }, [days, hasSpread]);
 
-  const shown =
-    (hovered === undefined ? undefined : days[hovered]) ?? days.at(-1);
+  const hoveredDay = hovered ? days[hovered.index] : undefined;
+  const shown = hoveredDay ?? days.at(-1);
 
   return (
     <section className="flex flex-col gap-3 rounded-sm border border-border bg-surface-raised p-card">
@@ -251,6 +262,15 @@ export function PriceChart({ history }: PriceChartProps) {
         }}
       >
         <div ref={container} className="absolute inset-0" />
+        {hovered && hoveredDay ? (
+          <CrosshairCard
+            day={hoveredDay}
+            venue={venue}
+            hasSpread={hasSpread}
+            actions={actions}
+            left={hovered.left}
+          />
+        ) : null}
         <PaneHeader
           top={PRICE_PANE_HEIGHT + PANE_SEPARATOR_HEIGHT}
           title="Volume"
@@ -273,6 +293,15 @@ export function PriceChart({ history }: PriceChartProps) {
       </div>
     </section>
   );
+}
+
+// The card sits right of the crosshair, or left of it where the right would run past the chart.
+const CARD_OFFSET = 14;
+
+function cardLeft(x: number, width: number): number {
+  return x + CARD_OFFSET + CARD_WIDTH <= width - AXIS_WIDTH
+    ? x + CARD_OFFSET
+    : x - CARD_OFFSET - CARD_WIDTH;
 }
 
 function DayReadout({ day }: Readonly<{ day: PriceDay }>) {

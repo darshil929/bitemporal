@@ -101,6 +101,11 @@ export function formatVolumeTick(shares: number): string {
     : digits(shares, 0);
 }
 
+/** An adjustment factor, to as many as four places: `0.5`, `0.0333`. */
+export function formatFactor(factor: number): string {
+  return digits(factor, 0, 4);
+}
+
 /** A change in price: `+15.30`, `−2.05`. */
 export function formatChange(change: number): Formatted {
   return { text: signed(change, 2) };
