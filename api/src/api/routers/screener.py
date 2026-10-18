@@ -2,15 +2,17 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 
 from api.dependencies import DatabaseDependency, signed_in
-from api.routers.market import MARKET_READ_RESPONSES
 from api.schemas.screener_queries import (
     ScreenedRowResponse,
     ScreenerResponse,
+    ScreenerUnavailableResponse,
     ScreenRefusedResponse,
 )
+from api.schemas.sessions import NotSignedInResponse
 from api.services import screener_queries
 from api.services.screener_queries import PAGE_SIZE, PAGES, ROW_CAP, Kind, ScreenRefused
 
@@ -18,8 +20,19 @@ router = APIRouter(
     prefix="/screener",
     tags=["screener"],
     dependencies=[Depends(signed_in)],
-    responses=MARKET_READ_RESPONSES,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": NotSignedInResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ScreenerUnavailableResponse},
+    },
 )
+
+
+async def screen_timed_out(request: Request, error: Exception) -> JSONResponse:
+    """The answer to a screen that ran past the time a query may take; no part of it is shown."""
+    return JSONResponse(
+        {"detail": {"reason": "screener_query_timed_out"}},
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
 
 
 @router.get("", responses={status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ScreenRefusedResponse}})
@@ -27,14 +40,15 @@ async def screen(
     database: DatabaseDependency,
     gate: str | None = None,
     kind: Kind = "companies",
+    c: Annotated[list[str] | None, Query()] = None,
     sort: str | None = None,
     page: Annotated[int, Query(ge=1, le=PAGES)] = 1,
 ) -> ScreenerResponse:
-    """The instruments passing the liquidity gate, written `adtv_20d:comparison:value` or `none`;
-    companies alone unless `kind=all`; in the order of `sort`, written `figure:asc` or
-    `figure:desc`, the most traded first by default; 50 a page up to 500."""
+    """The instruments passing the liquidity gate, unless `none`, and every criterion `c`, written
+    `figure:comparison:value`; companies alone unless `kind=all`; in the order of `sort`, written
+    `figure:asc` or `figure:desc`, the most traded first by default; 50 a page up to 500."""
     try:
-        asked = screener_queries.screen_from(gate, kind, sort, page)
+        asked = screener_queries.screen_from(gate, kind, c or [], sort, page)
     except ScreenRefused as refused:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

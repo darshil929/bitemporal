@@ -1383,7 +1383,7 @@
         "type": "object"
       },
       "ScreenedRowResponse": {
-        "description": "An instrument passing the screen: its name and symbol, the venue its figures were computed\non, the close as traded and the day's return there, the spread between the venues, and the\nfigures the screen gates and sorts on.",
+        "description": "An instrument passing the screen: its name and symbol, the venue its figures were computed\non, the close as traded and the day's return there, the spread between the venues, and each\nfigure the screen names.",
         "properties": {
           "close": {
             "anyOf": [
@@ -1405,6 +1405,9 @@
               "anyOf": [
                 {
                   "type": "number"
+                },
+                {
+                  "type": "boolean"
                 },
                 {
                   "type": "null"
@@ -1540,6 +1543,35 @@
           "rows"
         ],
         "title": "ScreenerResponse",
+        "type": "object"
+      },
+      "ScreenerUnavailable": {
+        "properties": {
+          "reason": {
+            "enum": [
+              "market_data_updating",
+              "screener_query_timed_out"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ScreenerUnavailable",
+        "type": "object"
+      },
+      "ScreenerUnavailableResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ScreenerUnavailable"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ScreenerUnavailableResponse",
         "type": "object"
       },
       "SessionEnded": {
@@ -2873,7 +2905,7 @@
     },
     "/screener": {
       "get": {
-        "description": "The instruments passing the liquidity gate, written `adtv_20d:comparison:value` or `none`;\ncompanies alone unless `kind=all`; in the order of `sort`, written `figure:asc` or\n`figure:desc`, the most traded first by default; 50 a page up to 500.",
+        "description": "The instruments passing the liquidity gate, unless `none`, and every criterion `c`, written\n`figure:comparison:value`; companies alone unless `kind=all`; in the order of `sort`, written\n`figure:asc` or `figure:desc`, the most traded first by default; 50 a page up to 500.",
         "operationId": "screen",
         "parameters": [
           {
@@ -2904,6 +2936,25 @@
               ],
               "title": "Kind",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "c",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "C"
             }
           },
           {
@@ -2970,7 +3021,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                  "$ref": "#/components/schemas/ScreenerUnavailableResponse"
                 }
               }
             },
