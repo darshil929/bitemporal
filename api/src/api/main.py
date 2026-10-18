@@ -10,7 +10,7 @@ from api.config import ApiSettings
 from api.cross_site import refuse_cross_site
 from api.db.database import Database
 from api.log_format import configure_logging
-from api.routers import admin, auth, health, instruments, market, sessions, setup
+from api.routers import admin, auth, health, instruments, market, screener, sessions, setup
 from api.services.market_reads import MarketDataUpdating
 
 
@@ -48,6 +48,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(setup.router)
     app.include_router(market.router)
     app.include_router(instruments.router)
+    app.include_router(screener.router)
     app.include_router(admin.router)
     return app
 

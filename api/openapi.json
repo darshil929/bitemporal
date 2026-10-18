@@ -1344,6 +1344,204 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "ScreenRefused": {
+        "properties": {
+          "part": {
+            "title": "Part",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "malformed_criterion",
+              "unknown_figure",
+              "unknown_comparison",
+              "malformed_value",
+              "malformed_gate",
+              "unknown_sort"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "part"
+        ],
+        "title": "ScreenRefused",
+        "type": "object"
+      },
+      "ScreenRefusedResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ScreenRefused"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ScreenRefusedResponse",
+        "type": "object"
+      },
+      "ScreenedRowResponse": {
+        "description": "An instrument passing the screen: its name and symbol, the venue its figures were computed\non, the close as traded and the day's return there, the spread between the venues, and the\nfigures the screen gates and sorts on.",
+        "properties": {
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "figures": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Figures",
+            "type": "object"
+          },
+          "is_diverging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Diverging"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "primary_venue": {
+            "anyOf": [
+              {
+                "enum": [
+                  "BSE",
+                  "NSE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Venue"
+          },
+          "return_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return 1D"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "venue_spread_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Spread Bps"
+          }
+        },
+        "required": [
+          "isin",
+          "display_name",
+          "symbol",
+          "primary_venue",
+          "close",
+          "return_1d",
+          "venue_spread_bps",
+          "is_diverging",
+          "figures"
+        ],
+        "title": "ScreenedRowResponse",
+        "type": "object"
+      },
+      "ScreenerResponse": {
+        "description": "A page of the instruments passing a screen on the latest day complete at every venue in\nsession, absent before the first publish, and how many pass it in all; the pages stop at the\nrow cap.",
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "matched": {
+            "title": "Matched",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "row_cap": {
+            "title": "Row Cap",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ScreenedRowResponse"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "day",
+          "matched",
+          "page",
+          "page_size",
+          "row_cap",
+          "rows"
+        ],
+        "title": "ScreenerResponse",
+        "type": "object"
+      },
       "SessionEnded": {
         "description": "Why the request's session is not running; every field absent where it never was.",
         "properties": {
@@ -2670,6 +2868,118 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/screener": {
+      "get": {
+        "description": "The instruments passing the liquidity gate, written `adtv_20d:comparison:value` or `none`;\ncompanies alone unless `kind=all`; in the order of `sort`, written `figure:asc` or\n`figure:desc`, the most traded first by default; 50 a page up to 500.",
+        "operationId": "screen",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "gate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "companies",
+              "enum": [
+                "companies",
+                "all"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenRefusedResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Screen",
+        "tags": [
+          "screener"
         ]
       }
     },

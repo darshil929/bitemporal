@@ -34,6 +34,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "people",
         "ready",
         "reset_password",
+        "screen",
         "search_instruments",
         "session",
         "session_limits",
