@@ -319,6 +319,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/screener": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Screen
+         * @description The instruments passing the liquidity gate, written `adtv_20d:comparison:value` or `none`;
+         *     companies alone unless `kind=all`; in the order of `sort`, written `figure:asc` or
+         *     `figure:desc`, the most traded first by default; 50 a page up to 500.
+         */
+        get: operations["screen"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/session": {
         parameters: {
             query?: never;
@@ -791,6 +813,68 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "not_ready";
+        };
+        /** ScreenRefused */
+        ScreenRefused: {
+            /** Part */
+            part: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "malformed_criterion" | "unknown_figure" | "unknown_comparison" | "malformed_value" | "malformed_gate" | "unknown_sort";
+        };
+        /** ScreenRefusedResponse */
+        ScreenRefusedResponse: {
+            detail: components["schemas"]["ScreenRefused"];
+        };
+        /**
+         * ScreenedRowResponse
+         * @description An instrument passing the screen: its name and symbol, the venue its figures were computed
+         *     on, the close as traded and the day's return there, the spread between the venues, and the
+         *     figures the screen gates and sorts on.
+         */
+        ScreenedRowResponse: {
+            /** Close */
+            close: number | null;
+            /** Display Name */
+            display_name: string;
+            /** Figures */
+            figures: {
+                [key: string]: number | null;
+            };
+            /** Is Diverging */
+            is_diverging: boolean | null;
+            /** Isin */
+            isin: string;
+            /** Primary Venue */
+            primary_venue: ("BSE" | "NSE") | null;
+            /** Return 1D */
+            return_1d: number | null;
+            /** Symbol */
+            symbol: string | null;
+            /** Venue Spread Bps */
+            venue_spread_bps: number | null;
+        };
+        /**
+         * ScreenerResponse
+         * @description A page of the instruments passing a screen on the latest day complete at every venue in
+         *     session, absent before the first publish, and how many pass it in all; the pages stop at the
+         *     row cap.
+         */
+        ScreenerResponse: {
+            /** Day */
+            day: string | null;
+            /** Matched */
+            matched: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Row Cap */
+            row_cap: number;
+            /** Rows */
+            rows: components["schemas"]["ScreenedRowResponse"][];
         };
         /**
          * SessionEnded
@@ -1685,6 +1769,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+        };
+    };
+    screen: {
+        parameters: {
+            query?: {
+                gate?: string | null;
+                kind?: "companies" | "all";
+                sort?: string | null;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenerResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenRefusedResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
                 };
             };
         };
