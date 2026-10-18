@@ -6,16 +6,18 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
 
+from psycopg.errors import QueryCanceled
 from sqlalchemy import TextClause, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.database import Database
 from api.services.market_reads import read_marts
 from api.services.trading_days import resolve_market_day
 
-# The figures a screen orders instruments by, each one comparable across instruments; price levels,
-# the close and its averages and bands, are not. The names are columns of the daily features, and
-# with the comparisons below they are the only text of a screen not bound as a value.
+# The figures a screen compares, filters and sorts on, each one comparable across instruments; price
+# levels, the close and its averages and bands, are not. The names are columns of the daily
+# features, and with the comparisons below they are the only text of a screen not bound as a value.
 FIGURES = frozenset(
     {
         "return_1d", "return_1w", "return_1m", "return_3m", "return_6m", "return_1y",
@@ -23,6 +25,7 @@ FIGURES = frozenset(
         "delivery_pct_1d", "delivery_pct_20d", "from_52w_high", "venue_spread_bps",
     }
 )  # fmt: skip
+FLAGS = frozenset({"is_52w_high", "is_52w_low"})
 COMPARISONS = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 DIRECTIONS = {"asc": "asc", "desc": "desc"}
 
@@ -34,8 +37,10 @@ DEFAULT_SORT = ("adtv_20d", "desc")
 PAGE_SIZE = 50
 ROW_CAP = 500
 PAGES = ROW_CAP // PAGE_SIZE
+QUERY_TIMEOUT = "10s"
 
 Kind = Literal["companies", "all"]
+Value = float | bool
 
 
 class ScreenRefused(Exception):
@@ -47,32 +52,42 @@ class ScreenRefused(Exception):
         self.part = part
 
 
+class ScreenTimedOut(Exception):
+    """A screen ran past the time a query may take."""
+
+
 @dataclass(frozen=True)
 class Criterion:
     figure: str
     comparison: str
-    value: float
+    value: Value
 
 
 @dataclass(frozen=True)
 class Screen:
     gate: Criterion | None
     kind: Kind
+    criteria: tuple[Criterion, ...]
     sort: tuple[str, str]
     page: int
 
     @property
     def figures(self) -> tuple[str, ...]:
-        """The figures shown beside each instrument: the gate's and the sort's."""
-        return tuple(dict.fromkeys([*([self.gate.figure] if self.gate else []), self.sort[0]]))
+        """The figures shown beside each instrument: the gate's, each criterion's, the sort's."""
+        named = [*(item.figure for item in (self.gate, *self.criteria) if item), self.sort[0]]
+        return tuple(dict.fromkeys(named))
 
 
 def criterion(part: str) -> Criterion:
-    """A criterion written `figure:comparison:value`."""
+    """A criterion written `figure:comparison:value`; a flag takes `eq` and `true` or `false`."""
     pieces = part.split(":")
     if len(pieces) != 3:
         raise ScreenRefused("malformed_criterion", part)
     figure, comparison, value = pieces
+    if figure in FLAGS:
+        if comparison != "eq" or value not in ("true", "false"):
+            raise ScreenRefused("malformed_criterion", part)
+        return Criterion(figure, "eq", value == "true")
     if figure not in FIGURES:
         raise ScreenRefused("unknown_figure", part)
     if comparison not in COMPARISONS:
@@ -86,7 +101,9 @@ def criterion(part: str) -> Criterion:
     return Criterion(figure, comparison, number)
 
 
-def screen_from(gate: str | None, kind: Kind, sort: str | None, page: int) -> Screen:
+def screen_from(
+    gate: str | None, kind: Kind, criteria: list[str], sort: str | None, page: int
+) -> Screen:
     """The screen a query string asks for; the gate is on unless `none`, and only on traded value."""
     if gate is None:
         gated: Criterion | None = Criterion(GATE_FIGURE, "gte", GATE_RUPEES)
@@ -102,7 +119,7 @@ def screen_from(gate: str | None, kind: Kind, sort: str | None, page: int) -> Sc
         if figure not in FIGURES or direction not in DIRECTIONS:
             raise ScreenRefused("unknown_sort", sort)
         order = (figure, direction)
-    return Screen(gated, kind, order, page)
+    return Screen(gated, kind, tuple(criterion(part) for part in criteria), order, page)
 
 
 @dataclass(frozen=True)
@@ -120,9 +137,10 @@ def statement(screen: Screen) -> tuple[TextClause, dict[str, Any]]:
     if screen.kind == "companies":
         conditions.append("features.isin like 'INE%'")
     values: dict[str, Any] = {}
-    if screen.gate:
-        conditions.append(f"features.{GATE_FIGURE} {COMPARISONS[screen.gate.comparison]} :gate")
-        values["gate"] = screen.gate.value
+    for index, item in enumerate(item for item in (screen.gate, *screen.criteria) if item):
+        comparison = "=" if item.comparison == "eq" else COMPARISONS[item.comparison]
+        conditions.append(f"features.{item.figure} {comparison} :value_{index}")
+        values[f"value_{index}"] = item.value
     shown = ", ".join(f"'{figure}', features.{figure}" for figure in screen.figures)
     figure, direction = screen.sort
     # The count comes from every instrument passing; the page from the rows in the sort's order.
@@ -162,8 +180,17 @@ async def run_screen(database: Database, screen: Screen) -> ScreenResult:
         day = (await resolve_market_day(transaction)).last_complete_day
         if day is None:
             return ScreenResult(None, 0, screen.page, ())
+        await transaction.execute(
+            text("select set_config('statement_timeout', :timeout, true)"),
+            {"timeout": QUERY_TIMEOUT},
+        )
         sql, values = statement(screen)
-        found = (await transaction.execute(sql, values | {"day": day})).all()
+        try:
+            found = (await transaction.execute(sql, values | {"day": day})).all()
+        except OperationalError as error:
+            if isinstance(error.orig, QueryCanceled):
+                raise ScreenTimedOut from error
+            raise
         rows = tuple(dict(row._mapping) for row in found if row.isin is not None)
         return ScreenResult(day, found[0].matched, screen.page, rows)
 

@@ -12,6 +12,7 @@ from api.db.database import Database
 from api.log_format import configure_logging
 from api.routers import admin, auth, health, instruments, market, screener, sessions, setup
 from api.services.market_reads import MarketDataUpdating
+from api.services.screener_queries import ScreenTimedOut
 
 
 def operation_id(route: APIRoute) -> str:
@@ -42,6 +43,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     )
     app.middleware("http")(refuse_cross_site)
     app.add_exception_handler(MarketDataUpdating, market.market_data_updating)
+    app.add_exception_handler(ScreenTimedOut, screener.screen_timed_out)
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(sessions.router)

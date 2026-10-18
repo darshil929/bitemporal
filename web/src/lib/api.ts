@@ -328,9 +328,9 @@ export interface paths {
         };
         /**
          * Screen
-         * @description The instruments passing the liquidity gate, written `adtv_20d:comparison:value` or `none`;
-         *     companies alone unless `kind=all`; in the order of `sort`, written `figure:asc` or
-         *     `figure:desc`, the most traded first by default; 50 a page up to 500.
+         * @description The instruments passing the liquidity gate, unless `none`, and every criterion `c`, written
+         *     `figure:comparison:value`; companies alone unless `kind=all`; in the order of `sort`, written
+         *     `figure:asc` or `figure:desc`, the most traded first by default; 50 a page up to 500.
          */
         get: operations["screen"];
         put?: never;
@@ -831,8 +831,8 @@ export interface components {
         /**
          * ScreenedRowResponse
          * @description An instrument passing the screen: its name and symbol, the venue its figures were computed
-         *     on, the close as traded and the day's return there, the spread between the venues, and the
-         *     figures the screen gates and sorts on.
+         *     on, the close as traded and the day's return there, the spread between the venues, and each
+         *     figure the screen names.
          */
         ScreenedRowResponse: {
             /** Close */
@@ -841,7 +841,7 @@ export interface components {
             display_name: string;
             /** Figures */
             figures: {
-                [key: string]: number | null;
+                [key: string]: number | boolean | null;
             };
             /** Is Diverging */
             is_diverging: boolean | null;
@@ -875,6 +875,18 @@ export interface components {
             row_cap: number;
             /** Rows */
             rows: components["schemas"]["ScreenedRowResponse"][];
+        };
+        /** ScreenerUnavailable */
+        ScreenerUnavailable: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "market_data_updating" | "screener_query_timed_out";
+        };
+        /** ScreenerUnavailableResponse */
+        ScreenerUnavailableResponse: {
+            detail: components["schemas"]["ScreenerUnavailable"];
         };
         /**
          * SessionEnded
@@ -1778,6 +1790,7 @@ export interface operations {
             query?: {
                 gate?: string | null;
                 kind?: "companies" | "all";
+                c?: string[] | null;
                 sort?: string | null;
                 page?: number;
             };
@@ -1820,7 +1833,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                    "application/json": components["schemas"]["ScreenerUnavailableResponse"];
                 };
             };
         };

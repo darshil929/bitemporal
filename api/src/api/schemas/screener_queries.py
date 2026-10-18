@@ -10,8 +10,8 @@ from api.schemas.market import Venue
 
 class ScreenedRowResponse(BaseModel):
     """An instrument passing the screen: its name and symbol, the venue its figures were computed
-    on, the close as traded and the day's return there, the spread between the venues, and the
-    figures the screen gates and sorts on."""
+    on, the close as traded and the day's return there, the spread between the venues, and each
+    figure the screen names."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -23,7 +23,7 @@ class ScreenedRowResponse(BaseModel):
     return_1d: float | None
     venue_spread_bps: float | None
     is_diverging: bool | None
-    figures: dict[str, float | None]
+    figures: dict[str, float | bool | None]
 
 
 class ScreenerResponse(BaseModel):
@@ -55,3 +55,11 @@ class ScreenRefused(BaseModel):
 
 class ScreenRefusedResponse(BaseModel):
     detail: ScreenRefused
+
+
+class ScreenerUnavailable(BaseModel):
+    reason: Literal["market_data_updating", "screener_query_timed_out"]
+
+
+class ScreenerUnavailableResponse(BaseModel):
+    detail: ScreenerUnavailable
