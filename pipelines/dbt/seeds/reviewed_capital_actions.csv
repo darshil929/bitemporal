@@ -1,0 +1,8 @@
+isin,ex_date,action_type,ratio_from,ratio_to,adjustment_factor,reviewed_on,reason
+INE586G01017,2013-07-09,bonus,19,42,0.863009,2026-10-23,"The 23 for 19 bonus went to the shareholders other than the promoters: 6,984,383 shares issued on 44,000,000, leaving 50,984,383, in the company's accounts for 2013-14"
+INE096L01025,2016-08-11,bonus,25,26,,2026-10-23,"BSE records the bonus alone; NSE records it with a split of each Rs 10 share into two of Rs 5, and NSE's close fell from 542.90 to 266.50"
+INE096L01025,2016-08-11,split,1,2,,2026-10-23,"BSE records the bonus alone; NSE records it with a split of each Rs 10 share into two of Rs 5, and NSE's close fell from 542.90 to 266.50"
+INE647Z01025,2020-10-08,bonus,100,126,,2026-10-23,"BSE states 26 for 10; the shares traded in lots of 2,000 before the ex-date and 2,520 after it, 26 for 100"
+INE864T01011,2021-07-20,bonus,100,159,,2026-10-23,"BSE states 59 for 10; the company announced 59 for 100, and BSE's first close after it, 26.20, is the 5 percent limit below 43.85 scaled by 100 over 159"
+INE705X01026,2021-10-13,bonus,100,144,,2026-10-23,"BSE states the bonus as 44100; the shares traded in lots of 2,000 before the ex-date and 2,880 after it, 44 for 100"
+INE926K01017,2022-10-06,bonus,2,3,,2026-10-23,"Both venues record the 1 for 2 bonus; the further fall that day is the demerger they record beside it, which no factor adjusts"

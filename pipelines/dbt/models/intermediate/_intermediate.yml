@@ -156,7 +156,8 @@ models:
       with the factor each venue's actions apply and the factor the continuous series applies.
       BSE's actions stand; a day NSE alone reports is applied where the close moved by its factor at
       every venue that traded either side of the ex-date; a fund's change of ISIN no venue reports
-      is applied where every venue that traded across it moved by the same face value ratio.
+      is applied where every venue that traded across it moved by the same face value ratio. A day
+      listed in reviewed_capital_actions applies the reviewed terms from the day of the review.
     columns:
       - name: isin
         description: The ISIN the instrument trades under now.
@@ -180,14 +181,16 @@ models:
         data_tests: [not_null]
       - name: basis
         description: >
-          Why the factor is or is not applied: BSE reports the day; NSE alone reports it and every
-          venue that traded confirms it; a venue that traded moved otherwise; none traded; or a
-          fund's units were split across a change of ISIN no venue reports.
+          Why the factor is or is not applied: the day's terms were reviewed; BSE reports the day;
+          NSE alone reports it and every venue that traded confirms it; a venue that traded moved
+          otherwise; none traded; or a fund's units were split across a change of ISIN no venue
+          reports.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [bse, nse_confirmed, nse_contradicted, nse_untraded, fund_unit_split]
+                values:
+                  [reviewed, bse, nse_confirmed, nse_contradicted, nse_untraded, fund_unit_split]
       - name: applied_factor
         description: The factor the continuous series applies that day, null where none is applied.
       - name: as_of_date
@@ -455,6 +458,8 @@ unit_tests:
       both and NSE the bonus alone, and BSE's actions stand.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE296A01032, current_isin: INE296A01032}
@@ -478,12 +483,126 @@ unit_tests:
         - {isin: INE296A01032, ex_date: "2025-06-16", bse_factor: "0.1000000000",
            nse_factor: "0.2000000000", basis: bse, applied_factor: "0.1000000000"}
 
+  - name: reviewed_terms_stand_in_place_of_the_venues
+    description: >
+      BSE records Kesar Terminals' 1 for 25 bonus of 2016-08-11 without the split NSE records
+      beside it. Both venues record GP Petroleums' 23 for 19 bonus of 2013-07-09, given to the
+      shareholders other than the promoters alone, which scales a share by 44,000,000 over
+      50,984,383.
+    model: int_capital_action_factors
+    given:
+      - input: ref('reviewed_capital_actions')
+        rows:
+          - {isin: INE096L01025, ex_date: "2016-08-11", action_type: bonus, ratio_from: 25,
+             ratio_to: 26, reviewed_on: "2026-10-23"}
+          - {isin: INE096L01025, ex_date: "2016-08-11", action_type: split, ratio_from: 1,
+             ratio_to: 2, reviewed_on: "2026-10-23"}
+          - {isin: INE586G01017, ex_date: "2013-07-09", action_type: bonus, ratio_from: 19,
+             ratio_to: 42, adjustment_factor: 0.863009, reviewed_on: "2026-10-23"}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE096L01017, current_isin: INE096L01025}
+          - {isin: INE096L01025, current_isin: INE096L01025}
+          - {isin: INE586G01017, current_isin: INE586G01017}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE096L01025, source_id: bse_corporate_actions, action_type: bonus,
+             ex_date: "2016-08-11", qualifier: ordinary, adjustment_factor: 0.961538,
+             as_of_date: "2026-09-23"}
+          - {isin: INE096L01025, source_id: nse_corporate_actions, action_type: bonus,
+             ex_date: "2016-08-11", qualifier: ordinary, adjustment_factor: 0.961538,
+             as_of_date: "2026-09-26"}
+          - {isin: INE096L01025, source_id: nse_corporate_actions, action_type: split,
+             ex_date: "2016-08-11", qualifier: ordinary, adjustment_factor: 0.5,
+             as_of_date: "2026-09-26"}
+          - {isin: INE586G01017, source_id: bse_corporate_actions, action_type: bonus,
+             ex_date: "2013-07-09", qualifier: ordinary, adjustment_factor: 0.452381,
+             as_of_date: "2026-09-23"}
+      - input: ref('stg_successions')
+        rows: []
+      - input: ref('stg_price_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE096L01025, ex_date: "2016-08-11", bse_factor: "0.9615380000",
+           nse_factor: "0.4807690000", basis: reviewed, applied_factor: "0.4807690000",
+           as_of_date: "2026-10-23"}
+        - {isin: INE586G01017, ex_date: "2013-07-09", bse_factor: "0.4523810000",
+           nse_factor: null, basis: reviewed, applied_factor: "0.8630090000",
+           as_of_date: "2026-10-23"}
+
+  - name: a_reviewed_day_no_venue_states_terms_for_is_applied
+    description: >
+      BSE states Goyal Aluminiums' bonus of 2021-10-13 as "Bonus issue 44100", which its reader
+      keeps as text; the trading lots show 44 for 100.
+    model: int_capital_action_factors
+    given:
+      - input: ref('reviewed_capital_actions')
+        rows:
+          - {isin: INE705X01026, ex_date: "2021-10-13", action_type: bonus, ratio_from: 100,
+             ratio_to: 144, reviewed_on: "2026-10-23"}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE705X01026, current_isin: INE705X01026}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE705X01026, source_id: bse_corporate_actions, action_type: unhandled,
+             ex_date: "2021-10-13", qualifier: bonus issue 44100, as_of_date: "2026-09-23"}
+      - input: ref('stg_successions')
+        rows: []
+      - input: ref('stg_price_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE705X01026, ex_date: "2021-10-13", bse_factor: null, venues_traded: 0,
+           basis: reviewed, applied_factor: "0.6944440000", as_of_date: "2026-10-23"}
+
+  - name: a_review_applies_from_the_day_of_the_review
+    description: >
+      A build as of 2026-10-01 applies a review made the day before, and the venues' factor where
+      the review was made after it.
+    model: int_capital_action_factors
+    overrides:
+      vars:
+        as_of_date: "2026-10-01"
+    given:
+      - input: ref('reviewed_capital_actions')
+        rows:
+          - {isin: INE586G01017, ex_date: "2013-07-09", action_type: bonus, ratio_from: 19,
+             ratio_to: 42, adjustment_factor: 0.863009, reviewed_on: "2026-10-23"}
+          - {isin: INE647Z01025, ex_date: "2020-10-08", action_type: bonus, ratio_from: 100,
+             ratio_to: 126, reviewed_on: "2026-09-30"}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE586G01017, current_isin: INE586G01017}
+          - {isin: INE647Z01025, current_isin: INE647Z01025}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE586G01017, source_id: bse_corporate_actions, action_type: bonus,
+             ex_date: "2013-07-09", qualifier: ordinary, adjustment_factor: 0.452381,
+             as_of_date: "2026-09-23"}
+          - {isin: INE647Z01025, source_id: bse_corporate_actions, action_type: bonus,
+             ex_date: "2020-10-08", qualifier: ordinary, adjustment_factor: 0.277778,
+             as_of_date: "2026-09-23"}
+      - input: ref('stg_successions')
+        rows: []
+      - input: ref('stg_price_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE586G01017, ex_date: "2013-07-09", basis: bse,
+           applied_factor: "0.4523810000", as_of_date: "2026-09-23"}
+        - {isin: INE647Z01025, ex_date: "2020-10-08", basis: reviewed,
+           applied_factor: "0.7936510000", as_of_date: "2026-09-30"}
+
   - name: an_nse_only_bonus_is_applied_where_both_venues_confirm_it
     description: >
       GRUH Finance issued a one for one bonus on 2018-06-06 that BSE never recorded. The close
       halved at both venues.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE580B01029, current_isin: INE580B01029}
@@ -515,6 +634,8 @@ unit_tests:
       under three percent at both venues.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE188B01013, current_isin: INE188B01013}
@@ -546,6 +667,8 @@ unit_tests:
       four percent, and closed three percent lower at BSE and two and a half at NSE.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE486J01014, current_isin: INE486J01014}
@@ -577,6 +700,8 @@ unit_tests:
       recorded after it, no move measures it.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE313D01013, current_isin: INE313D01013}
@@ -602,6 +727,8 @@ unit_tests:
       closing at 100 on 2014-02-04 and at 35 on 2014-04-15, the next day it traded.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE313D01013, current_isin: INE313D01013}
@@ -629,6 +756,8 @@ unit_tests:
       month without a trade fell from 44.00 to 42.20.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE01II01013, current_isin: INE01II01013}
@@ -657,6 +786,8 @@ unit_tests:
       152.98 to 15.36 at NSE.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INF740KA1SW3, current_isin: INF740KA1ZP2}
@@ -687,6 +818,8 @@ unit_tests:
       999.99 the day before.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INF179KC1HE2, current_isin: INF179KC1JG3}
@@ -711,6 +844,8 @@ unit_tests:
       only from a venue's record of it, never from its price.
     model: int_capital_action_factors
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('int_instrument_lineage')
         rows:
           - {isin: INE0OUT01019, current_isin: INE0OUT01027}
