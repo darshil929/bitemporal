@@ -485,10 +485,8 @@ unit_tests:
 
   - name: reviewed_terms_stand_in_place_of_the_venues
     description: >
-      BSE records Kesar Terminals' 1 for 25 bonus of 2016-08-11 without the split NSE records
-      beside it. Both venues record GP Petroleums' 23 for 19 bonus of 2013-07-09, given to the
-      shareholders other than the promoters alone, which scales a share by 44,000,000 over
-      50,984,383.
+      Reviewed terms stand in place of a day one venue records without the other's split, and a
+      bonus given to some holders alone applies the reviewed factor in place of its terms' ratio.
     model: int_capital_action_factors
     given:
       - input: ref('reviewed_capital_actions')
@@ -532,9 +530,7 @@ unit_tests:
            as_of_date: "2026-10-23"}
 
   - name: a_reviewed_day_no_venue_states_terms_for_is_applied
-    description: >
-      BSE states Goyal Aluminiums' bonus of 2021-10-13 as "Bonus issue 44100", which its reader
-      keeps as text; the trading lots show 44 for 100.
+    description: A day whose only record is a text its venue's reader keeps whole.
     model: int_capital_action_factors
     given:
       - input: ref('reviewed_capital_actions')
@@ -559,8 +555,8 @@ unit_tests:
 
   - name: a_review_applies_from_the_day_of_the_review
     description: >
-      A build as of 2026-10-01 applies a review made the day before, and the venues' factor where
-      the review was made after it.
+      A build as of a day applies a review made by then, and the venues' factor where the review
+      came later.
     model: int_capital_action_factors
     overrides:
       vars:

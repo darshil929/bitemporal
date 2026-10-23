@@ -28,7 +28,8 @@ seeds:
       where a venue states terms the shares did not follow or leaves out an action the other
       records, and where the terms stand but the price moves that day for another action no factor
       adjusts. On each listed day the continuous series applies these terms in place of the
-      venues', from the day reviewed, and the step check passes over the day.
+      venues', from the day reviewed, the corporate action mart lists them, and the step check
+      passes over the day.
     config:
       column_types:
         isin: varchar(12)

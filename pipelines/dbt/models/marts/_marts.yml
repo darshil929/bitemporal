@@ -277,7 +277,9 @@ models:
       venues report an action, BSE's record stands, as it does for the price adjustment; NSE's
       stands where BSE states no action of that kind that day. A dividend a venue names without an
       amount its reader takes apart is listed once for its kind, and only where no record that day
-      states an amount. A split of a fund's units no venue records is read from the prices.
+      states an amount. A split of a fund's units no venue records is read from the prices. On a
+      day listed in reviewed_capital_actions the reviewed splits, bonuses and consolidations stand
+      in place of the venues' records of them and of their texts naming one.
     columns:
       - name: isin
         data_type: varchar(12)
@@ -340,6 +342,15 @@ models:
           Whether the adjusted prices apply this split, bonus or consolidation. An action NSE alone
           reports is applied only where the prices confirm it. Absent for a dividend or an
           unhandled action.
+      - name: is_reviewed
+        data_type: boolean
+        description: >
+          Whether the terms shown come from a review of both venues' records and the prices.
+      - name: review_reason
+        data_type: text
+        description: >
+          What the venues record and what the review found instead; absent where the action is not
+          reviewed.
       - name: terms
         data_type: text
         description: >
@@ -452,6 +463,8 @@ unit_tests:
   - name: an_action_both_venues_report_is_listed_once_as_bse_records_it
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE040A01034, action_type: dividend, ex_date: "2025-06-27", qualifier: final,
@@ -468,10 +481,62 @@ unit_tests:
         - {isin: INE040A01034, qualifier: final, source_id: bse_corporate_actions,
            reported_by: both, venues_differ: false, terms: null}
 
+  - name: reviewed_terms_are_listed_in_place_of_the_venues
+    description: >
+      Reviewed terms stand in place of a venue's stated terms and of a text naming the action, and
+      a text naming another action that day stays listed.
+    model: mart_corporate_actions
+    given:
+      - input: ref('reviewed_capital_actions')
+        rows:
+          - {isin: INE647Z01025, ex_date: "2020-10-08", action_type: bonus, ratio_from: 100,
+             ratio_to: 126, reviewed_on: "2026-10-23", reason: "lots of 2,520"}
+          - {isin: INE705X01026, ex_date: "2021-10-13", action_type: bonus, ratio_from: 100,
+             ratio_to: 144, reviewed_on: "2026-10-23", reason: "lots of 2,880"}
+          - {isin: INE926K01017, ex_date: "2022-10-06", action_type: bonus, ratio_from: 2,
+             ratio_to: 3, reviewed_on: "2026-10-23", reason: the demerger}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE647Z01025, action_type: bonus, ex_date: "2020-10-08", qualifier: ordinary,
+             source_id: bse_corporate_actions, as_of_date: "2026-09-23", ratio_from: 10,
+             ratio_to: 36, adjustment_factor: 0.277778}
+          - {isin: INE705X01026, action_type: unhandled, ex_date: "2021-10-13",
+             qualifier: bonus issue 44100, source_id: bse_corporate_actions,
+             as_of_date: "2026-09-23", purpose: Bonus issue 44100}
+          - {isin: INE926K01017, action_type: bonus, ex_date: "2022-10-06", qualifier: ordinary,
+             source_id: bse_corporate_actions, as_of_date: "2026-09-23", ratio_from: 2,
+             ratio_to: 3, adjustment_factor: 0.666667}
+          - {isin: INE926K01017, action_type: bonus, ex_date: "2022-10-06", qualifier: ordinary,
+             source_id: nse_corporate_actions, as_of_date: "2026-09-26", ratio_from: 2,
+             ratio_to: 3, adjustment_factor: 0.666667}
+          - {isin: INE926K01017, action_type: unhandled, ex_date: "2022-10-06",
+             qualifier: spin off, source_id: bse_corporate_actions, as_of_date: "2026-09-23",
+             purpose: Spin Off}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE647Z01025, current_isin: INE647Z01025}
+          - {isin: INE705X01026, current_isin: INE705X01026}
+          - {isin: INE926K01017, current_isin: INE926K01017}
+      - input: ref('int_capital_action_factors')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE647Z01025, action_type: bonus, terms: 26 for 100, source_id: null,
+           reported_by: BSE, is_applied: true, is_reviewed: true, review_reason: "lots of 2,520"}
+        - {isin: INE705X01026, action_type: bonus, terms: 44 for 100, source_id: null,
+           reported_by: BSE, is_applied: true, is_reviewed: true, review_reason: "lots of 2,880"}
+        - {isin: INE926K01017, action_type: bonus, terms: 1 for 2, source_id: null,
+           reported_by: both, is_applied: true, is_reviewed: true, review_reason: the demerger}
+        - {isin: INE926K01017, action_type: unhandled, terms: null,
+           source_id: bse_corporate_actions, reported_by: BSE, is_applied: null,
+           is_reviewed: false, review_reason: null}
+
   - name: dividends_the_venues_state_differently_are_marked
     description: BSE lists an interim and a special dividend that NSE files as one amount.
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE001A01036, action_type: dividend, ex_date: "2024-02-01", qualifier: interim,
@@ -493,6 +558,8 @@ unit_tests:
   - name: an_nse_only_action_is_applied_where_the_prices_confirm_it
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE002A01018, action_type: bonus, ex_date: "2024-10-28", qualifier: ordinary,
@@ -523,6 +590,8 @@ unit_tests:
   - name: terms_read_as_an_announcement_states_them
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE005A01025, action_type: bonus, ex_date: "2024-01-02", qualifier: ordinary,
@@ -558,6 +627,8 @@ unit_tests:
   - name: a_fund_unit_split_no_venue_records_is_read_from_the_prices
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -574,6 +645,8 @@ unit_tests:
   - name: an_action_under_a_replaced_isin_is_keyed_on_the_current_one
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE006A01013, action_type: dividend, ex_date: "2024-08-01", qualifier: final,
@@ -591,6 +664,8 @@ unit_tests:
     description: BSE names TCS's interim dividend on 26 Sep and states ₹12 on 10 Oct.
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE467B01029, action_type: unhandled, ex_date: "2026-10-14",
@@ -613,6 +688,8 @@ unit_tests:
   - name: a_dividend_named_without_an_amount_is_listed_once_without_one
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE021A01026, action_type: unhandled, ex_date: "2026-11-04",
@@ -634,6 +711,8 @@ unit_tests:
   - name: an_amount_nse_states_stands_over_bse_naming_none
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE012A01025, action_type: unhandled, ex_date: "2020-03-27",
@@ -654,6 +733,8 @@ unit_tests:
   - name: only_a_text_naming_a_dividend_alone_is_read_as_one
     model: mart_corporate_actions
     given:
+      - input: ref('reviewed_capital_actions')
+        rows: []
       - input: ref('stg_corporate_actions')
         rows:
           - {isin: INE007A01023, action_type: unhandled, ex_date: "1998-12-02", qualifier: div -nil,
