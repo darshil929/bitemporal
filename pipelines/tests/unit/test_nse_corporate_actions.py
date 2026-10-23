@@ -80,6 +80,15 @@ def test_the_abbreviated_wording_of_a_split_is_read() -> None:
     ]
 
 
+def test_a_split_stating_its_face_values_without_a_currency_is_read() -> None:
+    subject = "Bonus 1:1 / Face Value Split From 10/- To Face Value 2/-"
+
+    assert terms(subject) == [
+        ("bonus", "ordinary", Decimal(1), Decimal(2), None),
+        ("split", "ordinary", Decimal(1), Decimal(5), None),
+    ]
+
+
 def test_a_bonus_of_debentures_issues_no_shares() -> None:
     subject = "Scheme Of Arrangement - Bonus Debentures 6:1"
 
