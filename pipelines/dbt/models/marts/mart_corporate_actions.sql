@@ -8,7 +8,8 @@
 -- Each corporate action once, keyed on the ISIN the instrument trades under now. Both venues report
 -- most actions, so BSE's record stands wherever BSE states that kind of action that day, as it
 -- does for the price adjustment, and NSE's stands otherwise. A split of a fund's units no venue
--- records is listed as read from the prices.
+-- records is listed as read from the prices, and a day whose terms were reviewed lists the
+-- reviewed terms in place of the venues'.
 with recorded as (
     select
         lineage.current_isin,
@@ -35,7 +36,15 @@ with recorded as (
             )
             and actions.purpose !~* '\+|(fin|int).*(spl|special)|(spl|special).*(fin|int)',
             false
-        ) as is_dividend_text
+        ) as is_dividend_text,
+        -- The count-changing action a record states, or that a text names without terms read.
+        case
+            when actions.action_type in ('bonus', 'split', 'consolidation') then actions.action_type
+            when actions.action_type != 'unhandled' then null
+            when actions.purpose ~* 'bonus|\mbon\M' then 'bonus'
+            when actions.purpose ~* 'split|splt|\mfv\M|sub-?div' then 'split'
+            when actions.purpose ~* 'consolid' then 'consolidation'
+        end as capital_kind
     from {{ ref('stg_corporate_actions') }} as actions
     inner join {{ ref('int_instrument_lineage') }} as lineage on actions.isin = lineage.isin
 ),
@@ -52,6 +61,7 @@ actions as (
         ratio_to,
         purpose,
         adjustment_factor,
+        capital_kind,
         case when is_dividend_text then 'dividend' else action_type end as action_type,
         case
             when not is_dividend_text then qualifier
@@ -98,6 +108,37 @@ reported as (
     group by current_isin, ex_date, action_type
 ),
 
+reviewed as (
+    select
+        lineage.current_isin,
+        reviewed.isin,
+        reviewed.ex_date,
+        reviewed.action_type,
+        reviewed.reviewed_on,
+        reviewed.ratio_from,
+        reviewed.ratio_to,
+        reviewed.reason,
+        coalesce(
+            reviewed.adjustment_factor, round(reviewed.ratio_from / reviewed.ratio_to, 6)
+        ) as adjustment_factor
+    from {{ ref('reviewed_capital_actions') }} as reviewed
+    inner join {{ ref('int_instrument_lineage') }} as lineage on reviewed.isin = lineage.isin
+    where reviewed.reviewed_on <= '{{ var("as_of_date", "9999-12-31") }}'
+),
+
+-- The venues that record each count-changing action, or a text naming it, on a day.
+venue_records as (
+    select
+        current_isin,
+        ex_date,
+        capital_kind,
+        bool_or(source_id = 'bse_corporate_actions') as by_bse,
+        bool_or(source_id = 'nse_corporate_actions') as by_nse
+    from actions
+    where capital_kind is not null
+    group by current_isin, ex_date, capital_kind
+),
+
 listed as (
     select
         actions.current_isin as isin,
@@ -128,7 +169,9 @@ listed as (
             when actions.action_type not in ('bonus', 'split', 'consolidation') then null
             when actions.source_id = 'bse_corporate_actions' then factors.basis = 'bse'
             else coalesce(factors.basis = 'nse_confirmed', false)
-        end as is_applied
+        end as is_applied,
+        false as is_reviewed,
+        null as review_reason
     from ordered as actions
     inner join reported
         on
@@ -142,6 +185,47 @@ listed as (
     where
         (actions.source_id = 'bse_corporate_actions' or not reported.stated_by_bse)
         and (not actions.is_unstated or (not reported.is_stated and actions.place = 1))
+        and not (
+            actions.capital_kind is not null
+            and exists (
+                select 1 from reviewed
+                where
+                    reviewed.current_isin = actions.current_isin
+                    and reviewed.ex_date = actions.ex_date
+            )
+        )
+),
+
+-- Each reviewed action, reported by the venues whose records of that action it stands for.
+reviewed_listed as (
+    select
+        reviewed.current_isin as isin,
+        reviewed.isin as source_isin,
+        reviewed.ex_date,
+        reviewed.action_type,
+        'ordinary' as qualifier,
+        null as source_id,
+        reviewed.reviewed_on as as_of_date,
+        reviewed.ratio_from,
+        reviewed.ratio_to,
+        reviewed.adjustment_factor,
+        null::numeric as dividend_amount,
+        null as purpose,
+        case
+            when venue_records.by_bse and venue_records.by_nse then 'both'
+            when venue_records.by_bse then 'BSE'
+            else 'NSE'
+        end as reported_by,
+        false as venues_differ,
+        true as is_applied,
+        true as is_reviewed,
+        reviewed.reason as review_reason
+    from reviewed
+    inner join venue_records
+        on
+            reviewed.current_isin = venue_records.current_isin
+            and reviewed.ex_date = venue_records.ex_date
+            and reviewed.action_type = venue_records.capital_kind
 ),
 
 read_from_prices as (
@@ -160,13 +244,17 @@ read_from_prices as (
         null as purpose,
         'prices' as reported_by,
         false as venues_differ,
-        true as is_applied
+        true as is_applied,
+        false as is_reviewed,
+        null as review_reason
     from {{ ref('int_capital_action_factors') }}
     where basis = 'fund_unit_split'
 ),
 
 every_action as (
     select * from listed
+    union all
+    select * from reviewed_listed
     union all
     select * from read_from_prices
 )
@@ -189,6 +277,8 @@ select
     reported_by,
     venues_differ,
     is_applied,
+    is_reviewed,
+    review_reason,
     case
         when action_type = 'bonus'
             then trim_scale(ratio_to - ratio_from)::text || ' for ' || trim_scale(ratio_from)::text
