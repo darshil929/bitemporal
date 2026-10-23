@@ -22,6 +22,56 @@ seeds:
         description: What the prices did across the change and what the venues record of it.
         data_tests: [not_null]
 
+  - name: reviewed_capital_actions
+    description: >
+      Splits, bonuses and consolidations reviewed against both venues' records and the prices:
+      where a venue states terms the shares did not follow or leaves out an action the other
+      records, and where the terms stand but the price moves that day for another action no factor
+      adjusts. On each listed day the continuous series applies these terms in place of the
+      venues', from the day reviewed, and the step check passes over the day.
+    config:
+      column_types:
+        isin: varchar(12)
+        ex_date: date
+        action_type: text
+        ratio_from: numeric(18,6)
+        ratio_to: numeric(18,6)
+        adjustment_factor: numeric
+        reviewed_on: date
+        reason: text
+    columns:
+      - name: isin
+        description: The ISIN the venues' records of that day carry.
+        data_tests: [not_null]
+      - name: ex_date
+        description: The first day the shares traded without the action's entitlement.
+        data_tests: [not_null]
+      - name: action_type
+        description: bonus, split or consolidation.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [bonus, split, consolidation]
+      - name: ratio_from
+        description: Shares held before the action.
+        data_tests: [not_null]
+      - name: ratio_to
+        description: Shares held after it, for the same holding.
+        data_tests: [not_null]
+      - name: adjustment_factor
+        description: >
+          Where the terms reach some holders alone, the shares in issue before over after, which
+          scales a share's earlier prices; empty where that factor is ratio_from over ratio_to.
+      - name: reviewed_on
+        description: The day of the review, from which the reviewed terms are knowable.
+        data_tests: [not_null]
+      - name: reason
+        description: >
+          What the venues record and what the prices, the trading lots or the company's own filings
+          show instead.
+        data_tests: [not_null]
+
   - name: venue_delivery_discrepancies
     description: >
       Venue days on which the venue's delivery file counts more shares traded than its bhavcopy,

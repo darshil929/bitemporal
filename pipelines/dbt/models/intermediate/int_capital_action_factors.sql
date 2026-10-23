@@ -2,7 +2,9 @@
 -- action. Each venue misses actions the other records, and NSE has filed an action under the
 -- wrong company, so neither is taken alone: BSE's actions stand, and a day NSE alone reports is
 -- applied only where the close moved by its factor at every venue that traded either side of the
--- ex-date.
+-- ex-date. A venue also states terms the shares did not follow, or leaves out one of a day's two
+-- actions, and a day reviewed against both venues' records and the prices takes the terms listed
+-- in reviewed_capital_actions in place of the venues', from the day of the review.
 --
 -- Neither venue records a split of a fund's units, which issues the units a new ISIN. A fund's
 -- price follows the value of what it holds, so across that change of ISIN its close falls by the
@@ -73,6 +75,29 @@ bse as (
 nse as (
     select * from by_day
     where source_id = 'nse_corporate_actions'
+),
+
+-- A bonus given to some holders alone scales a share by the shares in issue before over after,
+-- which the review states in place of the ratio of its terms.
+reviewed_actions as (
+    select
+        isin,
+        ex_date,
+        reviewed_on,
+        coalesce(adjustment_factor, round(ratio_from / ratio_to, 6)) as adjustment_factor
+    from {{ ref('reviewed_capital_actions') }}
+    where reviewed_on <= '{{ var("as_of_date", "9999-12-31") }}'
+),
+
+reviewed as (
+    select
+        lineage.current_isin,
+        reviewed_actions.ex_date,
+        max(reviewed_actions.reviewed_on) as as_of_date,
+        round(exp(sum(ln(reviewed_actions.adjustment_factor))), 10) as factor
+    from reviewed_actions
+    inner join lineage on reviewed_actions.isin = lineage.isin
+    group by lineage.current_isin, reviewed_actions.ex_date
 ),
 
 reported as (
@@ -272,21 +297,51 @@ judged as (
         coalesce(evidence.venues_traded, 0) as venues_traded,
         coalesce(evidence.venues_confirming, 0) as venues_confirming,
         case
+            when reviewed.factor is not null then 'reviewed'
             when reported.bse_factor is not null then 'bse'
             when evidence.venues_traded is null then 'nse_untraded'
             when evidence.venues_confirming = evidence.venues_traded then 'nse_confirmed'
             else 'nse_contradicted'
         end as basis,
         case
+            when reviewed.factor is not null then reviewed.as_of_date
             when reported.bse_factor is not null then reported.bse_as_of_date
             else greatest(reported.nse_as_of_date, evidence.as_of_date)
         end as as_of_date,
-        null::numeric as fund_factor
+        null::numeric as fund_factor,
+        reviewed.factor as reviewed_factor
     from reported
     left join evidence
         on
             reported.current_isin = evidence.current_isin
             and reported.ex_date = evidence.ex_date
+    left join reviewed
+        on
+            reported.current_isin = reviewed.current_isin
+            and reported.ex_date = reviewed.ex_date
+
+    union all
+
+    -- A day whose only record is a text the venue's reader cannot take terms from.
+    select
+        current_isin,
+        ex_date,
+        null as bse_factor,
+        null as nse_factor,
+        0 as venues_traded,
+        0 as venues_confirming,
+        'reviewed' as basis,
+        as_of_date,
+        null::numeric as fund_factor,
+        factor as reviewed_factor
+    from reviewed
+    where
+        not exists (
+            select 1 from reported
+            where
+                reported.current_isin = reviewed.current_isin
+                and reported.ex_date = reviewed.ex_date
+        )
 
     union all
 
@@ -299,7 +354,8 @@ judged as (
         venues_confirming,
         'fund_unit_split' as basis,
         as_of_date,
-        round(1.0 / ratio, 10) as fund_factor
+        round(1.0 / ratio, 10) as fund_factor,
+        null::numeric as reviewed_factor
     from unreported_fund_splits
 )
 
@@ -313,6 +369,7 @@ select
     basis,
     as_of_date,
     case basis
+        when 'reviewed' then reviewed_factor
         when 'bse' then bse_factor
         when 'nse_confirmed' then nse_factor
         when 'fund_unit_split' then fund_factor
