@@ -56,7 +56,8 @@ QUALIFIER_LIMIT = 64
 # issues no equity shares, and names its instrument between the word and the ratio. Subjects from
 # about 2016 abbreviate a face value split as "Fv Splt Frm Rs 2 To Re 1", and older ones abbreviate a
 # bonus as "Bon 1:1" and a dividend as "1st Int Div-Rs.2/- Per Sh", sometimes with a second kind
-# after a plus or an "and", "Div - Fin Rs.3 + Spl Rs.5".
+# after a plus or an "and", "Div - Fin Rs.3 + Spl Rs.5". A split can name its face values without a
+# currency, "Face Value Split From 10/- To Face Value 2/-".
 RATIO = r"(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)"
 BONUS = re.compile(
     r"\bbon(?:us)?(?![a-z])(?![^0-9]*debenture)"
@@ -64,8 +65,8 @@ BONUS = re.compile(
     re.IGNORECASE,
 )
 FACE_VALUE_CHANGE = re.compile(
-    r"(split|splt|sub-division|consolidation)[^0-9]*?(?:from|frm)\s*r[es]\.?\s*([\d.]+)"
-    r"[^0-9]*?to\s*r[es]\.?\s*([\d.]+)",
+    r"(split|splt|sub-division|consolidation)[^0-9]*?(?:from|frm)\s*(?:r[es]\.?\s*)?([\d.]+)"
+    r"[^0-9]*?to\s*(?:face\s+value\s*)?(?:r[es]\.?\s*)?([\d.]+)",
     re.IGNORECASE,
 )
 # "Iinterim" is a misspelling the venue has used, as are the forms of the word dividend below.
