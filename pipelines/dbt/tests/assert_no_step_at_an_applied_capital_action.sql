@@ -5,7 +5,9 @@
 -- the prices show another factor than the one applied: terms the venue states that the shares did
 -- not follow, or a further action the same day that no factor applies. Each venue is judged between
 -- its last bar before the ex-date and its first on or after it, where those lie close enough
--- together for a move between them to be the action's.
+-- together for a move between them to be the action's. A day listed in reviewed_capital_actions is
+-- passed over: its terms were judged against the venues' records and the prices, and a step left
+-- there is one the review explains, such as a demerger the same day.
 
 -- The largest move, in log terms, an ordinary day makes, as at a change of ISIN.
 {% set ordinary_move = 0.25 %}
@@ -18,7 +20,7 @@ with applied as (
         ex_date,
         applied_factor
     from {{ ref('int_capital_action_factors') }}
-    where applied_factor is not null
+    where applied_factor is not null and basis != 'reviewed'
 ),
 
 either_side as (
