@@ -157,7 +157,8 @@ models:
       BSE's actions stand; a day NSE alone reports is applied where the close moved by its factor at
       every venue that traded either side of the ex-date; a fund's change of ISIN no venue reports
       is applied where every venue that traded across it moved by the same face value ratio. A day
-      listed in reviewed_capital_actions applies the reviewed terms from the day of the review.
+      listed in reviewed_capital_actions applies the reviewed terms from the day of the review, and a
+      change of ISIN no venue records terms for applies the ratio of the stated face values.
     columns:
       - name: isin
         description: The ISIN the instrument trades under now.
@@ -183,18 +184,61 @@ models:
         description: >
           Why the factor is or is not applied: the day's terms were reviewed; BSE reports the day;
           NSE alone reports it and every venue that traded confirms it; a venue that traded moved
-          otherwise; none traded; or a fund's units were split across a change of ISIN no venue
-          reports.
+          otherwise; none traded; a fund's units were split across a change of ISIN no venue
+          reports; or the venues' lists state other face values either side of a change of ISIN no
+          venue records terms for.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values:
-                  [reviewed, bse, nse_confirmed, nse_contradicted, nse_untraded, fund_unit_split]
+                  - reviewed
+                  - bse
+                  - nse_confirmed
+                  - nse_contradicted
+                  - nse_untraded
+                  - fund_unit_split
+                  - face_value_change
       - name: applied_factor
         description: The factor the continuous series applies that day, null where none is applied.
       - name: as_of_date
         description: The latest day on which the report and the prices deciding it were knowable.
+        data_tests: [not_null]
+
+  - name: int_face_value_changes
+    description: >
+      Each change of ISIN of a company with the face values the venues' lists state for the ISINs
+      either side of it. A split or consolidation changes the face value under a new ISIN, so the
+      successor's face value over the predecessor's is the factor it applies to earlier prices.
+    columns:
+      - name: isin
+        description: The ISIN the instrument trades under now.
+        data_tests: [not_null]
+      - name: predecessor_isin
+        description: The ISIN the change retired.
+        data_tests: [not_null]
+      - name: successor_isin
+        description: The ISIN that took the instrument over.
+        data_tests: [not_null]
+      - name: changed_on
+        description: The first day the successor traded.
+        data_tests: [not_null]
+      - name: recorded_from
+        description: The first day a venue's record of the action is looked for.
+        data_tests: [not_null]
+      - name: ex_date
+        description: The ex-date of a venue's text naming the action, else changed_on.
+        data_tests: [not_null]
+      - name: predecessor_face_value
+        description: The face value in rupees of a share under the predecessor, BSE's list first.
+      - name: successor_face_value
+        description: The face value in rupees of a share under the successor, BSE's list first.
+      - name: bse_ratio
+        description: The successor's face value over the predecessor's in BSE's list.
+      - name: nse_ratio
+        description: The successor's face value over the predecessor's in NSE's lists.
+      - name: as_of_date
+        description: The latest day on which the lists stating both face values were read.
         data_tests: [not_null]
 
   - name: int_corporate_action_agreement
@@ -458,6 +502,8 @@ unit_tests:
       both and NSE the bonus alone, and BSE's actions stand.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -489,6 +535,8 @@ unit_tests:
       bonus given to some holders alone applies the reviewed factor in place of its terms' ratio.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows:
           - {isin: INE096L01025, ex_date: "2016-08-11", action_type: bonus, ratio_from: 25,
@@ -533,6 +581,8 @@ unit_tests:
     description: A day whose only record is a text its venue's reader keeps whole.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows:
           - {isin: INE705X01026, ex_date: "2021-10-13", action_type: bonus, ratio_from: 100,
@@ -562,6 +612,8 @@ unit_tests:
       vars:
         as_of_date: "2026-10-01"
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows:
           - {isin: INE586G01017, ex_date: "2013-07-09", action_type: bonus, ratio_from: 19,
@@ -591,12 +643,83 @@ unit_tests:
         - {isin: INE647Z01025, ex_date: "2020-10-08", basis: reviewed,
            applied_factor: "0.7936510000", as_of_date: "2026-09-30"}
 
+  - name: a_change_no_venue_records_terms_for_applies_its_face_values
+    description: >
+      A consolidation named without terms takes the stated face values' ratio; a split with terms
+      keeps the venue's factor.
+    model: int_capital_action_factors
+    given:
+      - input: ref('int_face_value_changes')
+        rows:
+          - {isin: INE483S01038, changed_on: "2026-10-19", recorded_from: "2026-10-09",
+             ex_date: "2026-10-13", bse_ratio: 10, nse_ratio: 10, as_of_date: "2026-10-23"}
+          - {isin: INE0B9K01033, changed_on: "2026-10-16", recorded_from: "2026-10-06",
+             ex_date: "2026-10-16", bse_ratio: 0.2, nse_ratio: 0.2, as_of_date: "2026-10-18"}
+      - input: ref('reviewed_capital_actions')
+        rows: []
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE483S01038, current_isin: INE483S01038}
+          - {isin: INE0B9K01033, current_isin: INE0B9K01033}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE0B9K01033, source_id: bse_corporate_actions, action_type: split,
+             ex_date: "2026-10-15", qualifier: ordinary, adjustment_factor: 0.2,
+             as_of_date: "2026-10-10"}
+      - input: ref('stg_successions')
+        rows: []
+      - input: ref('stg_price_daily')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE483S01038, ex_date: "2026-10-13", basis: face_value_change,
+           applied_factor: "10.0000000000", as_of_date: "2026-10-23"}
+        - {isin: INE0B9K01033, ex_date: "2026-10-15", basis: bse,
+           applied_factor: "0.2000000000", as_of_date: "2026-10-10"}
+
+  - name: a_change_takes_the_face_values_its_lists_state
+    model: int_face_value_changes
+    given:
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE483S01020, current_isin: INE483S01038}
+          - {isin: INE483S01038, current_isin: INE483S01038}
+          - {isin: INE0B9K01025, current_isin: INE0B9K01033}
+          - {isin: INE0B9K01033, current_isin: INE0B9K01033}
+      - input: ref('stg_successions')
+        rows:
+          - {predecessor_isin: INE483S01020, successor_isin: INE483S01038, changed_on: "2026-10-19"}
+          - {predecessor_isin: INE0B9K01025, successor_isin: INE0B9K01033, changed_on: "2026-10-16"}
+      - input: ref('stg_instrument_face_values')
+        rows:
+          - {isin: INE483S01020, source_id: bse_scrip_list, as_of_date: "2026-10-11", face_value: 1}
+          - {isin: INE483S01020, source_id: nse_equity_list, as_of_date: "2026-10-11", face_value: 1}
+          - {isin: INE483S01038, source_id: bse_scrip_list, as_of_date: "2026-10-23", face_value: 10}
+          - {isin: INE483S01038, source_id: nse_equity_list, as_of_date: "2026-10-23", face_value: 10}
+          - {isin: INE0B9K01025, source_id: bse_scrip_list, as_of_date: "2026-10-14", face_value: 5}
+          - {isin: INE0B9K01033, source_id: bse_scrip_list, as_of_date: "2026-10-18", face_value: 1}
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE483S01020, source_id: bse_corporate_actions, action_type: unhandled,
+             ex_date: "2026-10-13", qualifier: consolidation of shares,
+             purpose: Consolidation of Shares, as_of_date: "2026-10-10"}
+    expect:
+      rows:
+        - {isin: INE483S01038, ex_date: "2026-10-13", predecessor_face_value: "1.0000",
+           successor_face_value: "10.0000", bse_ratio: "10.0000000000", nse_ratio: "10.0000000000",
+           as_of_date: "2026-10-23"}
+        - {isin: INE0B9K01033, ex_date: "2026-10-16", predecessor_face_value: "5.0000",
+           successor_face_value: "1.0000", bse_ratio: "0.2000000000", nse_ratio: null,
+           as_of_date: "2026-10-18"}
+
   - name: an_nse_only_bonus_is_applied_where_both_venues_confirm_it
     description: >
       GRUH Finance issued a one for one bonus on 2018-06-06 that BSE never recorded. The close
       halved at both venues.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -630,6 +753,8 @@ unit_tests:
       under three percent at both venues.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -663,6 +788,8 @@ unit_tests:
       four percent, and closed three percent lower at BSE and two and a half at NSE.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -696,6 +823,8 @@ unit_tests:
       recorded after it, no move measures it.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -723,6 +852,8 @@ unit_tests:
       closing at 100 on 2014-02-04 and at 35 on 2014-04-15, the next day it traded.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -752,6 +883,8 @@ unit_tests:
       month without a trade fell from 44.00 to 42.20.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -782,6 +915,8 @@ unit_tests:
       152.98 to 15.36 at NSE.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -814,6 +949,8 @@ unit_tests:
       999.99 the day before.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
@@ -840,6 +977,8 @@ unit_tests:
       only from a venue's record of it, never from its price.
     model: int_capital_action_factors
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('int_instrument_lineage')
