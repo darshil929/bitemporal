@@ -1,8 +1,9 @@
 """Canonical rows describing what an instrument is and where it trades."""
 
 from datetime import date
+from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class InstrumentRecord(BaseModel):
@@ -44,3 +45,12 @@ class InstrumentNameRecord(BaseModel):
     source_id: str
     as_of_date: date
     name: str
+
+
+class InstrumentFaceValueRecord(BaseModel):
+    """The face value a list of securities gives an instrument, on the day the list was read."""
+
+    isin: str
+    source_id: str
+    as_of_date: date
+    face_value: Decimal = Field(gt=0)

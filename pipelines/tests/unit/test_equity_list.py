@@ -1,6 +1,7 @@
 """Reading NSE's lists of equities for the main board and the SME platform."""
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import httpx
@@ -15,6 +16,7 @@ from pipelines.sources.nse.equity_list import (
     SOURCE_ID,
     EquityListing,
     NseEquityList,
+    face_values_by_isin,
     names_by_isin,
     parse_listings,
 )
@@ -28,12 +30,17 @@ def recorded(board: str) -> bytes:
     return (CASSETTES / f"{board}.csv").read_bytes()
 
 
-def test_each_security_is_read_with_its_symbol_isin_and_name() -> None:
+def test_each_security_is_read_with_its_symbol_isin_name_and_face_value() -> None:
     listings = parse_listings(recorded("main"))
 
     assert len(listings) == 4
     assert (
-        EquityListing(symbol="RELIANCE", isin="INE002A01018", name="Reliance Industries Limited")
+        EquityListing(
+            symbol="RELIANCE",
+            isin="INE002A01018",
+            name="Reliance Industries Limited",
+            face_value=Decimal(10),
+        )
         in listings
     )
 
@@ -41,8 +48,24 @@ def test_each_security_is_read_with_its_symbol_isin_and_name() -> None:
 def test_the_sme_list_is_read_whatever_its_column_names_join_with() -> None:
     """The SME list writes NAME_OF_COMPANY and ends each line with a comma."""
     assert parse_listings(recorded("sme")) == (
-        EquityListing(symbol="POOJALOGIS", isin="INE1C2Q01017", name="Pooja Logistics Limited"),
+        EquityListing(
+            symbol="POOJALOGIS",
+            isin="INE1C2Q01017",
+            name="Pooja Logistics Limited",
+            face_value=Decimal(10),
+        ),
     )
+
+
+def test_the_first_board_stating_a_face_value_gives_it() -> None:
+    listings = parse_listings(recorded("main")) + parse_listings(recorded("sme"))
+
+    face_values = face_values_by_isin(listings)
+    assert (face_values["INE002A01018"], face_values["INE548C01032"]) == (
+        Decimal(10),
+        Decimal(1),
+    )
+    assert face_values["INE1C2Q01017"] == Decimal(10)
 
 
 def test_spaces_inside_a_name_are_collapsed() -> None:
@@ -56,7 +79,11 @@ def test_a_list_holding_its_header_alone_names_nothing() -> None:
 
 @pytest.mark.parametrize(
     "payload",
-    [b"<html><body>Resource not found</body></html>", b"SYMBOL,NAME OF COMPANY,SERIES\nA,B,EQ\n"],
+    [
+        b"<html><body>Resource not found</body></html>",
+        b"SYMBOL,NAME OF COMPANY,SERIES\nA,B,EQ\n",
+        b"SYMBOL,NAME OF COMPANY,ISIN NUMBER\nRELIANCE,Reliance Industries Limited,INE002A01018\n",
+    ],
 )
 def test_an_answer_that_is_not_the_list_is_refused(payload: bytes) -> None:
     with pytest.raises(SchemaDrift):

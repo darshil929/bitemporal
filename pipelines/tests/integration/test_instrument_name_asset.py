@@ -1,6 +1,8 @@
-"""Naming instruments from BSE's list of scrips, by invoking the asset with recorded responses."""
+"""Naming instruments and taking their face values from the exchanges' lists of securities, by
+invoking the assets with recorded responses."""
 
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import psycopg
@@ -108,6 +110,14 @@ def names(dsn: str) -> list[tuple]:
     return rows(dsn, "select isin, as_of_date, name from instrument_name order by isin, as_of_date")
 
 
+def face_values(dsn: str) -> list[tuple]:
+    return rows(
+        dsn,
+        "select isin, source_id, as_of_date, face_value from instrument_face_value"
+        " order by source_id, isin, as_of_date",
+    )
+
+
 def read(
     database: PointedDatabase, lists: RecordedScripLists, on: date = READ_ON
 ) -> dict[str, object]:
@@ -126,6 +136,33 @@ def test_an_instrument_held_is_named_as_the_latest_status_names_it(
         (EMAMI[1], READ_ON, "Emami Ltd-$"),
     ]
     assert (counts["lists"], counts["failed"], counts["written"]) == (3, 0, 2)
+
+
+def test_an_instrument_held_takes_the_face_value_its_listing_states(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    counts = read(database, RecordedScripLists())
+
+    assert counts["face_values"] == 2
+    assert face_values(postgres_dsn) == [
+        (RELIANCE[1], "bse_scrip_list", READ_ON, Decimal("10.0000")),
+        (EMAMI[1], "bse_scrip_list", READ_ON, Decimal("1.0000")),
+    ]
+
+
+def test_a_changed_face_value_is_written_beside_the_one_before(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A consolidation of ten shares into one gives the instrument's listing a face value ten times
+    the one before."""
+    read(database, RecordedScripLists())
+    counts = read(database, RecordedScripLists(renamed={"1.00": "10.00"}), NEXT_DAY)
+
+    assert counts["face_values"] == 1
+    assert [row[2:] for row in face_values(postgres_dsn) if row[0] == EMAMI[1]] == [
+        (READ_ON, Decimal("1.0000")),
+        (NEXT_DAY, Decimal("10.0000")),
+    ]
 
 
 def test_a_name_unchanged_since_the_last_read_is_not_written_again(
@@ -156,7 +193,7 @@ def test_a_list_read_in_part_names_nothing(database: PointedDatabase, postgres_d
     """Without the active list, an ISIN listed under a retired code would take that code's name."""
     counts = read(database, RecordedScripLists(refused=frozenset({"Active"})))
 
-    assert names(postgres_dsn) == []
+    assert names(postgres_dsn) == face_values(postgres_dsn) == []
     assert (counts["lists"], counts["failed"]) == (2, 1)
     assert rows(
         postgres_dsn,
@@ -174,7 +211,7 @@ def test_an_instrument_held_is_named_by_nses_lists_beside_bses(
 ) -> None:
     read(database, RecordedScripLists())
     result = ingest_nse_names(build_asset_context(), database, RecordedNseLists(), READ_ON)
-    assert dict(result.metadata)["written"] == 2
+    assert (dict(result.metadata)["written"], dict(result.metadata)["face_values"]) == (2, 2)
     assert rows(
         postgres_dsn,
         "select isin, name from instrument_name where source_id = 'nse_equity_list' order by isin",

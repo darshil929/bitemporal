@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import Iterable
 from datetime import date
+from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -13,7 +14,7 @@ from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import ThrottledClient
 from pipelines.sources.errors import SchemaDrift, SourceUnavailable
 from pipelines.sources.nse.bhavcopy import COOKIE_SOURCE_URL
-from pipelines.sources.payload import decoded
+from pipelines.sources.payload import decoded, stated_face_value
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +27,18 @@ BOARDS = {
     "sme": "emerge/corporates/content/SME_EQUITY_L.csv",
 }
 
-REQUIRED_COLUMNS = frozenset({"SYMBOL", "NAME OF COMPANY", "ISIN NUMBER"})
+REQUIRED_COLUMNS = frozenset({"SYMBOL", "NAME OF COMPANY", "ISIN NUMBER", "FACE VALUE"})
 
 ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}[0-9]")
 
 
 class EquityListing(BaseModel):
-    """One security, under the symbol and name the list gives it."""
+    """One security, under the symbol, name and face value the list gives it."""
 
     symbol: str
     isin: str
     name: str
+    face_value: Decimal | None
 
 
 def parse_listings(payload: bytes) -> tuple[EquityListing, ...]:
@@ -59,7 +61,14 @@ def parse_listings(payload: bytes) -> tuple[EquityListing, ...]:
         if not ISIN.fullmatch(isin) or not name:
             unkeyed += 1
             continue
-        listings.append(EquityListing(symbol=record["SYMBOL"], isin=isin, name=name))
+        listings.append(
+            EquityListing(
+                symbol=record["SYMBOL"],
+                isin=isin,
+                name=name,
+                face_value=stated_face_value(record.get("FACE VALUE")),
+            )
+        )
 
     if unkeyed:
         logger.info(
@@ -74,6 +83,15 @@ def names_by_isin(listings: Iterable[EquityListing]) -> dict[str, str]:
     for listing in listings:
         names.setdefault(listing.isin, listing.name)
     return names
+
+
+def face_values_by_isin(listings: Iterable[EquityListing]) -> dict[str, Decimal]:
+    """The face value the lists give each ISIN, the first board stating one standing."""
+    face_values: dict[str, Decimal] = {}
+    for listing in listings:
+        if listing.face_value is not None:
+            face_values.setdefault(listing.isin, listing.face_value)
+    return face_values
 
 
 class NseEquityList:

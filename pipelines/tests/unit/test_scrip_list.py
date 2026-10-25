@@ -1,6 +1,7 @@
 """Reading BSE's list of scrips and choosing the name it gives each ISIN."""
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import httpx
@@ -11,6 +12,7 @@ from pipelines.sources.bse.scrip_list import (
     SOURCE_ID,
     BseScripList,
     ScripListing,
+    face_values_by_isin,
     names_by_isin,
     parse_listings,
 )
@@ -40,13 +42,26 @@ def every_status() -> list[ScripListing]:
     ]
 
 
-def test_each_security_is_read_with_its_scrip_code_isin_and_name() -> None:
+def test_each_security_is_read_with_its_scrip_code_isin_name_and_face_value() -> None:
     listings = parse_listings(recorded("Active"), "Active")
 
     reliance = next(listing for listing in listings if listing.isin == RELIANCE)
     assert reliance == ScripListing(
-        scrip_code="500325", isin=RELIANCE, name="Reliance Industries Ltd", status="Active"
+        scrip_code="500325",
+        isin=RELIANCE,
+        name="Reliance Industries Ltd",
+        status="Active",
+        face_value=Decimal("10.00"),
     )
+
+
+def test_a_security_stating_no_face_value_is_read_without_one() -> None:
+    payload = (
+        b'[{"SCRIP_CD": "500325", "Scrip_Name": "Reliance Industries Ltd", "Status": "Active",'
+        b' "ISIN_NUMBER": "INE002A01018", "FACE_VALUE": ""}]'
+    )
+
+    assert parse_listings(payload, "Active")[0].face_value is None
 
 
 def test_a_security_naming_no_isin_is_left_out() -> None:
@@ -99,15 +114,29 @@ def test_within_a_status_the_scrip_code_held_names_an_isin_then_the_lowest() -> 
     """BSE lists Elgi Rubber's ISIN as delisted under two codes and two names."""
     listings = [
         ScripListing(
-            scrip_code="590023", isin=ELGI, name="Elgi Rubber Company Ltd", status="Delisted"
+            scrip_code="590023",
+            isin=ELGI,
+            name="Elgi Rubber Company Ltd",
+            status="Delisted",
+            face_value=Decimal(10),
         ),
         ScripListing(
-            scrip_code="500131", isin=ELGI, name="Elgitread (India) Ltd", status="Delisted"
+            scrip_code="500131",
+            isin=ELGI,
+            name="Elgitread (India) Ltd",
+            status="Delisted",
+            face_value=None,
         ),
     ]
 
     assert names_by_isin(listings, {ELGI: {"590023"}})[ELGI] == "Elgi Rubber Company Ltd"
     assert names_by_isin(listings, {})[ELGI] == "Elgitread (India) Ltd"
+
+
+def test_the_listing_standing_for_an_isin_gives_its_face_value() -> None:
+    face_values = face_values_by_isin(every_status(), {})
+
+    assert (face_values[RELIANCE], face_values[EMAMI]) == (Decimal("10.00"), Decimal("1.00"))
 
 
 def adapter(cache: DiskCache) -> BseScripList:
