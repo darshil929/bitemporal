@@ -8,8 +8,9 @@
 -- Each corporate action once, keyed on the ISIN the instrument trades under now. Both venues report
 -- most actions, so BSE's record stands wherever BSE states that kind of action that day, as it
 -- does for the price adjustment, and NSE's stands otherwise. A split of a fund's units no venue
--- records is listed as read from the prices, and a day whose terms were reviewed lists the
--- reviewed terms in place of the venues'.
+-- records is listed as read from the prices, a day whose terms were reviewed lists the reviewed
+-- terms in place of the venues', and a change of ISIN no venue records terms for lists the split
+-- or consolidation the venues' lists state face values for.
 with recorded as (
     select
         lineage.current_isin,
@@ -187,11 +188,14 @@ listed as (
         and (not actions.is_unstated or (not reported.is_stated and actions.place = 1))
         and not (
             actions.capital_kind is not null
-            and exists (
-                select 1 from reviewed
-                where
-                    reviewed.current_isin = actions.current_isin
-                    and reviewed.ex_date = actions.ex_date
+            and (
+                factors.basis is not distinct from 'face_value_change'
+                or exists (
+                    select 1 from reviewed
+                    where
+                        reviewed.current_isin = actions.current_isin
+                        and reviewed.ex_date = actions.ex_date
+                )
             )
         )
 ),
@@ -251,12 +255,51 @@ read_from_prices as (
     where basis = 'fund_unit_split'
 ),
 
+-- Shares before and after stand in the ratio of the face values after and before.
+read_from_face_values as (
+    select
+        factors.isin,
+        changes.predecessor_isin as source_isin,
+        factors.ex_date,
+        case
+            when changes.successor_face_value < changes.predecessor_face_value then 'split'
+            else 'consolidation'
+        end as action_type,
+        'ordinary' as qualifier,
+        case
+            when changes.bse_ratio is not null then 'bse_scrip_list' else 'nse_equity_list'
+        end as source_id,
+        factors.as_of_date,
+        changes.successor_face_value as ratio_from,
+        changes.predecessor_face_value as ratio_to,
+        factors.applied_factor as adjustment_factor,
+        null::numeric as dividend_amount,
+        null as purpose,
+        case
+            when changes.bse_ratio is not null and changes.nse_ratio is not null then 'both'
+            when changes.bse_ratio is not null then 'BSE'
+            else 'NSE'
+        end as reported_by,
+        false as venues_differ,
+        true as is_applied,
+        false as is_reviewed,
+        null as review_reason
+    from {{ ref('int_capital_action_factors') }} as factors
+    inner join {{ ref('int_face_value_changes') }} as changes
+        on
+            factors.isin = changes.isin
+            and factors.ex_date = changes.ex_date
+    where factors.basis = 'face_value_change'
+),
+
 every_action as (
     select * from listed
     union all
     select * from reviewed_listed
     union all
     select * from read_from_prices
+    union all
+    select * from read_from_face_values
 )
 
 -- Terms as an announcement states them: a bonus as the shares given for those held, a split or
