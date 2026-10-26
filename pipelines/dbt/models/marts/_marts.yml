@@ -280,7 +280,8 @@ models:
       states an amount. A split of a fund's units no venue records is read from the prices. On a
       day listed in reviewed_capital_actions the reviewed splits, bonuses and consolidations stand
       in place of the venues' records of them and of their texts naming one, and a change of ISIN
-      no venue records terms for lists the split or consolidation its stated face values give.
+      no venue records terms for lists the split or consolidation its stated face values give. A
+      venue's notice of a meeting, a book closure or a vote announces no action and is not listed.
     columns:
       - name: isin
         data_type: varchar(12)
@@ -818,6 +819,75 @@ unit_tests:
            terms: null}
         - {ex_date: "2012-09-03", action_type: unhandled, qualifier: "div - fin rs.3 + spl rs.5",
            terms: null}
+
+  - name: a_notice_of_a_meeting_or_a_vote_is_not_listed
+    description: >
+      A text naming only a meeting, a book closure, an election or a vote, or only "General", is
+      no action, and the other venue's record of an action that day stands in its place.
+    model: mart_corporate_actions
+    given:
+      - input: ref('int_face_value_changes')
+        rows: []
+      - input: ref('reviewed_capital_actions')
+        rows: []
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE136S01016, action_type: unhandled, ex_date: "2021-12-23", qualifier: e.g.m.,
+             source_id: bse_corporate_actions, as_of_date: "2026-09-23", purpose: E.G.M.}
+          - {isin: INE136S01016, action_type: unhandled, ex_date: "2021-12-23",
+             qualifier: extra-ordinary general meting, source_id: nse_corporate_actions,
+             as_of_date: "2026-09-26", purpose: Extra-Ordinary General Meting}
+          - {isin: INE083A01026, action_type: unhandled, ex_date: "2014-08-08", qualifier: e-voting,
+             source_id: bse_corporate_actions, as_of_date: "2026-09-23", purpose: E-Voting}
+          - {isin: INE083A01026, action_type: unhandled, ex_date: "2014-08-08", qualifier: e - voting,
+             source_id: nse_corporate_actions, as_of_date: "2026-09-26", purpose: E - Voting}
+          - {isin: INE216D01026, action_type: unhandled, ex_date: "2012-12-21", qualifier: general,
+             source_id: bse_corporate_actions, as_of_date: "2026-09-23", purpose: General}
+          - {isin: INE216D01026, action_type: unhandled, ex_date: "2012-12-21",
+             qualifier: general purpose, source_id: nse_corporate_actions,
+             as_of_date: "2026-09-26", purpose: General Purpose}
+          - {isin: INE383A01012, action_type: unhandled, ex_date: "2015-10-08", qualifier: general,
+             source_id: bse_corporate_actions, as_of_date: "2026-09-23", purpose: General}
+          - isin: INE383A01012
+            action_type: unhandled
+            ex_date: "2015-10-08"
+            qualifier: for distribution of chennai super kings cricket limited shares
+            source_id: nse_corporate_actions
+            as_of_date: "2026-09-26"
+            purpose: >-
+              For Distribution Of Chennai Super Kings Cricket Limited Shares To The Shareholders
+              Of India Cements
+          - {isin: INE017D01010, action_type: unhandled, ex_date: "2016-09-16",
+             qualifier: annual genral meeting, source_id: nse_corporate_actions,
+             as_of_date: "2026-09-26", purpose: Annual Genral Meeting}
+          - {isin: INE934B01028, action_type: unhandled, ex_date: "2013-09-10",
+             qualifier: annual closure, source_id: nse_corporate_actions, as_of_date: "2026-09-26",
+             purpose: Annual Closure}
+          - {isin: INE692A01016, action_type: unhandled, ex_date: "2006-05-08",
+             qualifier: elctn of sh. director, source_id: nse_corporate_actions,
+             as_of_date: "2026-09-26", purpose: Elctn Of Sh. Director}
+          - {isin: INE152A01029, action_type: unhandled, ex_date: "2017-07-27",
+             qualifier: annual general meeing/ividend - rs 6 per share,
+             source_id: nse_corporate_actions, as_of_date: "2026-09-26",
+             purpose: Annual General Meeing/Ividend - Rs 6 Per Share}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE136S01016, current_isin: INE136S01016}
+          - {isin: INE083A01026, current_isin: INE083A01026}
+          - {isin: INE216D01026, current_isin: INE216D01026}
+          - {isin: INE383A01012, current_isin: INE383A01012}
+          - {isin: INE017D01010, current_isin: INE017D01010}
+          - {isin: INE934B01028, current_isin: INE934B01028}
+          - {isin: INE692A01016, current_isin: INE692A01016}
+          - {isin: INE152A01029, current_isin: INE152A01029}
+      - input: ref('int_capital_action_factors')
+        rows: []
+    expect:
+      rows:
+        - {isin: INE383A01012, action_type: unhandled, source_id: nse_corporate_actions,
+           reported_by: NSE}
+        - {isin: INE152A01029, action_type: unhandled, source_id: nse_corporate_actions,
+           reported_by: NSE}
 
   - name: breadth_counts_each_company_by_the_sign_of_its_return
     description: >
