@@ -708,7 +708,7 @@ unit_tests:
         - {isin: INE006A01047, source_isin: INE006A01013, reported_by: NSE}
 
   - name: a_dividend_named_before_its_amount_gives_way_to_one_stating_it
-    description: BSE names TCS's interim dividend on 26 Sep and states ₹12 on 10 Oct.
+    description: BSE names an interim dividend before the record stating its amount.
     model: mart_corporate_actions
     given:
       - input: ref('int_face_value_changes')
@@ -997,8 +997,8 @@ unit_tests:
 
   - name: a_change_reads_in_the_price_scale_of_its_own_day
     description: >
-      A 1 for 1 bonus took effect on 9 Oct, so the closes before it are halved in the adjusted
-      series; the change on 8 Oct reads in that day's prices, as traded.
+      The closes before a 1 for 1 bonus are halved in the adjusted series; the change on the
+      day before it reads in that day's prices, as traded.
     model: mart_venue_daily_figures
     given:
       - input: ref('int_continuous_prices')
@@ -1036,8 +1036,8 @@ unit_tests:
 
   - name: a_figure_is_dated_by_the_factors_applied_before_it
     description: >
-      An NSE-only factor of 1 Oct became knowable on 7 Oct, once the prices confirmed it; the day
-      before it reads by its own bars.
+      An NSE-only factor becomes knowable once the prices confirm it; the day before it reads by
+      its own bars.
     model: mart_venue_daily_figures
     given:
       - input: ref('int_continuous_prices')
