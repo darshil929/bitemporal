@@ -279,7 +279,8 @@ models:
       amount its reader takes apart is listed once for its kind, and only where no record that day
       states an amount. A split of a fund's units no venue records is read from the prices. On a
       day listed in reviewed_capital_actions the reviewed splits, bonuses and consolidations stand
-      in place of the venues' records of them and of their texts naming one.
+      in place of the venues' records of them and of their texts naming one, and a change of ISIN
+      no venue records terms for lists the split or consolidation its stated face values give.
     columns:
       - name: isin
         data_type: varchar(12)
@@ -302,7 +303,9 @@ models:
           text in lower case.
       - name: source_id
         data_type: text
-        description: The source whose record is shown; absent for an action read from the prices.
+        description: >
+          The source whose record is shown, a venue's list for an action read from its face values;
+          absent for an action read from the prices or from a review.
       - name: as_of_date
         data_type: date
         description: The day the shown record became knowable.
@@ -330,7 +333,9 @@ models:
           state in a form read, the only record of what it said.
       - name: reported_by
         data_type: text
-        description: BSE, NSE, both, or prices for a fund's unit split no venue records.
+        description: >
+          BSE, NSE, both, or prices for a fund's unit split no venue records; for an action read from
+          face values, the venues whose lists state them.
       - name: venues_differ
         data_type: boolean
         description: >
@@ -463,6 +468,8 @@ unit_tests:
   - name: an_action_both_venues_report_is_listed_once_as_bse_records_it
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -487,6 +494,8 @@ unit_tests:
       a text naming another action that day stays listed.
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows:
           - {isin: INE647Z01025, ex_date: "2020-10-08", action_type: bonus, ratio_from: 100,
@@ -531,10 +540,39 @@ unit_tests:
            source_id: bse_corporate_actions, reported_by: BSE, is_applied: null,
            is_reviewed: false, review_reason: null}
 
+  - name: a_split_read_from_face_values_is_listed_in_place_of_the_text
+    model: mart_corporate_actions
+    given:
+      - input: ref('int_face_value_changes')
+        rows:
+          - {isin: INE483S01038, predecessor_isin: INE483S01020, ex_date: "2026-10-13",
+             predecessor_face_value: 1, successor_face_value: 10, bse_ratio: 10, nse_ratio: 10}
+      - input: ref('reviewed_capital_actions')
+        rows: []
+      - input: ref('stg_corporate_actions')
+        rows:
+          - {isin: INE483S01020, action_type: unhandled, ex_date: "2026-10-13",
+             qualifier: consolidation of shares, source_id: bse_corporate_actions,
+             as_of_date: "2026-10-10", purpose: Consolidation of Shares}
+      - input: ref('int_instrument_lineage')
+        rows:
+          - {isin: INE483S01020, current_isin: INE483S01038}
+          - {isin: INE483S01038, current_isin: INE483S01038}
+      - input: ref('int_capital_action_factors')
+        rows:
+          - {isin: INE483S01038, ex_date: "2026-10-13", basis: face_value_change,
+             applied_factor: 10, as_of_date: "2026-10-23"}
+    expect:
+      rows:
+        - {isin: INE483S01038, action_type: consolidation, terms: 10 into 1,
+           source_id: bse_scrip_list, reported_by: both, is_applied: true, is_reviewed: false}
+
   - name: dividends_the_venues_state_differently_are_marked
     description: BSE lists an interim and a special dividend that NSE files as one amount.
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -558,6 +596,8 @@ unit_tests:
   - name: an_nse_only_action_is_applied_where_the_prices_confirm_it
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -590,6 +630,8 @@ unit_tests:
   - name: terms_read_as_an_announcement_states_them
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -627,6 +669,8 @@ unit_tests:
   - name: a_fund_unit_split_no_venue_records_is_read_from_the_prices
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -645,6 +689,8 @@ unit_tests:
   - name: an_action_under_a_replaced_isin_is_keyed_on_the_current_one
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -664,6 +710,8 @@ unit_tests:
     description: BSE names TCS's interim dividend on 26 Sep and states ₹12 on 10 Oct.
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -688,6 +736,8 @@ unit_tests:
   - name: a_dividend_named_without_an_amount_is_listed_once_without_one
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -711,6 +761,8 @@ unit_tests:
   - name: an_amount_nse_states_stands_over_bse_naming_none
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
@@ -733,6 +785,8 @@ unit_tests:
   - name: only_a_text_naming_a_dividend_alone_is_read_as_one
     model: mart_corporate_actions
     given:
+      - input: ref('int_face_value_changes')
+        rows: []
       - input: ref('reviewed_capital_actions')
         rows: []
       - input: ref('stg_corporate_actions')
