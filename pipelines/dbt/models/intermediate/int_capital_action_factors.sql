@@ -4,7 +4,9 @@
 -- applied only where the close moved by its factor at every venue that traded either side of the
 -- ex-date. A venue also states terms the shares did not follow, or leaves out one of a day's two
 -- actions, and a day reviewed against both venues' records and the prices takes the terms listed
--- in reviewed_capital_actions in place of the venues', from the day of the review.
+-- in reviewed_capital_actions in place of the venues', from the day of the review. A change of
+-- ISIN no venue records terms for takes the ratio of the face values the venues' lists state for
+-- the ISINs either side of it.
 --
 -- Neither venue records a split of a fund's units, which issues the units a new ISIN. A fund's
 -- price follows the value of what it holds, so across that change of ISIN its close falls by the
@@ -288,6 +290,32 @@ unreported_fund_splits as (
     )
 ),
 
+-- A change of ISIN no venue records terms for and no review covers, at which every list stating
+-- the face values either side gives the same ratio.
+unrecorded_face_value_changes as (
+    select
+        changes.isin as current_isin,
+        changes.ex_date,
+        changes.as_of_date,
+        round(coalesce(changes.bse_ratio, changes.nse_ratio), 10) as ratio
+    from {{ ref('int_face_value_changes') }} as changes
+    where
+        coalesce(changes.bse_ratio, changes.nse_ratio) != 1
+        and coalesce(changes.bse_ratio = changes.nse_ratio, true)
+        and not exists (
+            select 1 from reported
+            where
+                reported.current_isin = changes.isin
+                and reported.ex_date between changes.recorded_from and changes.changed_on
+        )
+        and not exists (
+            select 1 from reviewed
+            where
+                reviewed.current_isin = changes.isin
+                and reviewed.ex_date between changes.recorded_from and changes.changed_on
+        )
+),
+
 judged as (
     select
         reported.current_isin,
@@ -309,7 +337,8 @@ judged as (
             else greatest(reported.nse_as_of_date, evidence.as_of_date)
         end as as_of_date,
         null::numeric as fund_factor,
-        reviewed.factor as reviewed_factor
+        reviewed.factor as reviewed_factor,
+        null::numeric as face_value_factor
     from reported
     left join evidence
         on
@@ -333,7 +362,8 @@ judged as (
         'reviewed' as basis,
         as_of_date,
         null::numeric as fund_factor,
-        factor as reviewed_factor
+        factor as reviewed_factor,
+        null::numeric as face_value_factor
     from reviewed
     where
         not exists (
@@ -355,8 +385,25 @@ judged as (
         'fund_unit_split' as basis,
         as_of_date,
         round(1.0 / ratio, 10) as fund_factor,
-        null::numeric as reviewed_factor
+        null::numeric as reviewed_factor,
+        null::numeric as face_value_factor
     from unreported_fund_splits
+
+    union all
+
+    select
+        current_isin,
+        ex_date,
+        null as bse_factor,
+        null as nse_factor,
+        0 as venues_traded,
+        0 as venues_confirming,
+        'face_value_change' as basis,
+        as_of_date,
+        null::numeric as fund_factor,
+        null::numeric as reviewed_factor,
+        ratio as face_value_factor
+    from unrecorded_face_value_changes
 )
 
 select
@@ -373,5 +420,6 @@ select
         when 'bse' then bse_factor
         when 'nse_confirmed' then nse_factor
         when 'fund_unit_split' then fund_factor
+        when 'face_value_change' then face_value_factor
     end as applied_factor
 from judged

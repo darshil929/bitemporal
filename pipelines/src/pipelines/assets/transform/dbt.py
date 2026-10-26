@@ -41,6 +41,7 @@ SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "delivery_daily": DELIVERY,
     "corporate_action": ACTIONS,
     "instrument_name": NAMES,
+    "instrument_face_value": NAMES,
     "source_registry": [AssetKey("source_registry")],
 }
 

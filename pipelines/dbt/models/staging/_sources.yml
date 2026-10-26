@@ -35,6 +35,10 @@ sources:
         description: >
           A name an exchange's list of securities gives an instrument, written the day a list
           first gives it or changes it, beside the names read before.
+      - name: instrument_face_value
+        description: >
+          The face value an exchange's list of securities gives an instrument, written the day a
+          list first gives it or changes it.
 
   - name: features
     schema: "{{ target.schema }}"
