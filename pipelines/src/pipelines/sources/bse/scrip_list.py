@@ -5,6 +5,7 @@ import logging
 import re
 from collections.abc import Iterable, Mapping
 from datetime import date
+from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -12,7 +13,7 @@ from pipelines.sources.bse.api import REQUIRED_HEADERS
 from pipelines.sources.cache import DiskCache
 from pipelines.sources.client import ThrottledClient
 from pipelines.sources.errors import SchemaDrift
-from pipelines.sources.payload import decoded
+from pipelines.sources.payload import decoded, stated_face_value
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +23,19 @@ CACHE_SUFFIX = ".json"
 # The venue's list page asks for one status at a time, the latest first.
 STATUSES = ("Active", "Suspended", "Delisted")
 
-REQUIRED_FIELDS = frozenset({"SCRIP_CD", "Scrip_Name", "ISIN_NUMBER", "Status"})
+REQUIRED_FIELDS = frozenset({"SCRIP_CD", "Scrip_Name", "ISIN_NUMBER", "Status", "FACE_VALUE"})
 
 ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}[0-9]")
 
 
 class ScripListing(BaseModel):
-    """One security, under the scrip code, name and status the list gives it."""
+    """One security, under the scrip code, name, status and face value the list gives it."""
 
     scrip_code: str
     isin: str
     name: str
     status: str
+    face_value: Decimal | None
 
 
 def parse_listings(payload: bytes, status: str) -> tuple[ScripListing, ...]:
@@ -66,7 +68,11 @@ def parse_listings(payload: bytes, status: str) -> tuple[ScripListing, ...]:
             continue
         listings.append(
             ScripListing(
-                scrip_code=str(entry["SCRIP_CD"]).strip(), isin=isin, name=name, status=status
+                scrip_code=str(entry["SCRIP_CD"]).strip(),
+                isin=isin,
+                name=name,
+                status=status,
+                face_value=stated_face_value(entry["FACE_VALUE"]),
             )
         )
 
@@ -81,7 +87,25 @@ def parse_listings(payload: bytes, status: str) -> tuple[ScripListing, ...]:
 def names_by_isin(
     listings: Iterable[ScripListing], held_codes: Mapping[str, set[str]]
 ) -> dict[str, str]:
-    """The name the list gives each ISIN.
+    """The name the list gives each ISIN."""
+    return {isin: listing.name for isin, listing in chosen_by_isin(listings, held_codes).items()}
+
+
+def face_values_by_isin(
+    listings: Iterable[ScripListing], held_codes: Mapping[str, set[str]]
+) -> dict[str, Decimal]:
+    """The face value the list gives each ISIN, where the listing standing for it states one."""
+    return {
+        isin: listing.face_value
+        for isin, listing in chosen_by_isin(listings, held_codes).items()
+        if listing.face_value is not None
+    }
+
+
+def chosen_by_isin(
+    listings: Iterable[ScripListing], held_codes: Mapping[str, set[str]]
+) -> dict[str, ScripListing]:
+    """The listing that stands for each ISIN.
 
     BSE lists an ISIN more than once where a buy-back window or a retired scrip code carried it,
     under a code of its own and often an abbreviated name. The latest status stands, then the scrip
@@ -102,7 +126,7 @@ def names_by_isin(
         standing = chosen.get(listing.isin)
         if standing is None or precedence(listing) < precedence(standing):
             chosen[listing.isin] = listing
-    return {isin: listing.name for isin, listing in chosen.items()}
+    return chosen
 
 
 class BseScripList:

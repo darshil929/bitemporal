@@ -1,4 +1,6 @@
-"""Reading a venue's response as text."""
+"""Reading a venue's response as text, and the figures it states."""
+
+from decimal import Decimal, InvalidOperation
 
 from pipelines.sources.errors import SchemaDrift
 
@@ -18,3 +20,12 @@ def decoded(payload: bytes, label: str) -> str:
     except UnicodeDecodeError as error:
         shape = "an archive" if payload[:2] == ARCHIVE_MAGIC else "not text"
         raise SchemaDrift(f"{label} response is {shape}") from error
+
+
+def stated_face_value(text: object) -> Decimal | None:
+    """The face value in rupees a record states, absent where it states none."""
+    try:
+        value = Decimal(str(text or "").strip())
+    except InvalidOperation:
+        return None
+    return value if value > 0 else None

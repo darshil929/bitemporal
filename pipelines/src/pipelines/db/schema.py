@@ -199,6 +199,26 @@ class InstrumentName(Base):
     __table_args__ = (CheckConstraint("name <> ''", name="name_is_not_empty"),)
 
 
+class InstrumentFaceValue(Base):
+    """The face value an exchange's list of securities gives an instrument, as read on a given date.
+
+    A split or consolidation changes the face value and issues a new ISIN, so the face values the
+    lists give the ISINs either side of it state its terms. A face value is written when a list
+    first gives it or changes it.
+    """
+
+    __tablename__ = "instrument_face_value"
+
+    isin: Mapped[str] = mapped_column(
+        String(12), ForeignKey("instrument_master.isin"), primary_key=True
+    )
+    source_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    face_value: Mapped[Decimal] = mapped_column(Numeric(12, 4))
+
+    __table_args__ = (CheckConstraint("face_value > 0", name="face_value_is_positive"),)
+
+
 class PriceDaily(Base):
     """One bar per instrument, venue, trading day and the date that bar became knowable.
 

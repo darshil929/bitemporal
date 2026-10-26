@@ -4,8 +4,8 @@ Every write here is an insert. A republished bar carries a later `as_of_date` an
 version it corrects, and rewriting a partition already stored changes nothing, so an asset can be
 re-run for a date without producing a different result.
 
-`price_daily`, `delivery_daily`, `corporate_action` and `instrument_name` all reference
-`instrument_master`, so identity is written before any of them.
+`price_daily`, `delivery_daily`, `corporate_action`, `instrument_name` and `instrument_face_value`
+all reference `instrument_master`, so identity is written before any of them.
 """
 
 import logging
@@ -14,7 +14,7 @@ from collections.abc import Sequence
 import psycopg
 
 from pipelines.models.corporate_action import CorporateActionRecord
-from pipelines.models.identity import InstrumentNameRecord
+from pipelines.models.identity import InstrumentFaceValueRecord, InstrumentNameRecord
 from pipelines.models.market import DeliveryRecord, PriceBar
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,9 @@ ACTION_KEY = "(isin, action_type, ex_date, source_id, as_of_date, qualifier)"
 
 NAME_COLUMNS = "isin, source_id, as_of_date, name"
 NAME_KEY = "(isin, source_id, as_of_date)"
+
+FACE_VALUE_COLUMNS = "isin, source_id, as_of_date, face_value"
+FACE_VALUE_KEY = "(isin, source_id, as_of_date)"
 
 
 def _append(
@@ -130,6 +133,16 @@ def persist_names(connection: psycopg.Connection, names: Sequence[InstrumentName
     written = _append(connection, "instrument_name", NAME_COLUMNS, NAME_KEY, rows)
 
     logger.info("instrument names written", extra={"offered": len(rows), "written": written})
+    return written
+
+
+def persist_face_values(
+    connection: psycopg.Connection, face_values: Sequence[InstrumentFaceValueRecord]
+) -> int:
+    rows = [(item.isin, item.source_id, item.as_of_date, item.face_value) for item in face_values]
+    written = _append(connection, "instrument_face_value", FACE_VALUE_COLUMNS, FACE_VALUE_KEY, rows)
+
+    logger.info("instrument face values written", extra={"offered": len(rows), "written": written})
     return written
 
 

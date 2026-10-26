@@ -10,7 +10,9 @@ from alembic.config import Config
 from fixtures.database import MIGRATION_SCHEMA
 
 IDENTITY_TABLES = frozenset({"instrument_master", "listing", "listing_suspension"})
-FACT_TABLES = frozenset({"price_daily", "corporate_action", "instrument_name", "ingestion_log"})
+FACT_TABLES = frozenset(
+    {"price_daily", "corporate_action", "instrument_name", "instrument_face_value", "ingestion_log"}
+)
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
 DERIVED_TABLES = frozenset({"daily_features_a", "daily_features_b", "feature_release"})
 ACCOUNT_TABLES = frozenset({"app_user", "app_session", "app_setting", "user_setting"})
@@ -194,6 +196,30 @@ def test_an_instrument_name_cannot_be_updated(migrated: Config, postgres_dsn: st
 
         with pytest.raises(psycopg.errors.RestrictViolation):
             connection.execute("update instrument_name set name = 'Reliance'")
+
+
+def test_an_instrument_face_value_cannot_be_updated(migrated: Config, postgres_dsn: str) -> None:
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE002A01018")
+        connection.execute(
+            "insert into instrument_face_value (isin, source_id, as_of_date, face_value)"
+            " values (%s, %s, %s, %s)",
+            ("INE002A01018", "bse_scrip_list", "2026-10-02", "10"),
+        )
+
+        with pytest.raises(psycopg.errors.RestrictViolation):
+            connection.execute("update instrument_face_value set face_value = 5")
+
+
+def test_a_face_value_of_nothing_is_rejected(migrated: Config, postgres_dsn: str) -> None:
+    with _connect(postgres_dsn) as connection:
+        _add_instrument(connection, "INE002A01018")
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "insert into instrument_face_value (isin, source_id, as_of_date, face_value)"
+                " values ('INE002A01018', 'nse_equity_list', '2026-10-02', 0)"
+            )
 
 
 def test_a_bar_whose_high_is_below_its_open_is_rejected(
