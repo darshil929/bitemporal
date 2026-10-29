@@ -11,6 +11,7 @@ from api.schemas.screener_queries import (
     ScreenerResponse,
     ScreenerUnavailableResponse,
     ScreenRefusedResponse,
+    StrictestCriterionResponse,
 )
 from api.schemas.sessions import NotSignedInResponse
 from api.services import screener_queries
@@ -55,6 +56,14 @@ async def screen(
             detail={"reason": refused.reason, "part": refused.part},
         ) from refused
     found = await screener_queries.run_screen(database, asked)
+    strictest = None
+    if found.strictest is not None:
+        strictest = StrictestCriterionResponse(
+            criterion=found.strictest.criterion.part,
+            is_gate=found.strictest.is_gate,
+            passing_the_rest=found.strictest.passing_the_rest,
+            screened=found.strictest.screened,
+        )
     return ScreenerResponse(
         day=found.day,
         matched=found.matched,
@@ -62,4 +71,5 @@ async def screen(
         page_size=PAGE_SIZE,
         row_cap=ROW_CAP,
         rows=[ScreenedRowResponse.model_validate(row) for row in found.rows],
+        strictest=strictest,
     )

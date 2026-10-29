@@ -832,7 +832,10 @@ export interface components {
          * ScreenedRowResponse
          * @description An instrument passing the screen: its name and symbol, the venue its figures were computed
          *     on, the close as traded and the day's return there, the spread between the venues, and each
-         *     figure the screen names.
+         *     figure the screen names. Whether it trades below the liquidity gate, unknown before twenty days
+         *     of trading; the adjusted closes of its last 64 bars on that venue, oldest first, absent before
+         *     64; and the unhandled corporate actions after the earliest bar those closes or its figures
+         *     read, newest first.
          */
         ScreenedRowResponse: {
             /** Close */
@@ -843,6 +846,8 @@ export interface components {
             figures: {
                 [key: string]: number | boolean | null;
             };
+            /** Is Below Gate */
+            is_below_gate: boolean | null;
             /** Is Diverging */
             is_diverging: boolean | null;
             /** Isin */
@@ -853,6 +858,10 @@ export interface components {
             return_1d: number | null;
             /** Symbol */
             symbol: string | null;
+            /** Trend 3M */
+            trend_3m: number[] | null;
+            /** Unhandled Actions */
+            unhandled_actions: components["schemas"]["UnhandledActionResponse"][];
             /** Venue Spread Bps */
             venue_spread_bps: number | null;
         };
@@ -860,7 +869,8 @@ export interface components {
          * ScreenerResponse
          * @description A page of the instruments passing a screen on the latest day complete at every venue in
          *     session, absent before the first publish, and how many pass it in all; the pages stop at the
-         *     row cap.
+         *     row cap. Where nothing passes, the strictest criterion, absent where removing any one admits
+         *     nothing.
          */
         ScreenerResponse: {
             /** Day */
@@ -875,6 +885,7 @@ export interface components {
             row_cap: number;
             /** Rows */
             rows: components["schemas"]["ScreenedRowResponse"][];
+            strictest: components["schemas"]["StrictestCriterionResponse"] | null;
         };
         /** ScreenerUnavailable */
         ScreenerUnavailable: {
@@ -988,6 +999,35 @@ export interface components {
             source_id: string;
             /** Tier */
             tier: number;
+        };
+        /**
+         * StrictestCriterionResponse
+         * @description The criterion that alone excludes the most instruments of a screen nothing passes, as the
+         *     address writes it, the gate only where no other criterion excludes any on its own: how many pass
+         *     every other criterion, of how many the day holds of the screen's kind.
+         */
+        StrictestCriterionResponse: {
+            /** Criterion */
+            criterion: string;
+            /** Is Gate */
+            is_gate: boolean;
+            /** Passing The Rest */
+            passing_the_rest: number;
+            /** Screened */
+            screened: number;
+        };
+        /**
+         * UnhandledActionResponse
+         * @description A corporate action the adjusted prices do not account for, and the venue's text for it.
+         */
+        UnhandledActionResponse: {
+            /**
+             * Ex Date
+             * Format: date
+             */
+            ex_date: string;
+            /** Purpose */
+            purpose: string;
         };
         /** ValidationError */
         ValidationError: {
