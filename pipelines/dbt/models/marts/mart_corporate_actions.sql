@@ -10,7 +10,8 @@
 -- does for the price adjustment, and NSE's stands otherwise. A split of a fund's units no venue
 -- records is listed as read from the prices, a day whose terms were reviewed lists the reviewed
 -- terms in place of the venues', and a change of ISIN no venue records terms for lists the split
--- or consolidation the venues' lists state face values for.
+-- or consolidation the venues' lists state face values for. A venue's notice of a meeting, a book
+-- closure or a vote is no action and is not listed.
 with recorded as (
     select
         lineage.current_isin,
@@ -38,6 +39,22 @@ with recorded as (
             and actions.purpose !~* '\+|(fin|int).*(spl|special)|(spl|special).*(fin|int)',
             false
         ) as is_dividend_text,
+        -- A text naming only a meeting, a book closure, an election or a vote, in whatever
+        -- spelling, or only "General", which states no purpose, names no action. A venue's record
+        -- of an action that day then stands in its place.
+        coalesce(
+            actions.action_type = 'unhandled'
+            and actions.purpose ~* (
+                '^general\M|\m(e\.?g\.?m|a\.?g\.?m)\M|general me|\mannual ?(ge|book|clos)|meet'
+                || '|book clos|postal ballot|\me ?- ?voting\M|\melection|\melctn\M'
+            )
+            and actions.purpose !~* (
+                'div|ividend|\mdv\M|bonus|\mbon\M|split|splt|\mfv\M|sub-?div|consolid|right'
+                || '|buy ?back|demerg|spin|scheme|amalg|arrange|reduction|warrant|debenture|capital'
+                || '|resolution|delist|allot|offer|interest|redemption'
+            ),
+            false
+        ) as is_notice,
         -- The count-changing action a record states, or that a text names without terms read.
         case
             when actions.action_type in ('bonus', 'split', 'consolidation') then actions.action_type
@@ -50,7 +67,8 @@ with recorded as (
     inner join {{ ref('int_instrument_lineage') }} as lineage on actions.isin = lineage.isin
 ),
 
--- A dividend text is a dividend whose amount is not stated, nothing where it says nil.
+-- A dividend text is a dividend whose amount is not stated, nothing where it says nil; a notice is
+-- not listed.
 actions as (
     select
         current_isin,
@@ -76,6 +94,7 @@ actions as (
         end as dividend_amount,
         is_dividend_text and purpose !~* '\mnil\M' as is_unstated
     from recorded
+    where not is_notice
 ),
 
 -- An unstated dividend stands only where no record that day states an amount, and then once for
