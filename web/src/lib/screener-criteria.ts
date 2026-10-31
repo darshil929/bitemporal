@@ -39,6 +39,14 @@ export const COMPARISONS: Readonly<
   lte: { sign: "≤", words: "at or below" },
 };
 
+// The comparisons in the order a menu offers them.
+export const COMPARISON_ORDER: readonly Comparison[] = [
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+];
+
 export type Criterion = Readonly<{
   figure: FigureName;
   comparison: Comparison;
@@ -79,7 +87,7 @@ function isFigure(name: string): name is FigureName {
   return Object.hasOwn(FIGURES, name);
 }
 
-function isComparison(name: string): name is Comparison {
+export function isComparison(name: string): name is Comparison {
   return Object.hasOwn(COMPARISONS, name);
 }
 
@@ -88,11 +96,12 @@ function shifted(value: number, exponent: number): number {
   return Number((value * 10 ** exponent).toPrecision(12));
 }
 
-function figures(value: number, unit: Unit): string {
+function figures(value: number, unit: Unit, grouped = true): string {
   const [fewest, most] = DECIMALS[unit];
   return new Intl.NumberFormat("en-IN", {
     minimumFractionDigits: fewest,
     maximumFractionDigits: most,
+    useGrouping: grouped,
   })
     .format(value)
     .replace("-", MINUS);
@@ -129,4 +138,28 @@ export function thresholdText({ figure, value }: Criterion): string {
     return `₹${number} Cr`;
   }
   return unit === "bps" ? `${number} bps` : `${number}${UNITS[unit]}`;
+}
+
+/** The threshold as its field holds it, in the figure's unit and without grouping. */
+export function typedThreshold({ figure, value }: Criterion): string {
+  const unit = FIGURES[figure].unit;
+  return figures(shifted(value, EXPONENTS[unit]), unit, false);
+}
+
+/** The unit a threshold is typed in, shown after its field. */
+export function thresholdUnit(figure: FigureName): string {
+  return UNITS[FIGURES[figure].unit];
+}
+
+/** The stored value of a threshold typed in the figure's unit, or nothing where it is no number. */
+export function thresholdFromTyped(
+  figure: FigureName,
+  typed: string,
+): number | null {
+  const text = typed.replaceAll(",", "").replace(MINUS, "-").trim();
+  const number = Number(text);
+  if (text === "" || !Number.isFinite(number)) {
+    return null;
+  }
+  return shifted(number, -EXPONENTS[FIGURES[figure].unit]);
 }
