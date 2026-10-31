@@ -163,3 +163,51 @@ export function thresholdFromTyped(
   }
   return shifted(number, -EXPONENTS[FIGURES[figure].unit]);
 }
+
+/** The screen's address with its criterion at `index` replaced, or removed for nothing. */
+export function withCriterion(
+  search: URLSearchParams,
+  index: number,
+  criterion: Criterion | null,
+): URLSearchParams {
+  const next = new URLSearchParams();
+  let seen = 0;
+  for (const [name, part] of search) {
+    if (name === "page") {
+      continue;
+    }
+    if (name === "c" && seen++ === index) {
+      if (criterion) {
+        next.append(name, writeCriterion(criterion));
+      }
+      continue;
+    }
+    next.append(name, part);
+  }
+  return next;
+}
+
+/** The screen's address with its gate as given, or removed for nothing. */
+export function withGate(
+  search: URLSearchParams,
+  gate: Criterion | null,
+): URLSearchParams {
+  const next = new URLSearchParams(search);
+  next.delete("page");
+  next.set("gate", gate ? writeCriterion(gate) : "none");
+  return next;
+}
+
+/** The screen's address showing a page, the first page being the address without one. */
+export function withPage(
+  search: URLSearchParams,
+  page: number,
+): URLSearchParams {
+  const next = new URLSearchParams(search);
+  if (page > 1) {
+    next.set("page", String(page));
+  } else {
+    next.delete("page");
+  }
+  return next;
+}
