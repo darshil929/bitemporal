@@ -5,7 +5,9 @@ import {
   FIGURES,
   type FigureName,
   readCriterion,
+  thresholdFromTyped,
   thresholdText,
+  typedThreshold,
   writeCriterion,
 } from "@/lib/screener-criteria";
 
@@ -49,4 +51,20 @@ test("a threshold reads in its figure's unit", () => {
   expect(read("rsi_14", 70)).toBe("70");
   expect(read("volume_ratio_20d", 1.5)).toBe("1.50×");
   expect(read("venue_spread_bps", 500)).toBe("500 bps");
+});
+
+test("a typed threshold is stored in the figure's own scale and typed back the same", () => {
+  expect(thresholdFromTyped("return_1d", "2.13")).toBe(0.0213);
+  expect(thresholdFromTyped("return_1d", "−5")).toBe(-0.05);
+  expect(thresholdFromTyped("adtv_20d", "2,000")).toBe(20_000_000_000);
+  expect(thresholdFromTyped("delivery_pct_20d", " 50 ")).toBe(50);
+  expect(thresholdFromTyped("rsi_14", "")).toBeNull();
+  expect(thresholdFromTyped("rsi_14", "high")).toBeNull();
+
+  expect(
+    typedThreshold({ figure: "return_3m", comparison: "gt", value: 0.0213 }),
+  ).toBe("2.13");
+  expect(
+    typedThreshold({ figure: "adtv_20d", comparison: "gte", value: 2e10 }),
+  ).toBe("2000");
 });
