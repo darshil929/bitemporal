@@ -8,6 +8,9 @@ import {
   thresholdFromTyped,
   thresholdText,
   typedThreshold,
+  withCriterion,
+  withGate,
+  withPage,
   writeCriterion,
 } from "@/lib/screener-criteria";
 
@@ -67,4 +70,37 @@ test("a typed threshold is stored in the figure's own scale and typed back the s
   expect(
     typedThreshold({ figure: "adtv_20d", comparison: "gte", value: 2e10 }),
   ).toBe("2000");
+});
+
+test("a criterion changed or removed keeps the rest of the screen and opens its first page", () => {
+  const screen = new URLSearchParams(
+    "c=return_3m:gt:0&gate=adtv_20d:gte:250000000&c=delivery_pct_20d:gt:50&sort=return_3m:desc&page=3",
+  );
+  const edited: Criterion = {
+    figure: "delivery_pct_20d",
+    comparison: "gt",
+    value: 60,
+  };
+
+  expect(withCriterion(screen, 1, null).toString()).toBe(
+    "c=return_3m%3Agt%3A0&gate=adtv_20d%3Agte%3A250000000&sort=return_3m%3Adesc",
+  );
+  expect(withCriterion(screen, 1, edited).getAll("c")).toEqual([
+    "return_3m:gt:0",
+    "delivery_pct_20d:gt:60",
+  ]);
+  expect(withGate(screen, null).get("gate")).toBe("none");
+  expect(withGate(screen, null).has("page")).toBe(false);
+  expect(
+    withGate(screen, { figure: "adtv_20d", comparison: "gte", value: 1e8 }).get(
+      "gate",
+    ),
+  ).toBe("adtv_20d:gte:100000000");
+});
+
+test("a page's address keeps the screen and leaves the first page unnamed", () => {
+  const screen = new URLSearchParams("c=return_3m:gt:0&page=3");
+
+  expect(withPage(screen, 4).get("page")).toBe("4");
+  expect(withPage(screen, 1).toString()).toBe("c=return_3m%3Agt%3A0");
 });
