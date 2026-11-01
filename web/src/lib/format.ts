@@ -106,6 +106,11 @@ export function formatFactor(factor: number): string {
   return digits(factor, 0, 4);
 }
 
+/** A count, such as of instruments: `2,577`, `1,23,456`. */
+export function formatCount(count: number): string {
+  return digits(count, 0);
+}
+
 /** A change in price: `+15.30`, `−2.05`. */
 export function formatChange(change: number): Formatted {
   return { text: signed(change, 2) };

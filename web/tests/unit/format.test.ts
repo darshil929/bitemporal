@@ -5,6 +5,7 @@ import {
   direction,
   formatBps,
   formatChange,
+  formatCount,
   formatDate,
   formatDateTime,
   formatDeliveryShare,
@@ -122,4 +123,10 @@ describe("sign and text", () => {
   ])("%o reads %s", (formatted, expected) => {
     expect(asText(formatted)).toBe(expected);
   });
+});
+
+test("a count reads whole, in Indian grouping", () => {
+  expect(formatCount(1464)).toBe("1,464");
+  expect(formatCount(123456)).toBe("1,23,456");
+  expect(formatCount(0)).toBe("0");
 });
