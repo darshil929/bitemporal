@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 
 from api.dependencies import DatabaseDependency, signed_in
 from api.schemas.market import MarketDataUpdatingResponse, MarketDayResponse
+from api.schemas.market_summary import MarketSummaryResponse
 from api.schemas.sessions import NotSignedInResponse
+from api.services import market_summary as market_summaries
 from api.services import trading_days
 
 # A sync builds a mart it dropped again moments later.
@@ -40,3 +42,10 @@ async def market_day(database: DatabaseDependency) -> MarketDayResponse:
     """The day the market pages show, each venue's verdict on it, and the latest day up to it
     complete at every venue in session."""
     return MarketDayResponse.model_validate(await trading_days.market_day(database))
+
+
+@router.get("/summary")
+async def market_summary(database: DatabaseDependency) -> MarketSummaryResponse:
+    """Breadth across the companies that traded on the latest day complete at every venue in
+    session."""
+    return MarketSummaryResponse.model_validate(await market_summaries.market_summary(database))

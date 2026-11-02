@@ -106,6 +106,57 @@
         "title": "AuditEntryResponse",
         "type": "object"
       },
+      "BreadthResponse": {
+        "description": "The companies that traded on the day, each on its primary venue: how many, how many rose, fell\nand stood unchanged, a company on its first bar counting in none of those, how many made a new\n52-week high or low, and the median day's return.",
+        "properties": {
+          "advancing": {
+            "title": "Advancing",
+            "type": "integer"
+          },
+          "companies": {
+            "title": "Companies",
+            "type": "integer"
+          },
+          "declining": {
+            "title": "Declining",
+            "type": "integer"
+          },
+          "median_return_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Return 1D"
+          },
+          "new_52w_highs": {
+            "title": "New 52W Highs",
+            "type": "integer"
+          },
+          "new_52w_lows": {
+            "title": "New 52W Lows",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "companies",
+          "advancing",
+          "declining",
+          "unchanged",
+          "new_52w_highs",
+          "new_52w_lows",
+          "median_return_1d"
+        ],
+        "title": "BreadthResponse",
+        "type": "object"
+      },
       "CorporateActionResponse": {
         "description": "An action with its terms as an announcement states them, the factor it applies to earlier\nprices or the dividend in rupees a share, the venue's own text where its terms are unknown, who\nreported it, whether the two venues' records differ, whether its factor is applied, and the\nsource of the record shown, absent for a fund's unit split read from the prices.",
         "properties": {
@@ -839,6 +890,47 @@
           "last_complete_day"
         ],
         "title": "MarketDayResponse",
+        "type": "object"
+      },
+      "MarketSummaryResponse": {
+        "description": "Breadth on the latest day complete at every venue in session, with the sources behind it;\nabsent before the first publish.",
+        "properties": {
+          "breadth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BreadthResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "breadth_sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceResponse"
+            },
+            "title": "Breadth Sources",
+            "type": "array"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          }
+        },
+        "required": [
+          "day",
+          "breadth",
+          "breadth_sources"
+        ],
+        "title": "MarketSummaryResponse",
         "type": "object"
       },
       "NewPasswordRequest": {
@@ -2962,6 +3054,48 @@
           }
         },
         "summary": "Market Day",
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/market/summary": {
+      "get": {
+        "description": "Breadth across the companies that traded on the latest day complete at every venue in\nsession.",
+        "operationId": "market_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Market Summary",
         "tags": [
           "market"
         ]
