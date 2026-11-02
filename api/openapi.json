@@ -106,6 +106,29 @@
         "title": "AuditEntryResponse",
         "type": "object"
       },
+      "BelowGateMoveResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "return_1d": {
+            "title": "Return 1D",
+            "type": "number"
+          }
+        },
+        "required": [
+          "isin",
+          "display_name",
+          "return_1d"
+        ],
+        "title": "BelowGateMoveResponse",
+        "type": "object"
+      },
       "BreadthResponse": {
         "description": "The companies that traded on the day, each on its primary venue: how many, how many rose, fell\nand stood unchanged, a company on its first bar counting in none of those, how many made a new\n52-week high or low, and the median day's return.",
         "properties": {
@@ -893,7 +916,7 @@
         "type": "object"
       },
       "MarketSummaryResponse": {
-        "description": "Breadth on the latest day complete at every venue in session, with the sources behind it;\nabsent before the first publish.",
+        "description": "Breadth and the companies that moved most on the latest day complete at every venue in\nsession, each with the sources behind it; absent before the first publish.",
         "properties": {
           "breadth": {
             "anyOf": [
@@ -923,14 +946,149 @@
               }
             ],
             "title": "Day"
+          },
+          "moved_down": {
+            "$ref": "#/components/schemas/MovedMostResponse"
+          },
+          "moved_up": {
+            "$ref": "#/components/schemas/MovedMostResponse"
+          },
+          "mover_sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceResponse"
+            },
+            "title": "Mover Sources",
+            "type": "array"
           }
         },
         "required": [
           "day",
           "breadth",
-          "breadth_sources"
+          "moved_up",
+          "moved_down",
+          "breadth_sources",
+          "mover_sources"
         ],
         "title": "MarketSummaryResponse",
+        "type": "object"
+      },
+      "MovedMostResponse": {
+        "description": "The companies that moved most one way past the liquidity gate, largest first. Of those below\nthe gate that moved further than the last of them: the largest moves, and how many more.",
+        "properties": {
+          "below_gate": {
+            "items": {
+              "$ref": "#/components/schemas/BelowGateMoveResponse"
+            },
+            "title": "Below Gate",
+            "type": "array"
+          },
+          "more_below_gate": {
+            "title": "More Below Gate",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MoverResponse"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "below_gate",
+          "more_below_gate"
+        ],
+        "title": "MovedMostResponse",
+        "type": "object"
+      },
+      "MoverResponse": {
+        "description": "A company among those that moved most: its name and symbol, the venue its figures were computed\non, the close as traded, the day's return, its volume against twenty days and its delivery share\nthere, and any unhandled corporate action the day's return runs through.",
+        "properties": {
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "delivery_pct_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Pct 1D"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "primary_venue": {
+            "enum": [
+              "BSE",
+              "NSE"
+            ],
+            "title": "Primary Venue",
+            "type": "string"
+          },
+          "return_1d": {
+            "title": "Return 1D",
+            "type": "number"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "unhandled_actions": {
+            "items": {
+              "$ref": "#/components/schemas/UnhandledActionResponse"
+            },
+            "title": "Unhandled Actions",
+            "type": "array"
+          },
+          "volume_ratio_20d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Ratio 20D"
+          }
+        },
+        "required": [
+          "isin",
+          "display_name",
+          "symbol",
+          "primary_venue",
+          "close",
+          "return_1d",
+          "volume_ratio_20d",
+          "delivery_pct_1d",
+          "unhandled_actions"
+        ],
+        "title": "MoverResponse",
         "type": "object"
       },
       "NewPasswordRequest": {
@@ -3061,7 +3219,7 @@
     },
     "/market/summary": {
       "get": {
-        "description": "Breadth across the companies that traded on the latest day complete at every venue in\nsession.",
+        "description": "Breadth across the companies that traded, and those that moved most past the liquidity gate,\non the latest day complete at every venue in session.",
         "operationId": "market_summary",
         "responses": {
           "200": {

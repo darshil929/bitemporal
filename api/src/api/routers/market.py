@@ -46,6 +46,6 @@ async def market_day(database: DatabaseDependency) -> MarketDayResponse:
 
 @router.get("/summary")
 async def market_summary(database: DatabaseDependency) -> MarketSummaryResponse:
-    """Breadth across the companies that traded on the latest day complete at every venue in
-    session."""
+    """Breadth across the companies that traded, and those that moved most past the liquidity gate,
+    on the latest day complete at every venue in session."""
     return MarketSummaryResponse.model_validate(await market_summaries.market_summary(database))

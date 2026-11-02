@@ -311,8 +311,8 @@ export interface paths {
         };
         /**
          * Market Summary
-         * @description Breadth across the companies that traded on the latest day complete at every venue in
-         *     session.
+         * @description Breadth across the companies that traded, and those that moved most past the liquidity gate,
+         *     on the latest day complete at every venue in session.
          */
         get: operations["market_summary"];
         put?: never;
@@ -455,6 +455,15 @@ export interface components {
             subject_id: number | null;
             /** Subject Name */
             subject_name: string | null;
+        };
+        /** BelowGateMoveResponse */
+        BelowGateMoveResponse: {
+            /** Display Name */
+            display_name: string;
+            /** Isin */
+            isin: string;
+            /** Return 1D */
+            return_1d: number;
         };
         /**
          * BreadthResponse
@@ -705,8 +714,8 @@ export interface components {
         };
         /**
          * MarketSummaryResponse
-         * @description Breadth on the latest day complete at every venue in session, with the sources behind it;
-         *     absent before the first publish.
+         * @description Breadth and the companies that moved most on the latest day complete at every venue in
+         *     session, each with the sources behind it; absent before the first publish.
          */
         MarketSummaryResponse: {
             breadth: components["schemas"]["BreadthResponse"] | null;
@@ -714,6 +723,52 @@ export interface components {
             breadth_sources: components["schemas"]["SourceResponse"][];
             /** Day */
             day: string | null;
+            moved_down: components["schemas"]["MovedMostResponse"];
+            moved_up: components["schemas"]["MovedMostResponse"];
+            /** Mover Sources */
+            mover_sources: components["schemas"]["SourceResponse"][];
+        };
+        /**
+         * MovedMostResponse
+         * @description The companies that moved most one way past the liquidity gate, largest first. Of those below
+         *     the gate that moved further than the last of them: the largest moves, and how many more.
+         */
+        MovedMostResponse: {
+            /** Below Gate */
+            below_gate: components["schemas"]["BelowGateMoveResponse"][];
+            /** More Below Gate */
+            more_below_gate: number;
+            /** Rows */
+            rows: components["schemas"]["MoverResponse"][];
+        };
+        /**
+         * MoverResponse
+         * @description A company among those that moved most: its name and symbol, the venue its figures were computed
+         *     on, the close as traded, the day's return, its volume against twenty days and its delivery share
+         *     there, and any unhandled corporate action the day's return runs through.
+         */
+        MoverResponse: {
+            /** Close */
+            close: number | null;
+            /** Delivery Pct 1D */
+            delivery_pct_1d: number | null;
+            /** Display Name */
+            display_name: string;
+            /** Isin */
+            isin: string;
+            /**
+             * Primary Venue
+             * @enum {string}
+             */
+            primary_venue: "BSE" | "NSE";
+            /** Return 1D */
+            return_1d: number;
+            /** Symbol */
+            symbol: string | null;
+            /** Unhandled Actions */
+            unhandled_actions: components["schemas"]["UnhandledActionResponse"][];
+            /** Volume Ratio 20D */
+            volume_ratio_20d: number | null;
         };
         /** NewPasswordRequest */
         NewPasswordRequest: {
