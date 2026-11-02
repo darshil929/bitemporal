@@ -12,6 +12,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.database import Database
+from api.services.daily_feature_rows import SYMBOL, UNHANDLED_ACTIONS, UNHANDLED_ACTIONS_JOIN
 from api.services.market_reads import read_marts
 from api.services.trading_days import resolve_market_day
 
@@ -214,16 +215,9 @@ def statement(screen: Screen) -> tuple[TextClause, dict[str, Any]]:
                 features.return_1d, features.venue_spread_bps, features.is_diverging,
                 not (features.adtv_20d >= :gate_rupees) as is_below_gate,
                 jsonb_build_object({shown}) as figures,
-                (
-                    select listings.local_symbol from mart_listings as listings
-                    where listings.isin = features.isin
-                    order by listings.delisting_date is null desc,
-                        listings.exchange = features.primary_venue desc,
-                        listings.exchange = 'NSE' desc, listings.listing_date desc
-                    limit 1
-                ) as symbol,
+                {SYMBOL},
                 trend.closes as trend_3m,
-                coalesce(unhandled.actions, cast('[]' as jsonb)) as unhandled_actions
+                {UNHANDLED_ACTIONS}
             from page as features
             left join lateral (
                 select
@@ -239,32 +233,7 @@ def statement(screen: Screen) -> tuple[TextClause, dict[str, Any]]:
                     limit :trend_bars
                 ) as bars
             ) as trend on true
-            left join lateral (
-                select coalesce(
-                    (
-                        select bars.trade_date from mart_adjusted_prices as bars
-                        where bars.isin = features.isin and bars.venue = features.primary_venue
-                            and bars.trade_date <= features.trade_date
-                        order by bars.trade_date desc
-                        offset :lookback limit 1
-                    ),
-                    (
-                        select bars.trade_date from mart_adjusted_prices as bars
-                        where bars.isin = features.isin and bars.venue = features.primary_venue
-                        order by bars.trade_date
-                        limit 1
-                    )
-                ) as first_day
-            ) as span on true
-            left join lateral (
-                select jsonb_agg(
-                    jsonb_build_object('ex_date', actions.ex_date, 'purpose', actions.purpose)
-                    order by actions.ex_date desc, actions.purpose
-                ) as actions
-                from mart_corporate_actions as actions
-                where actions.isin = features.isin and actions.action_type = 'unhandled'
-                    and actions.ex_date > span.first_day and actions.ex_date <= features.trade_date
-            ) as unhandled on true
+            {UNHANDLED_ACTIONS_JOIN}
             order by {order}
         ) as shown on true
     """
