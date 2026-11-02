@@ -302,6 +302,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/market/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Market Summary
+         * @description Breadth across the companies that traded on the latest day complete at every venue in
+         *     session.
+         */
+        get: operations["market_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ready": {
         parameters: {
             query?: never;
@@ -434,6 +455,28 @@ export interface components {
             subject_id: number | null;
             /** Subject Name */
             subject_name: string | null;
+        };
+        /**
+         * BreadthResponse
+         * @description The companies that traded on the day, each on its primary venue: how many, how many rose, fell
+         *     and stood unchanged, a company on its first bar counting in none of those, how many made a new
+         *     52-week high or low, and the median day's return.
+         */
+        BreadthResponse: {
+            /** Advancing */
+            advancing: number;
+            /** Companies */
+            companies: number;
+            /** Declining */
+            declining: number;
+            /** Median Return 1D */
+            median_return_1d: number | null;
+            /** New 52W Highs */
+            new_52w_highs: number;
+            /** New 52W Lows */
+            new_52w_lows: number;
+            /** Unchanged */
+            unchanged: number;
         };
         /**
          * CorporateActionResponse
@@ -659,6 +702,18 @@ export interface components {
             published_day: string | null;
             /** Venues */
             venues: components["schemas"]["VenueSessionResponse"][];
+        };
+        /**
+         * MarketSummaryResponse
+         * @description Breadth on the latest day complete at every venue in session, with the sources behind it;
+         *     absent before the first publish.
+         */
+        MarketSummaryResponse: {
+            breadth: components["schemas"]["BreadthResponse"] | null;
+            /** Breadth Sources */
+            breadth_sources: components["schemas"]["SourceResponse"][];
+            /** Day */
+            day: string | null;
         };
         /** NewPasswordRequest */
         NewPasswordRequest: {
@@ -1774,6 +1829,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketDayResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    market_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketSummaryResponse"];
                 };
             };
             /** @description Unauthorized */

@@ -31,6 +31,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "instrument_day",
         "instrument_prices",
         "market_day",
+        "market_summary",
         "people",
         "ready",
         "reset_password",
