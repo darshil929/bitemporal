@@ -88,6 +88,12 @@ def member_headers(migrated: Config, postgres_dsn: str) -> dict[str, str]:
 
 
 @pytest.fixture
+def other_member_headers(migrated: Config, postgres_dsn: str) -> dict[str, str]:
+    """A second member signed in to the same schema, whose own rows the first cannot reach."""
+    return account_session(postgres_dsn, MIGRATION_SCHEMA, "ravi")
+
+
+@pytest.fixture
 def admin_headers(migrated: Config, postgres_dsn: str) -> dict[str, str]:
     """An admin signed in to the schema `migrated_settings` serves."""
     return account_session(postgres_dsn, MIGRATION_SCHEMA, "meera", role="admin")

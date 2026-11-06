@@ -362,6 +362,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/screener/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Saved Views
+         * @description The person's saved views, by name whatever its case.
+         */
+        get: operations["saved_views"];
+        put?: never;
+        /**
+         * Save View
+         * @description Keep a screen under a name; the screen kept is the one the screener would show.
+         */
+        post: operations["save_view"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/screener/views/{view_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove View
+         * @description Take a view off the person's list, which frees its name.
+         */
+        delete: operations["remove_view"];
+        options?: never;
+        head?: never;
+        /**
+         * Change View
+         * @description Rename a view, save another screen over it, or both.
+         */
+        patch: operations["change_view"];
+        trace?: never;
+    };
     "/session": {
         parameters: {
             query?: never;
@@ -924,6 +972,48 @@ export interface components {
              */
             status: "ready" | "not_ready";
         };
+        /**
+         * SavedViewChangeRequest
+         * @description A new name for a view, a screen to save over it, or both.
+         */
+        SavedViewChangeRequest: {
+            /** Name */
+            name?: string | null;
+            /** Query */
+            query?: string | null;
+        };
+        /**
+         * SavedViewRequest
+         * @description A screen to keep under a name: the screener's address after its `?`.
+         */
+        SavedViewRequest: {
+            /** Name */
+            name: string;
+            /** Query */
+            query: string;
+        };
+        /**
+         * SavedViewResponse
+         * @description A view the person keeps: its screen's parts in a fixed order, without a page.
+         */
+        SavedViewResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Query */
+            query: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** ScreenRefused */
         ScreenRefused: {
             /** Part */
@@ -932,7 +1022,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "malformed_criterion" | "unknown_figure" | "unknown_comparison" | "malformed_value" | "malformed_gate" | "unknown_sort";
+            reason: "malformed_criterion" | "unknown_figure" | "unknown_comparison" | "malformed_value" | "malformed_gate" | "unknown_sort" | "unknown_parameter" | "repeated_parameter" | "unknown_kind";
         };
         /** ScreenRefusedResponse */
         ScreenRefusedResponse: {
@@ -1161,6 +1251,18 @@ export interface components {
              * @enum {string}
              */
             venue: "BSE" | "NSE";
+        };
+        /** ViewRefused */
+        ViewRefused: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "view_name_taken" | "view_not_found";
+        };
+        /** ViewRefusedResponse */
+        ViewRefusedResponse: {
+            detail: components["schemas"]["ViewRefused"];
         };
     };
     responses: never;
@@ -2004,6 +2106,231 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenRefusedResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenerUnavailableResponse"];
+                };
+            };
+        };
+    };
+    saved_views: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewResponse"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenerUnavailableResponse"];
+                };
+            };
+        };
+    };
+    save_view: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewRefusedResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenRefusedResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenerUnavailableResponse"];
+                };
+            };
+        };
+    };
+    remove_view: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenerUnavailableResponse"];
+                };
+            };
+        };
+    };
+    change_view: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedViewResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewRefusedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewRefusedResponse"];
                 };
             };
             /** @description Unprocessable Entity */
