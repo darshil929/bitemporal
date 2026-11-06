@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    literal_column,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -642,3 +643,31 @@ class UserSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (CheckConstraint(_in_list("theme", THEMES), name="theme"),)
+
+
+class ScreenerView(Base):
+    """A screen of the daily features a person keeps under a name, readable by that person alone; a
+    view removed is marked so and kept."""
+
+    __tablename__ = "screener_view"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    # The screen's address: its parts in a fixed order, without a page.
+    query: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("name = btrim(name) and length(name) between 1 and 80", name="name"),
+        CheckConstraint("length(query) <= 2000", name="query"),
+        Index(
+            "uq_screener_view_kept_name",
+            "owner_id",
+            func.lower(literal_column("name")),
+            unique=True,
+            postgresql_where=text("removed_at is null"),
+        ),
+    )
