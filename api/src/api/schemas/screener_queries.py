@@ -75,6 +75,9 @@ class ScreenRefused(BaseModel):
         "malformed_value",
         "malformed_gate",
         "unknown_sort",
+        "unknown_parameter",
+        "repeated_parameter",
+        "unknown_kind",
     ]
     part: str
 
