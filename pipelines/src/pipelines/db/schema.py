@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     Double,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -53,6 +54,14 @@ PRIMARY_VENUES = ("BSE", "NSE")
 USER_ROLES = ("admin", "member")
 SESSION_END_REASONS = ("idle", "limit", "signed_out", "signed_out_elsewhere", "disabled")
 THEMES = ("light", "dark")
+WATCHLIST_ALERT_RULES = (
+    "move_beyond",
+    "close_above",
+    "close_below",
+    "delivery_above",
+    "delivery_below",
+    "spread_above",
+)
 ADMIN_ACTIONS = (
     "first_admin_created",
     "person_added",
@@ -669,5 +678,97 @@ class ScreenerView(Base):
             func.lower(literal_column("name")),
             unique=True,
             postgresql_where=text("removed_at is null"),
+        ),
+    )
+
+
+class Watchlist(Base):
+    """A person's named list of instruments, readable by that person alone; a list removed is
+    marked so and kept."""
+
+    __tablename__ = "watchlist"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("name = btrim(name) and length(name) between 1 and 80", name="name"),
+        # The target of the entries' key, which holds an entry to a list of the same person.
+        UniqueConstraint("id", "owner_id"),
+        Index(
+            "uq_watchlist_kept_name",
+            "owner_id",
+            func.lower(literal_column("name")),
+            unique=True,
+            postgresql_where=text("removed_at is null"),
+        ),
+    )
+
+
+class WatchlistEntry(Base):
+    """An instrument in a person's list, followed on one venue; an entry is ended, never deleted,
+    and a change of venue starts a new one."""
+
+    __tablename__ = "watchlist_entry"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"), index=True)
+    watchlist_id: Mapped[int] = mapped_column(BigInteger)
+    isin: Mapped[str] = mapped_column(String(12), ForeignKey("instrument_master.isin"))
+    venue: Mapped[str] = mapped_column(String(12))
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["watchlist_id", "owner_id"], ["watchlist.id", "watchlist.owner_id"]),
+        UniqueConstraint("id", "owner_id"),
+        CheckConstraint(f"venue ~ '{VENUE_PATTERN}'", name="venue_format"),
+        CheckConstraint("ended_at is null or ended_at >= added_at", name="ends_after"),
+        Index(
+            "uq_watchlist_entry_kept_isin",
+            "owner_id",
+            "watchlist_id",
+            "isin",
+            unique=True,
+            postgresql_where=text("ended_at is null"),
+        ),
+    )
+
+
+class WatchlistAlert(Base):
+    """The rule an entry's alert evaluates; a changed rule ends this one and starts another, so a
+    past evaluation keeps the rule it read."""
+
+    __tablename__ = "watchlist_alert"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"), index=True)
+    entry_id: Mapped[int] = mapped_column(BigInteger)
+    rule: Mapped[str] = mapped_column(Text)
+    # In the unit the daily figures hold: a move as a fraction, delivery in percent, the spread in
+    # basis points, a close in rupees.
+    threshold: Mapped[Decimal] = mapped_column(RATIO)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["entry_id", "owner_id"], ["watchlist_entry.id", "watchlist_entry.owner_id"]
+        ),
+        CheckConstraint(_in_list("rule", WATCHLIST_ALERT_RULES), name="rule"),
+        CheckConstraint(
+            "threshold > 0 and (rule not like 'delivery%' or threshold < 100)", name="threshold"
+        ),
+        CheckConstraint("ended_at is null or ended_at >= created_at", name="ends_after"),
+        Index(
+            "uq_watchlist_alert_open",
+            "owner_id",
+            "entry_id",
+            unique=True,
+            postgresql_where=text("ended_at is null"),
         ),
     )
