@@ -461,6 +461,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/watchlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Watchlists
+         * @description The person's lists, the default first, then by name whatever its case.
+         */
+        get: operations["watchlists"];
+        put?: never;
+        /**
+         * Add Watchlist
+         * @description Keep a new list under a name, up to twenty lists.
+         */
+        post: operations["add_watchlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/watchlists/{watchlist_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Watchlist
+         * @description Take a list off the person's lists, which frees its name.
+         */
+        delete: operations["remove_watchlist"];
+        options?: never;
+        head?: never;
+        /** Rename Watchlist */
+        patch: operations["rename_watchlist"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1263,6 +1308,48 @@ export interface components {
         /** ViewRefusedResponse */
         ViewRefusedResponse: {
             detail: components["schemas"]["ViewRefused"];
+        };
+        /** WatchlistRefused */
+        WatchlistRefused: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "watchlist_name_taken" | "watchlist_limit_reached" | "watchlist_not_found";
+        };
+        /** WatchlistRefusedResponse */
+        WatchlistRefusedResponse: {
+            detail: components["schemas"]["WatchlistRefused"];
+        };
+        /**
+         * WatchlistRequest
+         * @description A name to keep a list under, or to rename it to.
+         */
+        WatchlistRequest: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * WatchlistResponse
+         * @description A list the person keeps; the default is the earliest of them.
+         */
+        WatchlistResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Is Default */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
     };
     responses: never;
@@ -2440,6 +2527,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupRefusedResponse"];
+                };
+            };
+        };
+    };
+    watchlists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistResponse"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+        };
+    };
+    add_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+        };
+    };
+    remove_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watchlist_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watchlist_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

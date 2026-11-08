@@ -20,6 +20,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
     assert len(names) == len(set(names))
     assert sorted(names) == [
         "add_person",
+        "add_watchlist",
         "admin_actions",
         "change_account",
         "change_password",
@@ -36,6 +37,8 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "people",
         "ready",
         "remove_view",
+        "remove_watchlist",
+        "rename_watchlist",
         "reset_password",
         "save_view",
         "saved_views",
@@ -46,4 +49,5 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "setup",
         "sign_in",
         "sign_out",
+        "watchlists",
     ]
