@@ -1,5 +1,6 @@
 """A person's watchlists, for people signed in."""
 
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,6 +9,8 @@ from api.dependencies import DatabaseDependency, SignedInDependency, signed_in
 from api.routers.market import MARKET_READ_RESPONSES
 from api.schemas.sessions import NotSignedInResponse
 from api.schemas.watchlist_management import (
+    AlertRequest,
+    AlertResponse,
     EntryRequest,
     EntryResponse,
     EntryVenueRequest,
@@ -29,11 +32,12 @@ Responses = dict[int | str, dict[str, Any]]
 NOT_FOUND: Responses = {status.HTTP_404_NOT_FOUND: {"model": WatchlistRefusedResponse}}
 CONFLICT: Responses = {status.HTTP_409_CONFLICT: {"model": WatchlistRefusedResponse}}
 UNADMITTED: Responses = {status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": WatchlistRefusedResponse}}
-# A list or entry the person does not keep answers 404; a name or instrument the list keeps already,
+# A list, entry or alert the person does not keep answers 404; a name or instrument the list keeps already,
 # 409; a change past a limit or onto a venue the instrument is not listed on, 422.
 REFUSED_AS = {
     "watchlist_not_found": status.HTTP_404_NOT_FOUND,
     "entry_not_found": status.HTTP_404_NOT_FOUND,
+    "alert_not_found": status.HTTP_404_NOT_FOUND,
     "watchlist_name_taken": status.HTTP_409_CONFLICT,
     "instrument_already_listed": status.HTTP_409_CONFLICT,
     "watchlist_limit_reached": status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -138,5 +142,32 @@ async def remove_entry(
     """Stop following an instrument; the entry ends and its history stays."""
     try:
         await watchlist_management.remove_entry(database, user.id, entry_id)
+    except WatchlistRefused as refused:
+        raise refusal(refused) from refused
+
+
+@router.put("/entries/{entry_id}/alert", responses=NOT_FOUND)
+async def set_alert(
+    entry_id: int, body: AlertRequest, user: SignedInDependency, database: DatabaseDependency
+) -> AlertResponse:
+    """Give an entry its alert, ending the one it held unless the rule is the same."""
+    try:
+        alert = await watchlist_management.set_alert(
+            database, user.id, entry_id, body.rule, Decimal(str(body.threshold))
+        )
+    except WatchlistRefused as refused:
+        raise refusal(refused) from refused
+    return AlertResponse.model_validate(alert)
+
+
+@router.delete(
+    "/entries/{entry_id}/alert", status_code=status.HTTP_204_NO_CONTENT, responses=NOT_FOUND
+)
+async def remove_alert(
+    entry_id: int, user: SignedInDependency, database: DatabaseDependency
+) -> None:
+    """End an entry's alert; its rules stay in its history."""
+    try:
+        await watchlist_management.remove_alert(database, user.id, entry_id)
     except WatchlistRefused as refused:
         raise refusal(refused) from refused

@@ -34,6 +34,72 @@
         "title": "AccountChangeRequest",
         "type": "object"
       },
+      "AlertRequest": {
+        "description": "The rule an entry's alert evaluates, in the unit the daily figures hold: a move beyond plus or\nminus a fraction (0.02 for 2%), a close above or below a price in rupees, delivery above or below\na percent, the spread above a number of basis points.",
+        "properties": {
+          "rule": {
+            "enum": [
+              "move_beyond",
+              "close_above",
+              "close_below",
+              "delivery_above",
+              "delivery_below",
+              "spread_above"
+            ],
+            "title": "Rule",
+            "type": "string"
+          },
+          "threshold": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 999999999999.0,
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rule",
+          "threshold"
+        ],
+        "title": "AlertRequest",
+        "type": "object"
+      },
+      "AlertResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rule": {
+            "enum": [
+              "move_beyond",
+              "close_above",
+              "close_below",
+              "delivery_above",
+              "delivery_below",
+              "spread_above"
+            ],
+            "title": "Rule",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "rule",
+          "threshold",
+          "created_at"
+        ],
+        "title": "AlertResponse",
+        "type": "object"
+      },
       "AuditEntryResponse": {
         "description": "An admin action: when, who acted, what they did, on whose account where it names one, and\nthe rest of what changed.",
         "properties": {
@@ -347,6 +413,16 @@
             "title": "Added At",
             "type": "string"
           },
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -369,7 +445,8 @@
           "watchlist_id",
           "isin",
           "venue",
-          "added_at"
+          "added_at",
+          "alert"
         ],
         "title": "EntryResponse",
         "type": "object"
@@ -2483,6 +2560,7 @@
               "watchlist_limit_reached",
               "watchlist_not_found",
               "entry_not_found",
+              "alert_not_found",
               "entry_limit_reached",
               "instrument_already_listed",
               "instrument_not_listed",
@@ -4412,6 +4490,133 @@
           }
         },
         "summary": "Change Entry Venue",
+        "tags": [
+          "watchlists"
+        ]
+      }
+    },
+    "/watchlists/entries/{entry_id}/alert": {
+      "delete": {
+        "description": "End an entry's alert; its rules stay in its history.",
+        "operationId": "remove_alert",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Alert",
+        "tags": [
+          "watchlists"
+        ]
+      },
+      "put": {
+        "description": "Give an entry its alert, ending the one it held unless the rule is the same.",
+        "operationId": "set_alert",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Alert",
         "tags": [
           "watchlists"
         ]

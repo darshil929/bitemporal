@@ -5,10 +5,12 @@ from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 import httpx
+import psycopg
 import pytest
 
 from api.config import ApiSettings
 from api.services import watchlist_management
+from fixtures.database import SEED_SCHEMA
 
 pytestmark = pytest.mark.anyio
 
@@ -179,3 +181,98 @@ async def test_a_person_s_entries_are_unchangeable_to_another(asha: Person, ravi
 
     assert refusal(changed) == refusal(removed) == (404, "entry_not_found")
     assert await asha.followed() == {"Watchlist": [(HDFC_BANK, "NSE")]}
+
+
+async def alert_on(person: Person, entry: int, rule: str, threshold: float) -> httpx.Response:
+    return await person.send(
+        "PUT", f"/watchlists/entries/{entry}/alert", {"rule": rule, "threshold": threshold}
+    )
+
+
+async def alerts(person: Person) -> list[tuple[str, str, float] | None]:
+    kept = (await person.send("GET", "/watchlists")).json()
+    return [
+        entry["alert"] and (entry["isin"], entry["alert"]["rule"], entry["alert"]["threshold"])
+        for watchlist in kept
+        for entry in watchlist["entries"]
+    ]
+
+
+async def test_an_entry_holds_one_alert_and_a_changed_rule_replaces_it(asha: Person) -> None:
+    entry = (await asha.follow(HDFC_BANK)).json()["id"]
+
+    moving = await alert_on(asha, entry, "move_beyond", 0.02)
+    same = await alert_on(asha, entry, "move_beyond", 0.02)
+    above = await alert_on(asha, entry, "close_above", 1050)
+
+    assert moving.status_code == 200
+    assert same.json() == moving.json()
+    assert above.json()["id"] != moving.json()["id"]
+    assert await alerts(asha) == [(HDFC_BANK, "close_above", 1050.0)]
+
+
+async def test_an_alert_moves_with_its_entry_to_another_venue(asha: Person) -> None:
+    entry = (await asha.follow(HDFC_BANK, venue="NSE")).json()["id"]
+    alert = (await alert_on(asha, entry, "delivery_above", 60)).json()
+
+    moved = (await asha.send("PATCH", f"/watchlists/entries/{entry}", {"venue": "BSE"})).json()
+
+    assert (moved["alert"]["rule"], moved["alert"]["threshold"]) == ("delivery_above", 60.0)
+    assert moved["alert"]["id"] != alert["id"]
+    assert await alerts(asha) == [(HDFC_BANK, "delivery_above", 60.0)]
+
+
+async def test_a_removed_alert_leaves_its_entry_watching_nothing(asha: Person) -> None:
+    entry = (await asha.follow(HDFC_BANK)).json()["id"]
+    await alert_on(asha, entry, "spread_above", 300)
+
+    removed = await asha.send("DELETE", f"/watchlists/entries/{entry}/alert")
+    again = await asha.send("DELETE", f"/watchlists/entries/{entry}/alert")
+
+    assert (removed.status_code, refusal(again)) == (204, (404, "alert_not_found"))
+    assert await alerts(asha) == [None]
+
+
+async def test_ending_an_entry_or_its_list_ends_its_alert(
+    asha: Person, seeded_postgres: str
+) -> None:
+    removed = (await asha.follow(HDFC_BANK)).json()
+    listed = (await asha.follow(INFOSYS)).json()
+    set_alerts = [
+        (await alert_on(asha, entry, "close_below", 900)).status_code
+        for entry in (removed["id"], listed["id"])
+    ]
+
+    await asha.send("DELETE", f"/watchlists/entries/{removed['id']}")
+    await asha.send("DELETE", f"/watchlists/{listed['watchlist_id']}")
+
+    with psycopg.connect(seeded_postgres, options=f"-csearch_path={SEED_SCHEMA}") as owner:
+        open_alerts = owner.execute(
+            "select count(*) from watchlist_alert where ended_at is null and entry_id = any(%s)",
+            ([removed["id"], listed["id"]],),
+        ).fetchone()
+    assert (set_alerts, open_alerts) == ([200, 200], (0,))
+
+
+@pytest.mark.parametrize(
+    ("rule", "threshold"),
+    [("move_beyond", 0), ("spread_above", -5), ("delivery_below", 100), ("price_above", 900)],
+)
+async def test_an_alert_holds_a_known_rule_and_a_threshold_it_can_cross(
+    asha: Person, rule: str, threshold: float
+) -> None:
+    entry = (await asha.follow(HDFC_BANK)).json()["id"]
+
+    assert (await alert_on(asha, entry, rule, threshold)).status_code == 422
+    assert await alerts(asha) == [None]
+
+
+async def test_a_person_s_alerts_are_unchangeable_to_another(asha: Person, ravi: Person) -> None:
+    entry = (await asha.follow(HDFC_BANK)).json()["id"]
+    await alert_on(asha, entry, "move_beyond", 0.02)
+
+    changed = await alert_on(ravi, entry, "move_beyond", 0.5)
+    removed = await ravi.send("DELETE", f"/watchlists/entries/{entry}/alert")
+
+    assert refusal(changed) == refusal(removed) == (404, "entry_not_found")
+    assert await alerts(asha) == [(HDFC_BANK, "move_beyond", 0.02)]

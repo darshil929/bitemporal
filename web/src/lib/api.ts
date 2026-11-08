@@ -530,6 +530,30 @@ export interface paths {
         patch: operations["change_entry_venue"];
         trace?: never;
     };
+    "/watchlists/entries/{entry_id}/alert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Alert
+         * @description Give an entry its alert, ending the one it held unless the rule is the same.
+         */
+        put: operations["set_alert"];
+        post?: never;
+        /**
+         * Remove Alert
+         * @description End an entry's alert; its rules stay in its history.
+         */
+        delete: operations["remove_alert"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/watchlists/{watchlist_id}": {
         parameters: {
             query?: never;
@@ -564,6 +588,38 @@ export interface components {
             disabled?: boolean | null;
             /** Role */
             role?: ("admin" | "member") | null;
+        };
+        /**
+         * AlertRequest
+         * @description The rule an entry's alert evaluates, in the unit the daily figures hold: a move beyond plus or
+         *     minus a fraction (0.02 for 2%), a close above or below a price in rupees, delivery above or below
+         *     a percent, the spread above a number of basis points.
+         */
+        AlertRequest: {
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "move_beyond" | "close_above" | "close_below" | "delivery_above" | "delivery_below" | "spread_above";
+            /** Threshold */
+            threshold: number;
+        };
+        /** AlertResponse */
+        AlertResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "move_beyond" | "close_above" | "close_below" | "delivery_above" | "delivery_below" | "spread_above";
+            /** Threshold */
+            threshold: number;
         };
         /**
          * AuditEntryResponse
@@ -688,6 +744,7 @@ export interface components {
              * Format: date-time
              */
             added_at: string;
+            alert: components["schemas"]["AlertResponse"] | null;
             /** Id */
             id: number;
             /** Isin */
@@ -1400,7 +1457,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "watchlist_name_taken" | "watchlist_limit_reached" | "watchlist_not_found" | "entry_not_found" | "entry_limit_reached" | "instrument_already_listed" | "instrument_not_listed" | "venue_not_listed";
+            reason: "watchlist_name_taken" | "watchlist_limit_reached" | "watchlist_not_found" | "entry_not_found" | "alert_not_found" | "entry_limit_reached" | "instrument_already_listed" | "instrument_not_listed" | "venue_not_listed";
         };
         /** WatchlistRefusedResponse */
         WatchlistRefusedResponse: {
@@ -2872,6 +2929,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    set_alert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_alert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
