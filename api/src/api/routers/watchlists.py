@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from api.dependencies import DatabaseDependency, SignedInDependency, signed_in
 from api.routers.market import MARKET_READ_RESPONSES
 from api.schemas.sessions import NotSignedInResponse
+from api.schemas.watchlist_daily_reads import WatchlistRowResponse, WatchlistRowsResponse
 from api.schemas.watchlist_management import (
     AlertRequest,
     AlertResponse,
@@ -18,7 +19,7 @@ from api.schemas.watchlist_management import (
     WatchlistRequest,
     WatchlistResponse,
 )
-from api.services import watchlist_management
+from api.services import watchlist_daily_reads, watchlist_management
 from api.services.watchlist_management import WatchlistRefused
 
 router = APIRouter(
@@ -171,3 +172,21 @@ async def remove_alert(
         await watchlist_management.remove_alert(database, user.id, entry_id)
     except WatchlistRefused as refused:
         raise refusal(refused) from refused
+
+
+@router.get("/{watchlist_id}/rows", responses=NOT_FOUND | MARKET_READ_RESPONSES)
+async def watchlist_rows(
+    watchlist_id: int, user: SignedInDependency, database: DatabaseDependency
+) -> WatchlistRowsResponse:
+    """A list's entries with each instrument's newest session at the entry's venue."""
+    try:
+        found = await watchlist_daily_reads.watchlist_rows(database, user.id, watchlist_id)
+    except WatchlistRefused as refused:
+        raise refusal(refused) from refused
+    return WatchlistRowsResponse(
+        watchlist_id=found.watchlist.id,
+        name=found.watchlist.name,
+        is_default=found.watchlist.is_default,
+        published_day=found.published_day,
+        rows=[WatchlistRowResponse.model_validate(row) for row in found.rows],
+    )

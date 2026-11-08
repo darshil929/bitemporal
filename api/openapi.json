@@ -2647,6 +2647,243 @@
         ],
         "title": "WatchlistResponse",
         "type": "object"
+      },
+      "WatchlistRowResponse": {
+        "description": "An entry on its venue's newest session up to the published day. Returns are fractions of\nthe previous close on adjusted prices, delivery a percent of the volume, the spread basis points\nbetween the venues' closes; `is_stale` where the venue held a later session, `superseded_by` the\nISIN that took a replaced one over.",
+        "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change 1D"
+          },
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "delivery_pct_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Pct 1D"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          },
+          "is_diverging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Diverging"
+          },
+          "is_stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Stale"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "local_symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Symbol"
+          },
+          "primary_venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Venue"
+          },
+          "return_1d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return 1D"
+          },
+          "return_1m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return 1M"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
+          "trade_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Date"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "venue_spread_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Spread Bps"
+          }
+        },
+        "required": [
+          "entry_id",
+          "isin",
+          "venue",
+          "display_name",
+          "local_symbol",
+          "primary_venue",
+          "superseded_by",
+          "trade_date",
+          "is_stale",
+          "close",
+          "change_1d",
+          "return_1d",
+          "return_1m",
+          "delivery_pct_1d",
+          "venue_spread_bps",
+          "is_diverging",
+          "alert"
+        ],
+        "title": "WatchlistRowResponse",
+        "type": "object"
+      },
+      "WatchlistRowsResponse": {
+        "description": "A list's entries in the order added and the day the daily features were published.",
+        "properties": {
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "published_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Day"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistRowResponse"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "watchlist_id": {
+            "title": "Watchlist Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "watchlist_id",
+          "name",
+          "is_default",
+          "published_day",
+          "rows"
+        ],
+        "title": "WatchlistRowsResponse",
+        "type": "object"
       }
     }
   },
@@ -4753,6 +4990,79 @@
           }
         },
         "summary": "Rename Watchlist",
+        "tags": [
+          "watchlists"
+        ]
+      }
+    },
+    "/watchlists/{watchlist_id}/rows": {
+      "get": {
+        "description": "A list's entries with each instrument's newest session at the entry's venue.",
+        "operationId": "watchlist_rows",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "watchlist_id",
+            "required": true,
+            "schema": {
+              "title": "Watchlist Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRowsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Watchlist Rows",
         "tags": [
           "watchlists"
         ]

@@ -54,5 +54,6 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "setup",
         "sign_in",
         "sign_out",
+        "watchlist_rows",
         "watchlists",
     ]
