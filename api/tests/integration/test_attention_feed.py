@@ -92,5 +92,8 @@ async def test_nothing_needs_attention_on_a_quiet_day(
 
     assert {kind: found[kind] for kind in found if kind != "published_day"} == {
         "alerts": [],
+        "incomplete_sessions": [],
+        "divergences": [],
         "superseded": [],
+        "unhandled_actions": [],
     }

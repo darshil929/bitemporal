@@ -8,7 +8,7 @@ from api.services.watchlist_management import Alert, Entry
 
 DAY = date(2026, 11, 6)
 SET = datetime(2026, 11, 2, tzinfo=UTC)
-HDFC_BANK, INFOSYS = "INE040A01034", "INE009A01021"
+HDFC_BANK, INFOSYS, RPSG = "INE040A01034", "INE009A01021", "INE425Y01011"
 BAJAJ_BEFORE_SPLIT, BAJAJ = "INE296A01024", "INE296A01032"
 
 
@@ -30,6 +30,9 @@ def facts(**known: object) -> MarketFacts:
         "published_day": DAY,
         "identities": identities,
         "venue_sessions": {"NSE": DAY, "BSE": DAY},
+        "incomplete": [],
+        "diverging": {},
+        "unhandled": [],
     }
     return MarketFacts(**(defaults | known))  # type: ignore[arg-type]
 
@@ -53,6 +56,37 @@ def test_an_alert_the_newest_session_triggered_is_listed_alone() -> None:
     ]
 
 
+def test_a_held_instrument_is_listed_once_and_an_unheld_one_not_at_all() -> None:
+    entries = (entry(1, HDFC_BANK), entry(2, HDFC_BANK, watchlist_id=2))
+    unhandled = [
+        SimpleNamespace(
+            isin=HDFC_BANK, ex_date=date(2026, 10, 20), purpose="Scheme of Arrangement"
+        ),
+        SimpleNamespace(isin=INFOSYS, ex_date=date(2026, 10, 21), purpose="Buy Back of Shares"),
+    ]
+
+    found = attention(
+        entries, {}, facts(diverging={HDFC_BANK: 612.0, RPSG: 658.0}, unhandled=unhandled)
+    )
+
+    assert [(item.isin, item.venue_spread_bps) for item in found.divergences] == [
+        (HDFC_BANK, 612.0)
+    ]
+    assert [(item.isin, item.purpose) for item in found.unhandled_actions] == [
+        (HDFC_BANK, "Scheme of Arrangement")
+    ]
+
+
+def test_each_venue_whose_published_session_failed_its_checks_is_listed() -> None:
+    incomplete = [
+        SimpleNamespace(venue="BSE", divergent_instruments=1, detail="1 instruments diverge")
+    ]
+
+    found = attention((), {}, facts(incomplete=incomplete))
+
+    assert [(item.venue, item.trade_date) for item in found.incomplete_sessions] == [("BSE", DAY)]
+
+
 def test_a_replaced_isin_is_listed_once_with_its_successor() -> None:
     entries = (entry(1, BAJAJ_BEFORE_SPLIT), entry(2, BAJAJ_BEFORE_SPLIT, watchlist_id=2))
 
@@ -66,4 +100,5 @@ def test_a_replaced_isin_is_listed_once_with_its_successor() -> None:
 def test_nothing_needs_attention_on_a_quiet_day() -> None:
     found = attention((entry(1, HDFC_BANK, alert=11),), {}, facts())
 
-    assert (found.alerts, found.superseded) == ((), ())
+    assert (found.alerts, found.incomplete_sessions, found.divergences) == ((), (), ())
+    assert (found.superseded, found.unhandled_actions) == ((), ())

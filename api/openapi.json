@@ -110,6 +110,20 @@
             "title": "Alerts",
             "type": "array"
           },
+          "divergences": {
+            "items": {
+              "$ref": "#/components/schemas/DivergenceResponse"
+            },
+            "title": "Divergences",
+            "type": "array"
+          },
+          "incomplete_sessions": {
+            "items": {
+              "$ref": "#/components/schemas/IncompleteSessionResponse"
+            },
+            "title": "Incomplete Sessions",
+            "type": "array"
+          },
           "published_day": {
             "anyOf": [
               {
@@ -128,12 +142,22 @@
             },
             "title": "Superseded",
             "type": "array"
+          },
+          "unhandled_actions": {
+            "items": {
+              "$ref": "#/components/schemas/api__schemas__attention_feed__UnhandledActionResponse"
+            },
+            "title": "Unhandled Actions",
+            "type": "array"
           }
         },
         "required": [
           "published_day",
           "alerts",
-          "superseded"
+          "incomplete_sessions",
+          "divergences",
+          "superseded",
+          "unhandled_actions"
         ],
         "title": "AttentionResponse",
         "type": "object"
@@ -405,6 +429,44 @@
         "title": "CorporateActionResponse",
         "type": "object"
       },
+      "DivergenceResponse": {
+        "description": "A held instrument whose venues' closes diverge on the published day, in basis points.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "venue_spread_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Spread Bps"
+          }
+        },
+        "required": [
+          "isin",
+          "display_name",
+          "venue_spread_bps"
+        ],
+        "title": "DivergenceResponse",
+        "type": "object"
+      },
       "EntryRequest": {
         "description": "An instrument to follow, on the venue named or else its primary venue, in the list named or\nelse the default, which a person keeping no list gains under the name Watchlist.",
         "properties": {
@@ -558,6 +620,43 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IncompleteSessionResponse": {
+        "description": "A venue's session on the published day that failed its checks, and why.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "divergent_instruments": {
+            "title": "Divergent Instruments",
+            "type": "integer"
+          },
+          "trade_date": {
+            "format": "date",
+            "title": "Trade Date",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "venue",
+          "trade_date",
+          "divergent_instruments",
+          "detail"
+        ],
+        "title": "IncompleteSessionResponse",
         "type": "object"
       },
       "InstrumentMatchResponse": {
@@ -1263,7 +1362,7 @@
           },
           "unhandled_actions": {
             "items": {
-              "$ref": "#/components/schemas/UnhandledActionResponse"
+              "$ref": "#/components/schemas/api__schemas__screener_queries__UnhandledActionResponse"
             },
             "title": "Unhandled Actions",
             "type": "array"
@@ -2042,7 +2141,7 @@
           },
           "unhandled_actions": {
             "items": {
-              "$ref": "#/components/schemas/UnhandledActionResponse"
+              "$ref": "#/components/schemas/api__schemas__screener_queries__UnhandledActionResponse"
             },
             "title": "Unhandled Actions",
             "type": "array"
@@ -2589,26 +2688,6 @@
         "title": "TriggeredAlertResponse",
         "type": "object"
       },
-      "UnhandledActionResponse": {
-        "description": "A corporate action the adjusted prices do not account for, and the venue's text for it.",
-        "properties": {
-          "ex_date": {
-            "format": "date",
-            "title": "Ex Date",
-            "type": "string"
-          },
-          "purpose": {
-            "title": "Purpose",
-            "type": "string"
-          }
-        },
-        "required": [
-          "ex_date",
-          "purpose"
-        ],
-        "title": "UnhandledActionResponse",
-        "type": "object"
-      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3124,6 +3203,70 @@
         ],
         "title": "WatchlistRowsResponse",
         "type": "object"
+      },
+      "api__schemas__attention_feed__UnhandledActionResponse": {
+        "description": "A corporate action no factor adjusts on a held instrument, within the sessions a month's\nreturn reads.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "ex_date": {
+            "format": "date",
+            "title": "Ex Date",
+            "type": "string"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "required": [
+          "isin",
+          "display_name",
+          "ex_date",
+          "purpose"
+        ],
+        "title": "UnhandledActionResponse",
+        "type": "object"
+      },
+      "api__schemas__screener_queries__UnhandledActionResponse": {
+        "description": "A corporate action the adjusted prices do not account for, and the venue's text for it.",
+        "properties": {
+          "ex_date": {
+            "format": "date",
+            "title": "Ex Date",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ex_date",
+          "purpose"
+        ],
+        "title": "UnhandledActionResponse",
+        "type": "object"
       }
     }
   },
@@ -3495,7 +3638,7 @@
     },
     "/attention": {
       "get": {
-        "description": "The person's alerts the newest session triggered and the entries whose ISIN was replaced.",
+        "description": "The person's alerts the newest session triggered, the venues whose session on the published\nday failed its checks, and, among the instruments the person's watchlists hold, divergences,\nreplaced ISINs and unadjusted corporate actions within a month's sessions.",
         "operationId": "needs_attention",
         "responses": {
           "200": {
