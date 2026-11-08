@@ -1,9 +1,9 @@
 """Bodies of the watchlist reads and changes."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 WatchlistName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)
@@ -35,6 +35,37 @@ class EntryVenueRequest(BaseModel):
     venue: Venue
 
 
+AlertRule = Literal[
+    "move_beyond", "close_above", "close_below", "delivery_above", "delivery_below", "spread_above"
+]
+# The largest figure a stored threshold holds.
+LARGEST_THRESHOLD = 999_999_999_999
+
+
+class AlertRequest(BaseModel):
+    """The rule an entry's alert evaluates, in the unit the daily figures hold: a move beyond plus or
+    minus a fraction (0.02 for 2%), a close above or below a price in rupees, delivery above or below
+    a percent, the spread above a number of basis points."""
+
+    rule: AlertRule
+    threshold: Annotated[float, Field(gt=0, le=LARGEST_THRESHOLD)]
+
+    @model_validator(mode="after")
+    def delivery_below_whole(self) -> Self:
+        if self.rule.startswith("delivery") and self.threshold >= 100:
+            raise ValueError("a delivery threshold is a percent below 100")
+        return self
+
+
+class AlertResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    rule: AlertRule
+    threshold: float
+    created_at: datetime
+
+
 class EntryResponse(BaseModel):
     """An instrument a list follows on one venue, since it was added there."""
 
@@ -45,6 +76,7 @@ class EntryResponse(BaseModel):
     isin: str
     venue: str
     added_at: datetime
+    alert: AlertResponse | None
 
 
 class WatchlistResponse(BaseModel):
@@ -66,6 +98,7 @@ class WatchlistRefused(BaseModel):
         "watchlist_limit_reached",
         "watchlist_not_found",
         "entry_not_found",
+        "alert_not_found",
         "entry_limit_reached",
         "instrument_already_listed",
         "instrument_not_listed",
