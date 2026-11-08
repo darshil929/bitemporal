@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.dependencies import DatabaseDependency, SignedInDependency, signed_in
 from api.routers.market import MARKET_READ_RESPONSES
+from api.schemas.key_figures import SourceResponse
 from api.schemas.sessions import NotSignedInResponse
 from api.schemas.watchlist_daily_reads import WatchlistRowResponse, WatchlistRowsResponse
 from api.schemas.watchlist_management import (
@@ -191,4 +192,5 @@ async def watchlist_rows(
         published_day=found.published_day,
         triggered=found.triggered,
         rows=[WatchlistRowResponse.model_validate(row) for row in found.rows],
+        sources=[SourceResponse.model_validate(source) for source in found.sources],
     )

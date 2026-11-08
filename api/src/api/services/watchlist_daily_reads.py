@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.database import Database
 from api.services import watchlist_management
+from api.services.key_figures import SOURCES, Source, sources_read
 from api.services.market_reads import read_marts
 from api.services.price_history import number
 from api.services.watchlist_management import Alert, Entry, Watchlist, WatchlistRefused
@@ -56,6 +57,14 @@ DIVERGING = text(
     "select isin, trade_date, is_diverging from mart_daily_features"
     " where isin = any(:currents) and trade_date = any(:days)"
 )
+TREND_SESSIONS = 22
+# The trend's sessions within the window before each day they end on, under the ISIN that holds the
+# series.
+TRENDS = text(
+    "select isin, venue, source_isin, close from mart_adjusted_prices"
+    " where isin = any(:currents) and trade_date > :since and trade_date <= :day"
+    " order by trade_date"
+)
 LATEST_VERDICTS = text(
     "select distinct on (alert_id) alert_id, trade_date, status, figure, paused_reason"
     " from watchlist_alert_evaluation where alert_id = any(:alerts)"
@@ -94,6 +103,7 @@ class WatchlistRow:
     delivery_pct_1d: float | None
     venue_spread_bps: float | None
     is_diverging: bool | None
+    trend_1m: tuple[float, ...] | None
     alert: Alert | None
     verdict: Verdict | None
 
@@ -103,6 +113,7 @@ class WatchlistRows:
     watchlist: Watchlist
     published_day: date | None
     rows: tuple[WatchlistRow, ...]
+    sources: tuple[Source, ...]
 
     @property
     def triggered(self) -> int:
@@ -122,6 +133,8 @@ class MarketFacts:
     figures: dict[tuple[str, str, date], Any]
     spreads: dict[tuple[str, date], Any]
     diverging: dict[tuple[str, date], bool | None]
+    trends: dict[tuple[str, str, str, date], list[float]]
+    sources: tuple[Source, ...]
 
 
 def venue_day(row: Any) -> tuple[str, str, date]:
@@ -149,6 +162,30 @@ async def _market_facts(transaction: AsyncSession, entries: tuple[Entry, ...]) -
         }
     days = sorted(set(last_sessions.values()))
     on_days = {"isins": isins, "currents": currents, "days": days}
+    figures = {venue_day(row): row for row in await transaction.execute(FIGURES, on_days)}
+    spreads = {
+        (row.isin, row.trade_date): row for row in await transaction.execute(SPREADS, on_days)
+    }
+    trends: dict[tuple[str, str, str, date], list[float]] = {}
+    for day in days:
+        window = {"currents": currents, "since": day - RECENT_WINDOW, "day": day}
+        for isin, venue, source_isin, close in await transaction.execute(TRENDS, window):
+            trends.setdefault((isin, venue, source_isin, day), []).append(float(close))
+    names: list[str] = []
+    for entry in entries:
+        day = last_sessions.get((entry.isin, entry.venue))
+        if day is None:
+            continue
+        current = identities[entry.isin].current_isin if entry.isin in identities else entry.isin
+        shown = figures.get((current, entry.venue, day))
+        spread = spreads.get((entry.isin, day))
+        delivery = shown.delivery_pct_1d if shown else None
+        names += sources_read(entry.venue, delivery, spread.venue_spread_bps if spread else None)
+    names = list(dict.fromkeys(names))
+    listed = {
+        row.source_id: Source(*row)
+        for row in await transaction.execute(SOURCES, {"sources": names})
+    }
     return MarketFacts(
         published_day=published,
         identities=identities,
@@ -159,14 +196,14 @@ async def _market_facts(transaction: AsyncSession, entries: tuple[Entry, ...]) -
         last_sessions=last_sessions,
         venue_sessions=dict((await transaction.execute(VENUE_SESSIONS, scope)).tuples().all()),
         closes={venue_day(row): row for row in await transaction.execute(CLOSES, on_days)},
-        figures={venue_day(row): row for row in await transaction.execute(FIGURES, on_days)},
-        spreads={
-            (row.isin, row.trade_date): row for row in await transaction.execute(SPREADS, on_days)
-        },
+        figures=figures,
+        spreads=spreads,
         diverging={
             (row.isin, row.trade_date): row.is_diverging
             for row in await transaction.execute(DIVERGING, on_days)
         },
+        trends=trends,
+        sources=tuple(listed[name] for name in names if name in listed),
     )
 
 
@@ -178,6 +215,8 @@ def _row(entry: Entry, facts: MarketFacts, verdict: Verdict | None) -> Watchlist
     figures = facts.figures.get((current, entry.venue, day)) if day else None
     spread = facts.spreads.get((entry.isin, day)) if day else None
     latest = facts.venue_sessions.get(entry.venue)
+    source_isin = entry.isin if current != entry.isin else current
+    trend = facts.trends.get((current, entry.venue, source_isin, day), []) if day else []
     return WatchlistRow(
         entry_id=entry.id,
         isin=entry.isin,
@@ -195,6 +234,7 @@ def _row(entry: Entry, facts: MarketFacts, verdict: Verdict | None) -> Watchlist
         delivery_pct_1d=figures.delivery_pct_1d if figures else None,
         venue_spread_bps=number(spread.venue_spread_bps) if spread else None,
         is_diverging=facts.diverging.get((current, day)) if day else None,
+        trend_1m=tuple(trend[-TREND_SESSIONS:]) if len(trend) >= TREND_SESSIONS else None,
         alert=entry.alert,
         verdict=verdict,
     )
@@ -220,4 +260,4 @@ async def watchlist_rows(database: Database, owner: int, watchlist_id: int) -> W
         _row(entry, facts, verdicts.get(entry.alert.id) if entry.alert else None)
         for entry in watchlist.entries
     )
-    return WatchlistRows(watchlist, facts.published_day, rows)
+    return WatchlistRows(watchlist, facts.published_day, rows, facts.sources)
