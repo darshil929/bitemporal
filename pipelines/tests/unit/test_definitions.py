@@ -69,6 +69,16 @@ def test_both_flows_compute_the_daily_features() -> None:
         assert AssetKey("daily_features") in job.asset_layer.selected_asset_keys
 
 
+def test_both_flows_judge_watchlist_alerts_once_the_features_are_published() -> None:
+    alerts = AssetKey("watchlist_alert_evaluation")
+
+    assert (
+        AssetKey("daily_feature_publication") in defs.resolve_asset_graph().get(alerts).parent_keys
+    )
+    for name in ("history_bootstrap", "daily_sync"):
+        assert alerts in defs.resolve_job_def(name).asset_layer.selected_asset_keys
+
+
 def test_the_models_wait_for_both_venues_corporate_actions() -> None:
     writers = defs.resolve_asset_graph().get(AssetKey(["market", "corporate_action"])).parent_keys
 
