@@ -2523,6 +2523,59 @@
         "title": "VenueSessionResponse",
         "type": "object"
       },
+      "VerdictResponse": {
+        "description": "The alert's verdict on the latest session judged, with the figure its rule compared.",
+        "properties": {
+          "figure": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure"
+          },
+          "paused_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_traded",
+                  "capital_action"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Reason"
+          },
+          "status": {
+            "enum": [
+              "triggered",
+              "watching",
+              "paused"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trade_date": {
+            "format": "date",
+            "title": "Trade Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trade_date",
+          "status",
+          "figure",
+          "paused_reason"
+        ],
+        "title": "VerdictResponse",
+        "type": "object"
+      },
       "ViewRefused": {
         "properties": {
           "reason": {
@@ -2649,7 +2702,7 @@
         "type": "object"
       },
       "WatchlistRowResponse": {
-        "description": "An entry on its venue's newest session up to the published day. Returns are fractions of\nthe previous close on adjusted prices, delivery a percent of the volume, the spread basis points\nbetween the venues' closes; `is_stale` where the venue held a later session, `superseded_by` the\nISIN that took a replaced one over.",
+        "description": "An entry on its venue's newest session up to the published day. Returns are fractions of\nthe previous close on adjusted prices, delivery a percent of the volume, the spread basis points\nbetween the venues' closes; `is_stale` where the venue held a later session, `superseded_by` the\nISIN that took a replaced one over, `verdict` null until the alert is first judged.",
         "properties": {
           "alert": {
             "anyOf": [
@@ -2816,6 +2869,16 @@
               }
             ],
             "title": "Venue Spread Bps"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerdictResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2835,13 +2898,14 @@
           "delivery_pct_1d",
           "venue_spread_bps",
           "is_diverging",
-          "alert"
+          "alert",
+          "verdict"
         ],
         "title": "WatchlistRowResponse",
         "type": "object"
       },
       "WatchlistRowsResponse": {
-        "description": "A list's entries in the order added and the day the daily features were published.",
+        "description": "A list's entries in the order added, the day the daily features were published, and how many\nalerts the latest sessions triggered.",
         "properties": {
           "is_default": {
             "title": "Is Default",
@@ -2870,6 +2934,10 @@
             "title": "Rows",
             "type": "array"
           },
+          "triggered": {
+            "title": "Triggered",
+            "type": "integer"
+          },
           "watchlist_id": {
             "title": "Watchlist Id",
             "type": "integer"
@@ -2880,6 +2948,7 @@
           "name",
           "is_default",
           "published_day",
+          "triggered",
           "rows"
         ],
         "title": "WatchlistRowsResponse",
@@ -4997,7 +5066,7 @@
     },
     "/watchlists/{watchlist_id}/rows": {
       "get": {
-        "description": "A list's entries with each instrument's newest session at the entry's venue.",
+        "description": "A list's entries with each instrument's newest session at the entry's venue and the alert's\nlatest verdict.",
         "operationId": "watchlist_rows",
         "parameters": [
           {

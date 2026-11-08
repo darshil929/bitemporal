@@ -584,7 +584,8 @@ export interface paths {
         };
         /**
          * Watchlist Rows
-         * @description A list's entries with each instrument's newest session at the entry's venue.
+         * @description A list's entries with each instrument's newest session at the entry's venue and the alert's
+         *     latest verdict.
          */
         get: operations["watchlist_rows"];
         put?: never;
@@ -1459,6 +1460,26 @@ export interface components {
              */
             venue: "BSE" | "NSE";
         };
+        /**
+         * VerdictResponse
+         * @description The alert's verdict on the latest session judged, with the figure its rule compared.
+         */
+        VerdictResponse: {
+            /** Figure */
+            figure: number | null;
+            /** Paused Reason */
+            paused_reason: ("not_traded" | "capital_action") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "triggered" | "watching" | "paused";
+            /**
+             * Trade Date
+             * Format: date
+             */
+            trade_date: string;
+        };
         /** ViewRefused */
         ViewRefused: {
             /**
@@ -1520,7 +1541,7 @@ export interface components {
          * @description An entry on its venue's newest session up to the published day. Returns are fractions of
          *     the previous close on adjusted prices, delivery a percent of the volume, the spread basis points
          *     between the venues' closes; `is_stale` where the venue held a later session, `superseded_by` the
-         *     ISIN that took a replaced one over.
+         *     ISIN that took a replaced one over, `verdict` null until the alert is first judged.
          */
         WatchlistRowResponse: {
             alert: components["schemas"]["AlertResponse"] | null;
@@ -1556,10 +1577,12 @@ export interface components {
             venue: string;
             /** Venue Spread Bps */
             venue_spread_bps: number | null;
+            verdict: components["schemas"]["VerdictResponse"] | null;
         };
         /**
          * WatchlistRowsResponse
-         * @description A list's entries in the order added and the day the daily features were published.
+         * @description A list's entries in the order added, the day the daily features were published, and how many
+         *     alerts the latest sessions triggered.
          */
         WatchlistRowsResponse: {
             /** Is Default */
@@ -1570,6 +1593,8 @@ export interface components {
             published_day: string | null;
             /** Rows */
             rows: components["schemas"]["WatchlistRowResponse"][];
+            /** Triggered */
+            triggered: number;
             /** Watchlist Id */
             watchlist_id: number;
         };
