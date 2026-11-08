@@ -20,6 +20,8 @@ router = APIRouter(
 async def needs_attention(
     user: SignedInDependency, database: DatabaseDependency
 ) -> AttentionResponse:
-    """The person's alerts the newest session triggered and the entries whose ISIN was replaced."""
+    """The person's alerts the newest session triggered, the venues whose session on the published
+    day failed its checks, and, among the instruments the person's watchlists hold, divergences,
+    replaced ISINs and unadjusted corporate actions within a month's sessions."""
     found = await attention_feed.attention_feed(database, user.id)
     return AttentionResponse.model_validate(found)

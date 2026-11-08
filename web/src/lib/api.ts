@@ -121,7 +121,9 @@ export interface paths {
         };
         /**
          * Needs Attention
-         * @description The person's alerts the newest session triggered and the entries whose ISIN was replaced.
+         * @description The person's alerts the newest session triggered, the venues whose session on the published
+         *     day failed its checks, and, among the instruments the person's watchlists hold, divergences,
+         *     replaced ISINs and unadjusted corporate actions within a month's sessions.
          */
         get: operations["needs_attention"];
         put?: never;
@@ -669,10 +671,16 @@ export interface components {
         AttentionResponse: {
             /** Alerts */
             alerts: components["schemas"]["TriggeredAlertResponse"][];
+            /** Divergences */
+            divergences: components["schemas"]["DivergenceResponse"][];
+            /** Incomplete Sessions */
+            incomplete_sessions: components["schemas"]["IncompleteSessionResponse"][];
             /** Published Day */
             published_day: string | null;
             /** Superseded */
             superseded: components["schemas"]["SupersededEntryResponse"][];
+            /** Unhandled Actions */
+            unhandled_actions: components["schemas"]["api__schemas__attention_feed__UnhandledActionResponse"][];
         };
         /**
          * AuditEntryResponse
@@ -775,6 +783,18 @@ export interface components {
             venues_differ: boolean;
         };
         /**
+         * DivergenceResponse
+         * @description A held instrument whose venues' closes diverge on the published day, in basis points.
+         */
+        DivergenceResponse: {
+            /** Display Name */
+            display_name: string | null;
+            /** Isin */
+            isin: string;
+            /** Venue Spread Bps */
+            venue_spread_bps: number | null;
+        };
+        /**
          * EntryRequest
          * @description An instrument to follow, on the venue named or else its primary venue, in the list named or
          *     else the default, which a person keeping no list gains under the name Watchlist.
@@ -836,6 +856,23 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /**
+         * IncompleteSessionResponse
+         * @description A venue's session on the published day that failed its checks, and why.
+         */
+        IncompleteSessionResponse: {
+            /** Detail */
+            detail: string | null;
+            /** Divergent Instruments */
+            divergent_instruments: number;
+            /**
+             * Trade Date
+             * Format: date
+             */
+            trade_date: string;
+            /** Venue */
+            venue: string;
         };
         /**
          * InstrumentMatchResponse
@@ -1054,7 +1091,7 @@ export interface components {
             /** Symbol */
             symbol: string | null;
             /** Unhandled Actions */
-            unhandled_actions: components["schemas"]["UnhandledActionResponse"][];
+            unhandled_actions: components["schemas"]["api__schemas__screener_queries__UnhandledActionResponse"][];
             /** Volume Ratio 20D */
             volume_ratio_20d: number | null;
         };
@@ -1301,7 +1338,7 @@ export interface components {
             /** Trend 3M */
             trend_3m: number[] | null;
             /** Unhandled Actions */
-            unhandled_actions: components["schemas"]["UnhandledActionResponse"][];
+            unhandled_actions: components["schemas"]["api__schemas__screener_queries__UnhandledActionResponse"][];
             /** Venue Spread Bps */
             venue_spread_bps: number | null;
         };
@@ -1499,19 +1536,6 @@ export interface components {
             /** Watchlist Id */
             watchlist_id: number;
         };
-        /**
-         * UnhandledActionResponse
-         * @description A corporate action the adjusted prices do not account for, and the venue's text for it.
-         */
-        UnhandledActionResponse: {
-            /**
-             * Ex Date
-             * Format: date
-             */
-            ex_date: string;
-            /** Purpose */
-            purpose: string;
-        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1676,6 +1700,37 @@ export interface components {
             triggered: number;
             /** Watchlist Id */
             watchlist_id: number;
+        };
+        /**
+         * UnhandledActionResponse
+         * @description A corporate action no factor adjusts on a held instrument, within the sessions a month's
+         *     return reads.
+         */
+        api__schemas__attention_feed__UnhandledActionResponse: {
+            /** Display Name */
+            display_name: string | null;
+            /**
+             * Ex Date
+             * Format: date
+             */
+            ex_date: string;
+            /** Isin */
+            isin: string;
+            /** Purpose */
+            purpose: string | null;
+        };
+        /**
+         * UnhandledActionResponse
+         * @description A corporate action the adjusted prices do not account for, and the venue's text for it.
+         */
+        api__schemas__screener_queries__UnhandledActionResponse: {
+            /**
+             * Ex Date
+             * Format: date
+             */
+            ex_date: string;
+            /** Purpose */
+            purpose: string;
         };
     };
     responses: never;
