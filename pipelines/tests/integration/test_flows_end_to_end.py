@@ -100,3 +100,5 @@ def test_a_bootstrap_then_a_sync_over_the_same_week_load_it_once(
         sync.asset_materializations_for_node("daily_features")[0].metadata["rows"].value
         == (instruments[0][0])
     )
+    judged = sync.asset_materializations_for_node("watchlist_alert_evaluation")[0].metadata
+    assert judged["verdicts"].value == 0
