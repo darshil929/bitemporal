@@ -62,6 +62,8 @@ WATCHLIST_ALERT_RULES = (
     "delivery_below",
     "spread_above",
 )
+ALERT_STATUSES = ("triggered", "watching", "paused")
+ALERT_PAUSED_REASONS = ("not_traded", "capital_action")
 ADMIN_ACTIONS = (
     "first_admin_created",
     "person_added",
@@ -759,6 +761,8 @@ class WatchlistAlert(Base):
         ForeignKeyConstraint(
             ["entry_id", "owner_id"], ["watchlist_entry.id", "watchlist_entry.owner_id"]
         ),
+        # The target of the verdicts' key, which holds a verdict to an alert of the same person.
+        UniqueConstraint("id", "owner_id"),
         CheckConstraint(_in_list("rule", WATCHLIST_ALERT_RULES), name="rule"),
         CheckConstraint(
             "threshold > 0 and (rule not like 'delivery%' or threshold < 100)", name="threshold"
@@ -771,4 +775,41 @@ class WatchlistAlert(Base):
             unique=True,
             postgresql_where=text("ended_at is null"),
         ),
+    )
+
+
+class WatchlistAlertEvaluation(Base):
+    """An alert's verdict on a session its entry's venue published, with the figure its rule
+    compared; appended, never changed, and judged again under a later as-of date when the figure is
+    corrected."""
+
+    __tablename__ = "watchlist_alert_evaluation"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"), index=True)
+    alert_id: Mapped[int] = mapped_column(BigInteger)
+    trade_date: Mapped[date] = mapped_column(Date)
+    as_of_date: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(Text)
+    # Empty where the session holds no such figure: no delivery, or one venue for a spread.
+    figure: Mapped[float | None] = mapped_column(Double)
+    paused_reason: Mapped[str | None] = mapped_column(Text)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["alert_id", "owner_id"], ["watchlist_alert.id", "watchlist_alert.owner_id"]
+        ),
+        UniqueConstraint("owner_id", "alert_id", "trade_date", "as_of_date"),
+        CheckConstraint(_in_list("status", ALERT_STATUSES), name="status"),
+        CheckConstraint(
+            f"paused_reason is null or {_in_list('paused_reason', ALERT_PAUSED_REASONS)}",
+            name="paused_reason",
+        ),
+        CheckConstraint(
+            "(status = 'paused') = (paused_reason is not null)", name="paused_with_reason"
+        ),
+        CheckConstraint("as_of_date >= trade_date", name="known_after"),
     )
