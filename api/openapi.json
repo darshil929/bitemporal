@@ -100,6 +100,44 @@
         "title": "AlertResponse",
         "type": "object"
       },
+      "AttentionResponse": {
+        "description": "What needs the person's attention on the published day; every list empty when nothing does.",
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/TriggeredAlertResponse"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "published_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Day"
+          },
+          "superseded": {
+            "items": {
+              "$ref": "#/components/schemas/SupersededEntryResponse"
+            },
+            "title": "Superseded",
+            "type": "array"
+          }
+        },
+        "required": [
+          "published_day",
+          "alerts",
+          "superseded"
+        ],
+        "title": "AttentionResponse",
+        "type": "object"
+      },
       "AuditEntryResponse": {
         "description": "An admin action: when, who acted, what they did, on whose account where it names one, and\nthe rest of what changed.",
         "properties": {
@@ -2441,6 +2479,116 @@
         "title": "StrictestCriterionResponse",
         "type": "object"
       },
+      "SupersededEntryResponse": {
+        "description": "An entry whose ISIN a change of face value replaced, and the ISIN that took it over.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "superseded_by": {
+            "title": "Superseded By",
+            "type": "string"
+          },
+          "watchlist_id": {
+            "title": "Watchlist Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id",
+          "watchlist_id",
+          "isin",
+          "display_name",
+          "superseded_by"
+        ],
+        "title": "SupersededEntryResponse",
+        "type": "object"
+      },
+      "TriggeredAlertResponse": {
+        "description": "An alert the newest session at its venue triggered, with the figure its rule compared.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          },
+          "figure": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          },
+          "trade_date": {
+            "format": "date",
+            "title": "Trade Date",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "watchlist_id": {
+            "title": "Watchlist Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id",
+          "watchlist_id",
+          "isin",
+          "display_name",
+          "venue",
+          "rule",
+          "threshold",
+          "trade_date",
+          "figure"
+        ],
+        "title": "TriggeredAlertResponse",
+        "type": "object"
+      },
       "UnhandledActionResponse": {
         "description": "A corporate action the adjusted prices do not account for, and the venue's text for it.",
         "properties": {
@@ -3342,6 +3490,48 @@
         "summary": "Reset Password",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/attention": {
+      "get": {
+        "description": "The person's alerts the newest session triggered and the entries whose ISIN was replaced.",
+        "operationId": "needs_attention",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Needs Attention",
+        "tags": [
+          "attention"
         ]
       }
     },
