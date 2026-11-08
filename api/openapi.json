@@ -2855,6 +2855,20 @@
             ],
             "title": "Trade Date"
           },
+          "trend_1m": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend 1M"
+          },
           "venue": {
             "title": "Venue",
             "type": "string"
@@ -2898,6 +2912,7 @@
           "delivery_pct_1d",
           "venue_spread_bps",
           "is_diverging",
+          "trend_1m",
           "alert",
           "verdict"
         ],
@@ -2905,7 +2920,7 @@
         "type": "object"
       },
       "WatchlistRowsResponse": {
-        "description": "A list's entries in the order added, the day the daily features were published, and how many\nalerts the latest sessions triggered.",
+        "description": "A list's entries in the order added, the day the daily features were published, how many\nalerts the latest sessions triggered, and the sources the figures shown are read from.",
         "properties": {
           "is_default": {
             "title": "Is Default",
@@ -2934,6 +2949,13 @@
             "title": "Rows",
             "type": "array"
           },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
           "triggered": {
             "title": "Triggered",
             "type": "integer"
@@ -2949,7 +2971,8 @@
           "is_default",
           "published_day",
           "triggered",
-          "rows"
+          "rows",
+          "sources"
         ],
         "title": "WatchlistRowsResponse",
         "type": "object"

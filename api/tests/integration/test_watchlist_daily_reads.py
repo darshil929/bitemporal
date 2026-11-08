@@ -103,6 +103,13 @@ async def test_each_row_reads_the_entry_s_newest_session_at_its_venue(asha: Pers
         440.95,
         None,
     )
+    assert (len(hdfc["trend_1m"]), hdfc["trend_1m"][-1]) == (22, 991.2)
+    assert [source["source_id"] for source in listed["sources"]] == [
+        "nse_bhavcopy_equity",
+        "nse_delivery",
+        "bse_bhavcopy_equity",
+        "bse_delivery",
+    ]
 
 
 async def test_a_replaced_isin_reads_its_last_session_and_its_successor(
@@ -123,6 +130,7 @@ async def test_a_replaced_isin_reads_its_last_session_and_its_successor(
         BAJAJ_FINANCE,
     )
     assert replaced["close"] is not None
+    assert len(replaced["trend_1m"]) == 22
     assert replaced["return_1d"] is not None
 
 

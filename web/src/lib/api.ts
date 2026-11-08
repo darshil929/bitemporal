@@ -1573,6 +1573,8 @@ export interface components {
             superseded_by: string | null;
             /** Trade Date */
             trade_date: string | null;
+            /** Trend 1M */
+            trend_1m: number[] | null;
             /** Venue */
             venue: string;
             /** Venue Spread Bps */
@@ -1581,8 +1583,8 @@ export interface components {
         };
         /**
          * WatchlistRowsResponse
-         * @description A list's entries in the order added, the day the daily features were published, and how many
-         *     alerts the latest sessions triggered.
+         * @description A list's entries in the order added, the day the daily features were published, how many
+         *     alerts the latest sessions triggered, and the sources the figures shown are read from.
          */
         WatchlistRowsResponse: {
             /** Is Default */
@@ -1593,6 +1595,8 @@ export interface components {
             published_day: string | null;
             /** Rows */
             rows: components["schemas"]["WatchlistRowResponse"][];
+            /** Sources */
+            sources: components["schemas"]["SourceResponse"][];
             /** Triggered */
             triggered: number;
             /** Watchlist Id */

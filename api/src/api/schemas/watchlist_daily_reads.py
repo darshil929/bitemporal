@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from api.schemas.key_figures import SourceResponse
 from api.schemas.watchlist_management import AlertResponse
 
 
@@ -43,13 +44,15 @@ class WatchlistRowResponse(BaseModel):
     delivery_pct_1d: float | None
     venue_spread_bps: float | None
     is_diverging: bool | None
+    # The newest 22 adjusted closes up to the row's session, oldest first; null with fewer.
+    trend_1m: list[float] | None
     alert: AlertResponse | None
     verdict: VerdictResponse | None
 
 
 class WatchlistRowsResponse(BaseModel):
-    """A list's entries in the order added, the day the daily features were published, and how many
-    alerts the latest sessions triggered."""
+    """A list's entries in the order added, the day the daily features were published, how many
+    alerts the latest sessions triggered, and the sources the figures shown are read from."""
 
     watchlist_id: int
     name: str
@@ -57,3 +60,4 @@ class WatchlistRowsResponse(BaseModel):
     published_day: date | None
     triggered: int
     rows: list[WatchlistRowResponse]
+    sources: list[SourceResponse]
