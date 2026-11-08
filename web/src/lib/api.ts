@@ -505,6 +505,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/watchlists/entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Entry
+         * @description Stop following an instrument; the entry ends and its history stays.
+         */
+        delete: operations["remove_entry"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Entry Venue
+         * @description Follow the entry's instrument on another venue from now: the entry ends and the one answered
+         *     takes its place.
+         */
+        patch: operations["change_entry_venue"];
+        trace?: never;
+    };
     "/watchlists/{watchlist_id}": {
         parameters: {
             query?: never;
@@ -671,6 +696,14 @@ export interface components {
             venue: string;
             /** Watchlist Id */
             watchlist_id: number;
+        };
+        /**
+         * EntryVenueRequest
+         * @description The venue an entry follows from now.
+         */
+        EntryVenueRequest: {
+            /** Venue */
+            venue: string;
         };
         /** FirstAdminRequest */
         FirstAdminRequest: {
@@ -1367,7 +1400,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "watchlist_name_taken" | "watchlist_limit_reached" | "watchlist_not_found" | "entry_limit_reached" | "instrument_already_listed" | "instrument_not_listed" | "venue_not_listed";
+            reason: "watchlist_name_taken" | "watchlist_limit_reached" | "watchlist_not_found" | "entry_not_found" | "entry_limit_reached" | "instrument_already_listed" | "instrument_not_listed" | "venue_not_listed";
         };
         /** WatchlistRefusedResponse */
         WatchlistRefusedResponse: {
@@ -2707,6 +2740,115 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    remove_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_entry_venue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryVenueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

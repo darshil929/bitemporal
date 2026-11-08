@@ -374,6 +374,21 @@
         "title": "EntryResponse",
         "type": "object"
       },
+      "EntryVenueRequest": {
+        "description": "The venue an entry follows from now.",
+        "properties": {
+          "venue": {
+            "pattern": "^[A-Z][A-Z0-9]{1,11}$",
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "venue"
+        ],
+        "title": "EntryVenueRequest",
+        "type": "object"
+      },
       "FirstAdminRequest": {
         "properties": {
           "display_name": {
@@ -2467,6 +2482,7 @@
               "watchlist_name_taken",
               "watchlist_limit_reached",
               "watchlist_not_found",
+              "entry_not_found",
               "entry_limit_reached",
               "instrument_already_listed",
               "instrument_not_listed",
@@ -4259,6 +4275,143 @@
           }
         },
         "summary": "Add Entry",
+        "tags": [
+          "watchlists"
+        ]
+      }
+    },
+    "/watchlists/entries/{entry_id}": {
+      "delete": {
+        "description": "Stop following an instrument; the entry ends and its history stays.",
+        "operationId": "remove_entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Entry",
+        "tags": [
+          "watchlists"
+        ]
+      },
+      "patch": {
+        "description": "Follow the entry's instrument on another venue from now: the entry ends and the one answered\ntakes its place.",
+        "operationId": "change_entry_venue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryVenueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Change Entry Venue",
         "tags": [
           "watchlists"
         ]
