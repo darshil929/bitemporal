@@ -138,3 +138,44 @@ async def test_a_list_follows_at_most_its_limit_of_instruments(
     refused = await asha.follow(KP_GREEN)
 
     assert refusal(refused) == (422, "entry_limit_reached")
+
+
+async def test_a_change_of_venue_ends_the_entry_and_starts_another(asha: Person) -> None:
+    kept = (await asha.follow(HDFC_BANK, venue="NSE")).json()
+    alone = (await asha.follow(KP_GREEN)).json()["id"]
+
+    changed = await asha.send("PATCH", f"/watchlists/entries/{kept['id']}", {"venue": "BSE"})
+    moved = changed.json()["id"]
+    unchanged = await asha.send("PATCH", f"/watchlists/entries/{moved}", {"venue": "BSE"})
+    ended = await asha.send("PATCH", f"/watchlists/entries/{kept['id']}", {"venue": "NSE"})
+    unlisted = await asha.send("PATCH", f"/watchlists/entries/{alone}", {"venue": "NSE"})
+
+    assert (changed.status_code, changed.json()["venue"]) == (200, "BSE")
+    assert moved != kept["id"]
+    assert unchanged.json() == changed.json()
+    assert refusal(ended) == (404, "entry_not_found")
+    assert refusal(unlisted) == (422, "venue_not_listed")
+    assert await asha.followed() == {"Watchlist": [(KP_GREEN, "BSE"), (HDFC_BANK, "BSE")]}
+
+
+async def test_a_removed_entry_ends_and_its_instrument_can_be_followed_again(
+    asha: Person,
+) -> None:
+    kept = (await asha.follow(HDFC_BANK)).json()["id"]
+
+    removed = await asha.send("DELETE", f"/watchlists/entries/{kept}")
+    again = await asha.send("DELETE", f"/watchlists/entries/{kept}")
+
+    assert (removed.status_code, refusal(again)) == (204, (404, "entry_not_found"))
+    assert await asha.followed() == {"Watchlist": []}
+    assert (await asha.follow(HDFC_BANK)).status_code == 201
+
+
+async def test_a_person_s_entries_are_unchangeable_to_another(asha: Person, ravi: Person) -> None:
+    kept = (await asha.follow(HDFC_BANK, venue="NSE")).json()["id"]
+
+    changed = await ravi.send("PATCH", f"/watchlists/entries/{kept}", {"venue": "BSE"})
+    removed = await ravi.send("DELETE", f"/watchlists/entries/{kept}")
+
+    assert refusal(changed) == refusal(removed) == (404, "entry_not_found")
+    assert await asha.followed() == {"Watchlist": [(HDFC_BANK, "NSE")]}

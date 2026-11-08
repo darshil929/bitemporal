@@ -29,6 +29,12 @@ class EntryRequest(BaseModel):
     watchlist_id: int | None = None
 
 
+class EntryVenueRequest(BaseModel):
+    """The venue an entry follows from now."""
+
+    venue: Venue
+
+
 class EntryResponse(BaseModel):
     """An instrument a list follows on one venue, since it was added there."""
 
@@ -59,6 +65,7 @@ class WatchlistRefused(BaseModel):
         "watchlist_name_taken",
         "watchlist_limit_reached",
         "watchlist_not_found",
+        "entry_not_found",
         "entry_limit_reached",
         "instrument_already_listed",
         "instrument_not_listed",

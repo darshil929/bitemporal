@@ -1,6 +1,6 @@
 """A person's watchlists: each kept under a name, renamed, and removed by marking it removed, and the
 instruments each follows on one venue. The earliest list a person keeps is their default. An entry
-ends rather than being deleted."""
+ends rather than being deleted, and a change of venue ends it and starts another."""
 
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
@@ -52,6 +52,13 @@ KEPT_ENTRY_COUNT = text(
 ADD_ENTRY = text(
     "insert into watchlist_entry (owner_id, watchlist_id, isin, venue)"
     f" values (:owner, :list, :isin, :venue) returning {ENTRY_COLUMNS}"
+)
+KEPT_ENTRY = text(
+    f"select {ENTRY_COLUMNS} from watchlist_entry where id = :id and ended_at is null"
+)
+END_ENTRY = text(
+    "update watchlist_entry set ended_at = now() where id = :id and ended_at is null"
+    f" returning {ENTRY_COLUMNS}"
 )
 END_LIST_ENTRIES = text(
     "update watchlist_entry set ended_at = now() where watchlist_id = :list and ended_at is null"
@@ -215,3 +222,32 @@ async def add_entry(
         if isinstance(error.orig, UniqueViolation):
             raise WatchlistRefused("instrument_already_listed") from error
         raise
+
+
+async def change_entry_venue(database: Database, owner: int, entry_id: int, venue: str) -> Entry:
+    """The entry ended and its instrument followed on another venue from now, in the same list; the
+    entry itself where it follows that venue already."""
+    async with database.transaction(owner) as transaction:
+        row = (await transaction.execute(KEPT_ENTRY, {"id": entry_id})).one_or_none()
+    if row is None:
+        raise WatchlistRefused("entry_not_found")
+    kept = Entry(*row)
+    if kept.venue == venue:
+        return kept
+    chosen = chosen_venue(await listed_venues(database, kept.isin), venue)
+    async with database.transaction(owner) as transaction:
+        await transaction.execute(PERSON_LOCK, {"owner": owner})
+        if (await transaction.execute(END_ENTRY, {"id": entry_id})).one_or_none() is None:
+            raise WatchlistRefused("entry_not_found")
+        added = await transaction.execute(
+            ADD_ENTRY,
+            {"owner": owner, "list": kept.watchlist_id, "isin": kept.isin, "venue": chosen},
+        )
+        return Entry(*added.one())
+
+
+async def remove_entry(database: Database, owner: int, entry_id: int) -> None:
+    async with database.transaction(owner) as transaction:
+        ended = (await transaction.execute(END_ENTRY, {"id": entry_id})).one_or_none()
+    if ended is None:
+        raise WatchlistRefused("entry_not_found")
