@@ -112,6 +112,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Needs Attention
+         * @description The person's alerts the newest session triggered and the entries whose ISIN was replaced.
+         */
+        get: operations["needs_attention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/password": {
         parameters: {
             query?: never;
@@ -641,6 +661,18 @@ export interface components {
             rule: "move_beyond" | "close_above" | "close_below" | "delivery_above" | "delivery_below" | "spread_above";
             /** Threshold */
             threshold: number;
+        };
+        /**
+         * AttentionResponse
+         * @description What needs the person's attention on the published day; every list empty when nothing does.
+         */
+        AttentionResponse: {
+            /** Alerts */
+            alerts: components["schemas"]["TriggeredAlertResponse"][];
+            /** Published Day */
+            published_day: string | null;
+            /** Superseded */
+            superseded: components["schemas"]["SupersededEntryResponse"][];
         };
         /**
          * AuditEntryResponse
@@ -1425,6 +1457,49 @@ export interface components {
             screened: number;
         };
         /**
+         * SupersededEntryResponse
+         * @description An entry whose ISIN a change of face value replaced, and the ISIN that took it over.
+         */
+        SupersededEntryResponse: {
+            /** Display Name */
+            display_name: string | null;
+            /** Entry Id */
+            entry_id: number;
+            /** Isin */
+            isin: string;
+            /** Superseded By */
+            superseded_by: string;
+            /** Watchlist Id */
+            watchlist_id: number;
+        };
+        /**
+         * TriggeredAlertResponse
+         * @description An alert the newest session at its venue triggered, with the figure its rule compared.
+         */
+        TriggeredAlertResponse: {
+            /** Display Name */
+            display_name: string | null;
+            /** Entry Id */
+            entry_id: number;
+            /** Figure */
+            figure: number | null;
+            /** Isin */
+            isin: string;
+            /** Rule */
+            rule: string;
+            /** Threshold */
+            threshold: number;
+            /**
+             * Trade Date
+             * Format: date
+             */
+            trade_date: string;
+            /** Venue */
+            venue: string;
+            /** Watchlist Id */
+            watchlist_id: number;
+        };
+        /**
          * UnhandledActionResponse
          * @description A corporate action the adjusted prices do not account for, and the venue's text for it.
          */
@@ -1898,6 +1973,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    needs_attention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
                 };
             };
         };

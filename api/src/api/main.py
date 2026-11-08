@@ -12,6 +12,7 @@ from api.db.database import Database
 from api.log_format import configure_logging
 from api.routers import (
     admin,
+    attention,
     auth,
     health,
     instruments,
@@ -62,6 +63,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(instruments.router)
     app.include_router(screener.router)
     app.include_router(watchlists.router)
+    app.include_router(attention.router)
     app.include_router(admin.router)
     return app
 
