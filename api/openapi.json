@@ -301,6 +301,79 @@
         "title": "CorporateActionResponse",
         "type": "object"
       },
+      "EntryRequest": {
+        "description": "An instrument to follow, on the venue named or else its primary venue, in the list named or\nelse the default, which a person keeping no list gains under the name Watchlist.",
+        "properties": {
+          "isin": {
+            "pattern": "^[A-Z]{2}[A-Z0-9]{9}[0-9]$",
+            "title": "Isin",
+            "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Z0-9]{1,11}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          },
+          "watchlist_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watchlist Id"
+          }
+        },
+        "required": [
+          "isin"
+        ],
+        "title": "EntryRequest",
+        "type": "object"
+      },
+      "EntryResponse": {
+        "description": "An instrument a list follows on one venue, since it was added there.",
+        "properties": {
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "watchlist_id": {
+            "title": "Watchlist Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "watchlist_id",
+          "isin",
+          "venue",
+          "added_at"
+        ],
+        "title": "EntryResponse",
+        "type": "object"
+      },
       "FirstAdminRequest": {
         "properties": {
           "display_name": {
@@ -2393,7 +2466,11 @@
             "enum": [
               "watchlist_name_taken",
               "watchlist_limit_reached",
-              "watchlist_not_found"
+              "watchlist_not_found",
+              "entry_limit_reached",
+              "instrument_already_listed",
+              "instrument_not_listed",
+              "venue_not_listed"
             ],
             "title": "Reason",
             "type": "string"
@@ -2441,6 +2518,13 @@
             "title": "Created At",
             "type": "string"
           },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryResponse"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -2464,7 +2548,8 @@
           "name",
           "is_default",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "entries"
         ],
         "title": "WatchlistResponse",
         "type": "object"
@@ -4003,7 +4088,7 @@
     },
     "/watchlists": {
       "get": {
-        "description": "The person's lists, the default first, then by name whatever its case.",
+        "description": "The person's lists, the default first, then by name, each with its entries in added order.",
         "operationId": "watchlists",
         "responses": {
           "200": {
@@ -4097,9 +4182,91 @@
         ]
       }
     },
+    "/watchlists/entries": {
+      "post": {
+        "description": "Follow an instrument on a venue it is listed on now, up to 500 in a list.",
+        "operationId": "add_entry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistRefusedResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Add Entry",
+        "tags": [
+          "watchlists"
+        ]
+      }
+    },
     "/watchlists/{watchlist_id}": {
       "delete": {
-        "description": "Take a list off the person's lists, which frees its name.",
+        "description": "Take a list off the person's lists, which frees its name and ends every entry it holds.",
         "operationId": "remove_watchlist",
         "parameters": [
           {

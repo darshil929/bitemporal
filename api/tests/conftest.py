@@ -108,6 +108,14 @@ def dataset_member_headers(
 
 
 @pytest.fixture
+def new_dataset_member(
+    seeded_models: psycopg.Connection, seeded_postgres: str
+) -> Callable[[], dict[str, str]]:
+    """Signs in a new member of the seed dataset at each call, keeping no rows of their own yet."""
+    return lambda: account_session(seeded_postgres, SEED_SCHEMA, f"member-{secrets.token_hex(4)}")
+
+
+@pytest.fixture
 def unreachable_settings() -> ApiSettings:
     return settings_for(UNREACHABLE_DSN, MIGRATION_SCHEMA)
 

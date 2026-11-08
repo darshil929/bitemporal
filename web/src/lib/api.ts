@@ -470,7 +470,7 @@ export interface paths {
         };
         /**
          * Watchlists
-         * @description The person's lists, the default first, then by name whatever its case.
+         * @description The person's lists, the default first, then by name, each with its entries in added order.
          */
         get: operations["watchlists"];
         put?: never;
@@ -479,6 +479,26 @@ export interface paths {
          * @description Keep a new list under a name, up to twenty lists.
          */
         post: operations["add_watchlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/watchlists/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Entry
+         * @description Follow an instrument on a venue it is listed on now, up to 500 in a list.
+         */
+        post: operations["add_entry"];
         delete?: never;
         options?: never;
         head?: never;
@@ -497,7 +517,7 @@ export interface paths {
         post?: never;
         /**
          * Remove Watchlist
-         * @description Take a list off the person's lists, which frees its name.
+         * @description Take a list off the person's lists, which frees its name and ends every entry it holds.
          */
         delete: operations["remove_watchlist"];
         options?: never;
@@ -619,6 +639,38 @@ export interface components {
             terms: string | null;
             /** Venues Differ */
             venues_differ: boolean;
+        };
+        /**
+         * EntryRequest
+         * @description An instrument to follow, on the venue named or else its primary venue, in the list named or
+         *     else the default, which a person keeping no list gains under the name Watchlist.
+         */
+        EntryRequest: {
+            /** Isin */
+            isin: string;
+            /** Venue */
+            venue?: string | null;
+            /** Watchlist Id */
+            watchlist_id?: number | null;
+        };
+        /**
+         * EntryResponse
+         * @description An instrument a list follows on one venue, since it was added there.
+         */
+        EntryResponse: {
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /** Id */
+            id: number;
+            /** Isin */
+            isin: string;
+            /** Venue */
+            venue: string;
+            /** Watchlist Id */
+            watchlist_id: number;
         };
         /** FirstAdminRequest */
         FirstAdminRequest: {
@@ -1315,7 +1367,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "watchlist_name_taken" | "watchlist_limit_reached" | "watchlist_not_found";
+            reason: "watchlist_name_taken" | "watchlist_limit_reached" | "watchlist_not_found" | "entry_limit_reached" | "instrument_already_listed" | "instrument_not_listed" | "venue_not_listed";
         };
         /** WatchlistRefusedResponse */
         WatchlistRefusedResponse: {
@@ -1339,6 +1391,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Entries */
+            entries: components["schemas"]["EntryResponse"][];
             /** Id */
             id: number;
             /** Is Default */
@@ -2607,6 +2661,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+        };
+    };
+    add_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
                 };
             };
         };
