@@ -2,10 +2,12 @@
 
 An alert is judged on each session that closed after it was set and before it ended: triggered when
 its figure is past the threshold, watching when it is not or the session holds no such figure, and
-paused when the instrument did not trade at that venue that day. Each verdict keeps the figure it
-judged and the day that figure became known.
+paused when the instrument did not trade at that venue that day, or for a price rule once a capital
+action has changed the price since the alert was set. Each verdict keeps the figure it judged and
+the day that figure became known; a figure corrected later is judged again under its new date.
 """
 
+from collections import defaultdict
 from dataclasses import astuple, dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -18,6 +20,9 @@ INDIA = ZoneInfo("Asia/Kolkata")
 # Both venues close their equity sessions at 15:30 India time.
 SESSION_CLOSE = time(15, 30)
 PRICE_RULES = ("close_above", "close_below")
+# Sessions judged already are judged again when their figures became known later; a sync asks again
+# for the most recent days held, so a correction lands within days of its session.
+CORRECTION_WINDOW = timedelta(days=7)
 
 Spread = tuple[float | None, date]
 
@@ -47,6 +52,15 @@ SPREADS = """
 select isin, trade_date, venue_spread_bps, as_of_date from mart_venue_spread
 where trade_date >= %(start)s and isin = any(%(isins)s)
 """
+CAPITAL_ACTIONS = """
+select isin, ex_date from mart_corporate_actions
+where is_applied and adjustment_factor <> 1 and ex_date > %(start)s and isin = any(%(isins)s)
+"""
+JUDGED = """
+select alert_id, trade_date, max(as_of_date) from watchlist_alert_evaluation
+where alert_id = any(%(alerts)s) and trade_date >= %(start)s
+group by alert_id, trade_date
+"""
 RECORD = """
 insert into watchlist_alert_evaluation
     (owner_id, alert_id, trade_date, status, figure, as_of_date, paused_reason)
@@ -75,10 +89,14 @@ class Alert:
         closed = datetime.combine(session_day, SESSION_CLOSE, INDIA)
         return self.created_at < closed and (self.ended_at is None or closed <= self.ended_at)
 
+    @property
+    def set_on(self) -> date:
+        return self.created_at.astimezone(INDIA).date()
+
     def first_session(self) -> date:
         if self.last_judged is None:
-            return self.created_at.astimezone(INDIA).date()
-        return self.last_judged + timedelta(days=1)
+            return self.set_on
+        return max(self.set_on, self.last_judged - CORRECTION_WINDOW)
 
 
 @dataclass(frozen=True)
@@ -112,10 +130,21 @@ def is_crossed(rule: str, figure: float, threshold: float) -> bool:
     return figure < threshold
 
 
-def judge(alert: Alert, session_as_of: date, bar: Bar | None, spread: Spread | None) -> Verdict:
+def judge(
+    alert: Alert,
+    session_day: date,
+    session_as_of: date,
+    bar: Bar | None,
+    spread: Spread | None,
+    capital_actions: list[date],
+) -> Verdict:
     """The alert's verdict on one session, from the entry's bar at its venue that day."""
     if bar is None:
         return Verdict("paused", None, session_as_of, "not_traded")
+    if alert.rule in PRICE_RULES and any(
+        alert.set_on < ex <= session_day for ex in capital_actions
+    ):
+        return Verdict("paused", None, bar.as_of_date, "capital_action")
     as_of_date = bar.as_of_date
     if alert.rule == "spread_above":
         figure = spread[0] if spread else None
@@ -132,7 +161,7 @@ def judge(alert: Alert, session_as_of: date, bar: Bar | None, spread: Spread | N
 
 
 def evaluate_alerts(connection: psycopg.Connection) -> Evaluated:
-    """Every alert judged on each session it stood through and has not been judged on."""
+    """Every alert judged on each session it stood through and has not been judged on as known."""
     bypasses = connection.execute(BYPASSES_ROW_SECURITY).fetchone()
     if bypasses is None or not bypasses[0]:
         raise EvaluationRefused("the role evaluating alerts must bypass row security")
@@ -159,6 +188,23 @@ def evaluate_alerts(connection: psycopg.Connection) -> Evaluated:
             SPREADS, {"start": start, "isins": spread_isins}
         )
     }
+    price_alerts = [alert for alert in alerts if alert.rule in PRICE_RULES]
+    capital_actions: defaultdict[str, list[date]] = defaultdict(list)
+    # From the day each alert was set, however long ago: a capital action pauses it for good.
+    for isin, ex_date in connection.execute(
+        CAPITAL_ACTIONS,
+        {
+            "start": min((alert.set_on for alert in price_alerts), default=start),
+            "isins": sorted({alert.isin for alert in price_alerts}),
+        },
+    ):
+        capital_actions[isin].append(ex_date)
+    judged = {
+        (alert_id, day): known
+        for alert_id, day, known in connection.execute(
+            JUDGED, {"alerts": [alert.id for alert in alerts], "start": start}
+        )
+    }
 
     records = []
     for alert in alerts:
@@ -167,8 +213,10 @@ def evaluate_alerts(connection: psycopg.Connection) -> Evaluated:
             if venue != alert.venue or day < first or not alert.judges(day):
                 continue
             bar, spread = bars.get((alert.isin, venue, day)), spreads.get((alert.isin, day))
-            verdict = judge(alert, session_as_of, bar, spread)
-            records.append((alert.owner_id, alert.id, day, *astuple(verdict)))
+            verdict = judge(alert, day, session_as_of, bar, spread, capital_actions[alert.isin])
+            known = judged.get((alert.id, day))
+            if known is None or known < verdict.as_of_date:
+                records.append((alert.owner_id, alert.id, day, *astuple(verdict)))
     with connection.cursor() as cursor:
         cursor.executemany(RECORD, records)
     found = [record[3] for record in records]
