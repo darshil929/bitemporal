@@ -1,5 +1,5 @@
 """A watchlist's entries as the page shows them: each instrument's newest session at the entry's venue
-up to the published day, its figures that session, and its alert."""
+up to the published day, its figures that session, and its alert with the latest verdict."""
 
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -56,6 +56,21 @@ DIVERGING = text(
     "select isin, trade_date, is_diverging from mart_daily_features"
     " where isin = any(:currents) and trade_date = any(:days)"
 )
+LATEST_VERDICTS = text(
+    "select distinct on (alert_id) alert_id, trade_date, status, figure, paused_reason"
+    " from watchlist_alert_evaluation where alert_id = any(:alerts)"
+    " order by alert_id, trade_date desc, as_of_date desc"
+)
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """The alert's verdict on the latest session judged."""
+
+    trade_date: date
+    status: str
+    figure: float | None
+    paused_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -80,6 +95,7 @@ class WatchlistRow:
     venue_spread_bps: float | None
     is_diverging: bool | None
     alert: Alert | None
+    verdict: Verdict | None
 
 
 @dataclass(frozen=True)
@@ -87,6 +103,12 @@ class WatchlistRows:
     watchlist: Watchlist
     published_day: date | None
     rows: tuple[WatchlistRow, ...]
+
+    @property
+    def triggered(self) -> int:
+        return sum(
+            row.verdict is not None and row.verdict.status == "triggered" for row in self.rows
+        )
 
 
 @dataclass(frozen=True)
@@ -148,7 +170,7 @@ async def _market_facts(transaction: AsyncSession, entries: tuple[Entry, ...]) -
     )
 
 
-def _row(entry: Entry, facts: MarketFacts) -> WatchlistRow:
+def _row(entry: Entry, facts: MarketFacts, verdict: Verdict | None) -> WatchlistRow:
     identity = facts.identities.get(entry.isin)
     current = identity.current_isin if identity else entry.isin
     day = facts.last_sessions.get((entry.isin, entry.venue))
@@ -174,6 +196,7 @@ def _row(entry: Entry, facts: MarketFacts) -> WatchlistRow:
         venue_spread_bps=number(spread.venue_spread_bps) if spread else None,
         is_diverging=facts.diverging.get((current, day)) if day else None,
         alert=entry.alert,
+        verdict=verdict,
     )
 
 
@@ -182,10 +205,19 @@ async def watchlist_rows(database: Database, owner: int, watchlist_id: int) -> W
     watchlist = next((listed for listed in kept if listed.id == watchlist_id), None)
     if watchlist is None:
         raise WatchlistRefused("watchlist_not_found")
+    alerts = [entry.alert.id for entry in watchlist.entries if entry.alert]
+    async with database.transaction(owner) as transaction:
+        verdicts = {
+            row.alert_id: Verdict(*row[1:])
+            for row in await transaction.execute(LATEST_VERDICTS, {"alerts": alerts})
+        }
 
     async def read(transaction: AsyncSession) -> MarketFacts:
         return await _market_facts(transaction, watchlist.entries)
 
     facts = await read_marts(database, read)
-    rows = tuple(_row(entry, facts) for entry in watchlist.entries)
+    rows = tuple(
+        _row(entry, facts, verdicts.get(entry.alert.id) if entry.alert else None)
+        for entry in watchlist.entries
+    )
     return WatchlistRows(watchlist, facts.published_day, rows)

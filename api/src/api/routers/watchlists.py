@@ -178,7 +178,8 @@ async def remove_alert(
 async def watchlist_rows(
     watchlist_id: int, user: SignedInDependency, database: DatabaseDependency
 ) -> WatchlistRowsResponse:
-    """A list's entries with each instrument's newest session at the entry's venue."""
+    """A list's entries with each instrument's newest session at the entry's venue and the alert's
+    latest verdict."""
     try:
         found = await watchlist_daily_reads.watchlist_rows(database, user.id, watchlist_id)
     except WatchlistRefused as refused:
@@ -188,5 +189,6 @@ async def watchlist_rows(
         name=found.watchlist.name,
         is_default=found.watchlist.is_default,
         published_day=found.published_day,
+        triggered=found.triggered,
         rows=[WatchlistRowResponse.model_validate(row) for row in found.rows],
     )
