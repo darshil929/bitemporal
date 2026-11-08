@@ -5,8 +5,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.dependencies import DatabaseDependency, SignedInDependency, signed_in
+from api.routers.market import MARKET_READ_RESPONSES
 from api.schemas.sessions import NotSignedInResponse
 from api.schemas.watchlist_management import (
+    EntryRequest,
+    EntryResponse,
     WatchlistRefusedResponse,
     WatchlistRequest,
     WatchlistResponse,
@@ -24,13 +27,17 @@ router = APIRouter(
 Responses = dict[int | str, dict[str, Any]]
 NOT_FOUND: Responses = {status.HTTP_404_NOT_FOUND: {"model": WatchlistRefusedResponse}}
 CONFLICT: Responses = {status.HTTP_409_CONFLICT: {"model": WatchlistRefusedResponse}}
-OVER_LIMIT: Responses = {status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": WatchlistRefusedResponse}}
-# A list the person does not keep answers 404; a name the person keeps already, 409; a list past
-# the limit, 422.
+UNADMITTED: Responses = {status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": WatchlistRefusedResponse}}
+# A list the person does not keep answers 404; a name or instrument the list keeps already,
+# 409; a change past a limit or onto a venue the instrument is not listed on, 422.
 REFUSED_AS = {
     "watchlist_not_found": status.HTTP_404_NOT_FOUND,
     "watchlist_name_taken": status.HTTP_409_CONFLICT,
+    "instrument_already_listed": status.HTTP_409_CONFLICT,
     "watchlist_limit_reached": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "entry_limit_reached": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "instrument_not_listed": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "venue_not_listed": status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
 
@@ -42,12 +49,12 @@ def refusal(refused: WatchlistRefused) -> HTTPException:
 async def watchlists(
     user: SignedInDependency, database: DatabaseDependency
 ) -> list[WatchlistResponse]:
-    """The person's lists, the default first, then by name whatever its case."""
+    """The person's lists, the default first, then by name, each with its entries in added order."""
     kept = await watchlist_management.watchlists(database, user.id)
     return [WatchlistResponse.model_validate(watchlist) for watchlist in kept]
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, responses=CONFLICT | OVER_LIMIT)
+@router.post("", status_code=status.HTTP_201_CREATED, responses=CONFLICT | UNADMITTED)
 async def add_watchlist(
     body: WatchlistRequest, user: SignedInDependency, database: DatabaseDependency
 ) -> WatchlistResponse:
@@ -79,8 +86,26 @@ async def rename_watchlist(
 async def remove_watchlist(
     watchlist_id: int, user: SignedInDependency, database: DatabaseDependency
 ) -> None:
-    """Take a list off the person's lists, which frees its name."""
+    """Take a list off the person's lists, which frees its name and ends every entry it holds."""
     try:
         await watchlist_management.remove_watchlist(database, user.id, watchlist_id)
     except WatchlistRefused as refused:
         raise refusal(refused) from refused
+
+
+@router.post(
+    "/entries",
+    status_code=status.HTTP_201_CREATED,
+    responses=NOT_FOUND | CONFLICT | UNADMITTED | MARKET_READ_RESPONSES,
+)
+async def add_entry(
+    body: EntryRequest, user: SignedInDependency, database: DatabaseDependency
+) -> EntryResponse:
+    """Follow an instrument on a venue it is listed on now, up to 500 in a list."""
+    try:
+        added = await watchlist_management.add_entry(
+            database, user.id, body.isin, body.venue, body.watchlist_id
+        )
+    except WatchlistRefused as refused:
+        raise refusal(refused) from refused
+    return EntryResponse.model_validate(added)
