@@ -575,6 +575,26 @@ export interface paths {
         patch: operations["rename_watchlist"];
         trace?: never;
     };
+    "/watchlists/{watchlist_id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Watchlist Rows
+         * @description A list's entries with each instrument's newest session at the entry's venue.
+         */
+        get: operations["watchlist_rows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1494,6 +1514,64 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * WatchlistRowResponse
+         * @description An entry on its venue's newest session up to the published day. Returns are fractions of
+         *     the previous close on adjusted prices, delivery a percent of the volume, the spread basis points
+         *     between the venues' closes; `is_stale` where the venue held a later session, `superseded_by` the
+         *     ISIN that took a replaced one over.
+         */
+        WatchlistRowResponse: {
+            alert: components["schemas"]["AlertResponse"] | null;
+            /** Change 1D */
+            change_1d: number | null;
+            /** Close */
+            close: number | null;
+            /** Delivery Pct 1D */
+            delivery_pct_1d: number | null;
+            /** Display Name */
+            display_name: string | null;
+            /** Entry Id */
+            entry_id: number;
+            /** Is Diverging */
+            is_diverging: boolean | null;
+            /** Is Stale */
+            is_stale: boolean | null;
+            /** Isin */
+            isin: string;
+            /** Local Symbol */
+            local_symbol: string | null;
+            /** Primary Venue */
+            primary_venue: string | null;
+            /** Return 1D */
+            return_1d: number | null;
+            /** Return 1M */
+            return_1m: number | null;
+            /** Superseded By */
+            superseded_by: string | null;
+            /** Trade Date */
+            trade_date: string | null;
+            /** Venue */
+            venue: string;
+            /** Venue Spread Bps */
+            venue_spread_bps: number | null;
+        };
+        /**
+         * WatchlistRowsResponse
+         * @description A list's entries in the order added and the day the daily features were published.
+         */
+        WatchlistRowsResponse: {
+            /** Is Default */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Published Day */
+            published_day: string | null;
+            /** Rows */
+            rows: components["schemas"]["WatchlistRowResponse"][];
+            /** Watchlist Id */
+            watchlist_id: number;
         };
     };
     responses: never;
@@ -3138,6 +3216,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    watchlist_rows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watchlist_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRowsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
                 };
             };
         };
