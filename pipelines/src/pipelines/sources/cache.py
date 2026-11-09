@@ -49,6 +49,24 @@ class DiskCache:
         )
         return path
 
+    def set_aside(self, source_id: str, partition_key: str, suffix: str) -> Path | None:
+        """Keeps a held response under a name of its own, so the partition reads as not yet held.
+
+        Each response set aside for a partition is numbered in turn and kept.
+        """
+        path = self.path_for(source_id, partition_key, suffix)
+        if not path.is_file():
+            return None
+        number = 1
+        while (kept := path.with_name(f"{partition_key}.refused-{number}{suffix}")).exists():
+            number += 1
+        path.rename(kept)
+        logger.info(
+            "source response set aside",
+            extra={"source_id": source_id, "partition_key": partition_key, "kept_as": kept.name},
+        )
+        return kept
+
     def latest(self, source_id: str, partition_key: str, suffix: str) -> bytes | None:
         """The most recent version held of a partition, the first copy where none followed it."""
         later = self.versions(source_id, partition_key, suffix)

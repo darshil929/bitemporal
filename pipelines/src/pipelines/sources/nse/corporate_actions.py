@@ -285,10 +285,20 @@ class NseCorporateActions:
         ]
         return json.dumps(records).encode()
 
-    def _segment(self, segment: str, first: date, last: date, collected_on: date) -> bytes:
+    def set_aside(self, first: date, last: date, collected_on: date) -> None:
+        """Keeps every segment's refused answer for a range still open apart, so it is asked again."""
+        if last >= collected_on:
+            for segment, _ in SEGMENTS:
+                key = self._key(segment, first, last, collected_on)
+                self._cache.set_aside(SOURCE_ID, key, CACHE_SUFFIX)
+
+    @staticmethod
+    def _key(segment: str, first: date, last: date, collected_on: date) -> str:
         key = range_key(first, last, collected_on)
-        if segment != MAIN_BOARD:
-            key = f"{segment}-{key}"
+        return key if segment == MAIN_BOARD else f"{segment}-{key}"
+
+    def _segment(self, segment: str, first: date, last: date, collected_on: date) -> bytes:
+        key = self._key(segment, first, last, collected_on)
         cached = self._cache.read(SOURCE_ID, key, CACHE_SUFFIX)
         if cached is not None:
             return cached

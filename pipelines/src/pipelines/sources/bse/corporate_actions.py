@@ -251,6 +251,11 @@ class BseCorporateActions:
         self._cache.write(SOURCE_ID, key, CACHE_SUFFIX, payload)
         return payload
 
+    def set_aside(self, first: date, last: date, collected_on: date) -> None:
+        """Keeps a refused answer for a range still open apart, so the range is asked again."""
+        if last >= collected_on:
+            self._cache.set_aside(SOURCE_ID, range_key(first, last, collected_on), CACHE_SUFFIX)
+
     def parse(self, payload: bytes) -> tuple[dict[str, str], ...]:
         return parse_actions(payload)
 
