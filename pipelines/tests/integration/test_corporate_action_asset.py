@@ -1,5 +1,6 @@
 """Reading corporate actions a year of ex-dates at a time, by invoking the asset with recorded responses."""
 
+import json
 from collections.abc import Iterator
 from datetime import date, timedelta
 from decimal import Decimal
@@ -44,7 +45,7 @@ class RecordedActions:
     the wrong name, and a range with no response for one the venue would not serve.
     """
 
-    def __init__(self, served: dict[tuple[date, date], str] | None = None) -> None:
+    def __init__(self, served: dict[tuple[date, date], str | bytes] | None = None) -> None:
         self._real = CorporateActions()
         self._served = RECORDED if served is None else served
         self.asked: list[tuple[date, date]] = []
@@ -61,7 +62,7 @@ class RecordedActions:
             name = self._served.get((first, last))
             if name is None:
                 raise SourceUnavailable(f"the venue did not serve {first} to {last}")
-            return (CASSETTES / name).read_bytes()
+            return name if isinstance(name, bytes) else (CASSETTES / name).read_bytes()
 
         def set_aside(first: date, last: date, collected_on: date) -> None:
             self.set_aside.append((first, last))
@@ -254,6 +255,56 @@ def test_an_answer_lacking_an_action_already_stored_fails_its_year_and_stores_wh
     assert logged[0][1].endswith("stored 7 new or restated actions it holds")
     assert rows(postgres_dsn, "select count(*) from corporate_action")[0][0] == 9
     assert recorded.set_aside == [YEAR_2024]
+
+
+def restated_2024(purpose: str, replacement: str) -> bytes:
+    """The recorded 2024 answer with one purpose text restated."""
+    answer = json.loads((CASSETTES / RECORDED[YEAR_2024]).read_bytes())
+    for record in answer:
+        if record["Purpose"].strip() == purpose:
+            record["Purpose"] = replacement
+    return json.dumps(answer).encode()
+
+
+def test_a_short_answer_stores_no_text_for_a_day_read_with_terms(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """BSE names a dividend before its amount, and a short answer can carry that text again."""
+    trade(postgres_dsn, RELIANCE[1], "BSE", COLLECTED_ON - timedelta(days=1))
+    final = CorporateActionRecord(
+        isin=RELIANCE[1],
+        action_type="dividend",
+        ex_date=date(2024, 8, 19),
+        source_id="bse_corporate_actions",
+        as_of_date=date(2026, 9, 22),
+        qualifier="final",
+        dividend_amount=Decimal(10),
+    )
+    hold(postgres_dsn, RELIANCE_INTERIM, final)
+    reverted = restated_2024("Final Dividend - Rs. - 10.0000", "Final Dividend")
+
+    metadata = run(database, RecordedActions({YEAR_2024: reverted}), YEAR_2024)
+
+    texts = rows(
+        postgres_dsn,
+        "select count(*) from corporate_action where isin = %s and action_type = 'unhandled'",
+        (RELIANCE[1],),
+    )
+    assert (metadata["failed"], texts[0][0]) == (1, 0)
+
+
+def test_a_withdrawal_already_held_under_the_day_is_not_counted(
+    database: PointedDatabase, postgres_dsn: str
+) -> None:
+    """A text stored on the day of collection holds that day's key, so its withdrawal is not
+    written until a later day."""
+    trade(postgres_dsn, RELIANCE[1], "BSE", COLLECTED_ON - timedelta(days=1))
+    hold(postgres_dsn, RELIANCE_BONUS_TEXT.model_copy(update={"as_of_date": COLLECTED_ON}))
+
+    metadata = run(database, RecordedActions(), YEAR_2024)
+
+    withdrawn = rows(postgres_dsn, "select count(*) from corporate_action where is_withdrawn")
+    assert (metadata["failed"], metadata["withdrawn"], withdrawn[0][0]) == (0, 0, 0)
 
 
 def test_an_answer_lacking_the_actions_of_an_instrument_the_venue_no_longer_trades_is_read(
