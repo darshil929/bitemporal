@@ -35,6 +35,7 @@ class RecordedActions:
 
     def __init__(self) -> None:
         self._real = NseActions()
+        self.set_aside: list[tuple[date, date]] = []
 
     def definition(self) -> SourceDefinition:
         return self._real.definition()
@@ -47,7 +48,11 @@ class RecordedActions:
                 raise SourceUnavailable(f"the venue did not serve {first} to {last}")
             return (CASSETTES / "exdate-20250101-20251231.json").read_bytes()
 
+        def set_aside(first: date, last: date, collected_on: date) -> None:
+            self.set_aside.append((first, last))
+
         adapter.fetch = fetch  # type: ignore[method-assign]
+        adapter.set_aside = set_aside  # type: ignore[method-assign]
         return adapter
 
 

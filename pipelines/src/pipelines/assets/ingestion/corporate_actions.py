@@ -1,9 +1,11 @@
 """Every corporate action BSE has recorded, read a calendar year of ex-dates at a time.
 
 The venue answers a range of ex-dates with the actions of every scrip code inside it, so a run
-walks years rather than scrip codes, and each year is committed as it is read. A year's answer must
-hold every action already stored for that year of an instrument the venue still trades: a range the
-venue cut short reads the same as a year with fewer actions in it.
+walks years rather than scrip codes, and each year is committed as it is read. A year's answer
+should hold every action already stored for that year of an instrument the venue still trades: a
+range the venue cut short reads the same as a year with fewer actions in it. Such an answer fails its
+year, yet the actions it holds are stored, since an action stored before is never removed and an
+absence decides nothing; an answer for a year still open is set aside, so the next run asks again.
 """
 
 from collections import defaultdict
@@ -243,6 +245,8 @@ def terms_of(item: CorporateActionRecord) -> Terms:
 class RangeReader(Protocol):
     def fetch(self, first: date, last: date, collected_on: date) -> bytes: ...
 
+    def set_aside(self, first: date, last: date, collected_on: date) -> None: ...
+
     def parse(self, payload: bytes) -> tuple[dict[str, str], ...]: ...
 
 
@@ -266,8 +270,9 @@ def collect_ranges(
     `normalize` turns a venue's response into actions under the ISINs they belong to, `current`
     maps every ISIN already stored onto the one it has since become, and `listed_as` onto one
     standing for the venue-local identifier it was listed under. A stored action the answer lacks
-    fails its range unless the venue has stopped trading the instrument, and is then excused.
-    A stored text the answer replaces with other actions for its day is withdrawn.
+    fails its range unless the venue has stopped trading the instrument, and is then excused; the
+    actions a failed answer holds are stored all the same, and nothing is withdrawn on its word. A
+    stored text a complete answer replaces with other actions for its day is withdrawn.
     """
     version = definition.version_for(collected_on)
     trading = traded_at(connection, venue, collected_on, current)
@@ -283,14 +288,8 @@ def collect_ranges(
             if outside:
                 raise SchemaDrift(f"answer for {partition} holds ex-dates {outside[:3]} outside it")
             held = held_actions(connection, definition.source_id, first, last, current)
-            missing = unanswered(held, records, listed_as)
-            refused = [key for key in missing if key[0] in trading]
-            if refused:
-                raise SchemaDrift(
-                    f"answer for {partition} lacks {len(refused)} actions already stored,"
-                    f" such as {refused[:3]}"
-                )
         except SourceError as failure:
+            adapter.set_aside(first, last, collected_on)
             record_ingestion(
                 connection, definition.source_id, partition, version, "failed", detail=str(failure)
             )
@@ -306,9 +305,29 @@ def collect_ranges(
             )
             continue
 
+        missing = unanswered(held, records, listed_as)
+        refused = [key for key in missing if key[0] in trading]
         # An action stored with the same terms is not new information, so only an action the
         # venue reports for the first time, or restates, becomes a further version.
         fresh = tuple(item for item in records if held.get(key_of(item)) != terms_of(item))
+        if refused:
+            stored = persist_actions(connection, fresh)
+            refusal = (
+                f"answer for {partition} lacks {len(refused)} actions already stored,"
+                f" such as {refused[:3]}; stored {stored} new or restated actions it holds"
+            )
+            record_ingestion(
+                connection, definition.source_id, partition, version, "failed", detail=refusal
+            )
+            connection.commit()
+            adapter.set_aside(first, last, collected_on)
+            written += stored
+            failed += 1
+            context.log.warning(
+                "corporate actions answer lacks actions already stored",
+                extra={"source_id": definition.source_id, "range": partition, "detail": refusal},
+            )
+            continue
         replaced = replaced_texts(held, records, listed_as)
         withdrawn_now = withdrawals(
             connection, definition.source_id, first, last, current, replaced, collected_on

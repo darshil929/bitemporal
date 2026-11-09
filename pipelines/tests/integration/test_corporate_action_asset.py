@@ -48,6 +48,7 @@ class RecordedActions:
         self._real = CorporateActions()
         self._served = RECORDED if served is None else served
         self.asked: list[tuple[date, date]] = []
+        self.set_aside: list[tuple[date, date]] = []
 
     def definition(self) -> SourceDefinition:
         return self._real.definition()
@@ -62,7 +63,11 @@ class RecordedActions:
                 raise SourceUnavailable(f"the venue did not serve {first} to {last}")
             return (CASSETTES / name).read_bytes()
 
+        def set_aside(first: date, last: date, collected_on: date) -> None:
+            self.set_aside.append((first, last))
+
         adapter.fetch = fetch  # type: ignore[method-assign]
+        adapter.set_aside = set_aside  # type: ignore[method-assign]
         return adapter
 
 
@@ -198,37 +203,57 @@ def test_an_answer_holding_ex_dates_outside_its_range_is_refused(
     assert rows(postgres_dsn, "select count(*) from corporate_action")[0][0] == 0
 
 
-def test_an_answer_lacking_an_action_already_stored_is_refused(
+def hold(dsn: str, *actions: CorporateActionRecord) -> None:
+    with psycopg.connect(dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
+        persist_actions(open_, list(actions))
+        open_.commit()
+
+
+# A text a complete answer holding Reliance's bonus of that day would withdraw.
+RELIANCE_BONUS_TEXT = CorporateActionRecord(
+    isin=RELIANCE[1],
+    action_type="unhandled",
+    ex_date=date(2024, 10, 28),
+    source_id="bse_corporate_actions",
+    as_of_date=date(2026, 9, 22),
+    qualifier="bonus issue in the ratio of one for one",
+    purpose="Bonus Issue in the ratio of one for one",
+)
+RELIANCE_INTERIM = CorporateActionRecord(
+    isin=RELIANCE[1],
+    action_type="dividend",
+    ex_date=date(2024, 3, 15),
+    source_id="bse_corporate_actions",
+    as_of_date=date(2026, 9, 22),
+    qualifier="interim",
+    dividend_amount=Decimal(5),
+)
+
+
+def test_an_answer_lacking_an_action_already_stored_fails_its_year_and_stores_what_it_holds(
     database: PointedDatabase, postgres_dsn: str
 ) -> None:
-    """A range the venue cut short reads the same as a year with fewer actions in it.
+    """A range the venue cut short reads the same as a year with fewer actions in it; the stored
+    action stays, the answer's own actions are stored, no text is withdrawn on its word, and the
+    answer is set aside.
 
     A bar 30 days before collection still counts as the venue trading the instrument.
     """
     trade(postgres_dsn, RELIANCE[1], "BSE", COLLECTED_ON - timedelta(days=30))
-    with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as open_:
-        persist_actions(
-            open_,
-            [
-                CorporateActionRecord(
-                    isin=RELIANCE[1],
-                    action_type="dividend",
-                    ex_date=date(2024, 3, 15),
-                    source_id="bse_corporate_actions",
-                    as_of_date=date(2026, 9, 22),
-                    qualifier="interim",
-                    dividend_amount=Decimal(5),
-                )
-            ],
-        )
-        open_.commit()
+    hold(postgres_dsn, RELIANCE_INTERIM, RELIANCE_BONUS_TEXT)
+    recorded = RecordedActions()
 
-    metadata = run(database, RecordedActions(), YEAR_2024)
+    metadata = run(database, recorded, YEAR_2024)
 
     logged = rows(postgres_dsn, "select outcome, detail from ingestion_log")
-    assert metadata["failed"] == 1
+    withdrawn = rows(postgres_dsn, "select count(*) from corporate_action where is_withdrawn")
+    assert (metadata["failed"], metadata["ranges"], metadata["written"]) == (1, 0, 7)
+    assert (metadata["withdrawn"], withdrawn[0][0]) == (0, 0)
+    assert logged[0][0] == "failed"
     assert "lacks 1 actions already stored" in logged[0][1]
-    assert rows(postgres_dsn, "select count(*) from corporate_action")[0][0] == 1
+    assert logged[0][1].endswith("stored 7 new or restated actions it holds")
+    assert rows(postgres_dsn, "select count(*) from corporate_action")[0][0] == 9
+    assert recorded.set_aside == [YEAR_2024]
 
 
 def test_an_answer_lacking_the_actions_of_an_instrument_the_venue_no_longer_trades_is_read(

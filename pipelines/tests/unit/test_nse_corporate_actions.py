@@ -13,6 +13,7 @@ from pipelines.sources.client import Throttle, ThrottledClient
 from pipelines.sources.errors import SchemaDrift
 from pipelines.sources.nse.corporate_actions import (
     FIRST_YEAR,
+    SOURCE_ID,
     IsinResolver,
     NseCorporateActions,
     normalize,
@@ -368,3 +369,26 @@ def test_an_ex_date_more_than_a_week_before_a_listing_opens_places_nothing() -> 
     resolver = IsinResolver({}, PRITIKA_LISTED)
 
     assert resolver.resolve("400100", "PRITIKA", date(2022, 11, 30)) is None
+
+
+def test_every_segment_s_refused_answer_for_a_range_still_open_is_set_aside(
+    tmp_path: Path,
+) -> None:
+    cache = DiskCache(tmp_path)
+    adapter = NseCorporateActions(None, cache, BASE)  # type: ignore[arg-type]
+    collected_on = date(2026, 11, 9)
+    for key in (
+        "exdate-20260101-20261231-as-of-20261109",
+        "sme-exdate-20260101-20261231-as-of-20261109",
+        "exdate-20250101-20251231",
+    ):
+        cache.write(SOURCE_ID, key, ".json", b"[]")
+
+    adapter.set_aside(date(2026, 1, 1), date(2026, 12, 31), collected_on)
+    adapter.set_aside(date(2025, 1, 1), date(2025, 12, 31), collected_on)
+
+    assert sorted(path.name for path in (tmp_path / SOURCE_ID).iterdir()) == [
+        "exdate-20250101-20251231.json",
+        "exdate-20260101-20261231-as-of-20261109.refused-1.json",
+        "sme-exdate-20260101-20261231-as-of-20261109.refused-1.json",
+    ]

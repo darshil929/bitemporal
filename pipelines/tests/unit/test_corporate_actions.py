@@ -270,3 +270,31 @@ def test_the_isin_listed_on_the_ex_date_is_followed_onto_its_successor() -> None
     )
 
     assert shriram.resolve("511218", date(2024, 2, 6)) == SHRIRAM
+
+
+@respx.mock
+def test_a_refused_answer_for_a_range_still_open_is_asked_for_again(tmp_path: Path) -> None:
+    """An answer for a year already over is kept, being the answer every later run reads."""
+    answer = (BSE_ACTIONS / "exdate-20240101-20241231.json").read_bytes()
+    route = respx.get(url__startswith=BASE).mock(return_value=httpx.Response(200, content=answer))
+    client = ThrottledClient(
+        SOURCE_ID, httpx.Client(headers={"User-Agent": IDENTIFYING_USER_AGENT}), Throttle(0.0)
+    )
+    cache = DiskCache(tmp_path)
+    adapter = BseCorporateActions(client, cache, BASE)
+    open_year, closed_year = (
+        (date(2026, 1, 1), date(2026, 12, 31)),
+        (date(2025, 1, 1), date(2025, 12, 31)),
+    )
+    for first, last in (open_year, closed_year):
+        adapter.fetch(first, last, REPORTED_ON)
+        adapter.set_aside(first, last, REPORTED_ON)
+        adapter.fetch(first, last, REPORTED_ON)
+
+    kept = sorted(path.name for path in (tmp_path / SOURCE_ID).iterdir())
+    assert route.call_count == 3
+    assert kept == [
+        "exdate-20250101-20251231.json",
+        "exdate-20260101-20261231-as-of-20260816.json",
+        "exdate-20260101-20261231-as-of-20260816.refused-1.json",
+    ]
