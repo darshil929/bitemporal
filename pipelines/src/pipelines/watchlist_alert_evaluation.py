@@ -30,18 +30,26 @@ BYPASSES_ROW_SECURITY = "select rolsuper or rolbypassrls from pg_roles where rol
 ALERTS = """
 select
     alerts.id, alerts.owner_id, alerts.rule, alerts.threshold, alerts.created_at, alerts.ended_at,
-    entries.isin, entries.venue,
+    entries.isin, entries.venue, coalesce(instruments.current_isin, entries.isin) as current_isin,
     (
         select max(verdicts.trade_date) from watchlist_alert_evaluation as verdicts
         where verdicts.alert_id = alerts.id
     ) as last_judged
 from watchlist_alert as alerts
 inner join watchlist_entry as entries on entries.id = alerts.entry_id
+left join mart_instruments as instruments on instruments.isin = entries.isin
 """
 SESSIONS = """
 select venue, trade_date, as_of_date from mart_trading_days
 where trade_date >= %(start)s and venue = any(%(venues)s)
 """
+# The sessions an instrument traded under its own ISIN; a replaced ISIN's stop at the change.
+TRADED = """
+select isin, venue, trade_date from mart_price_daily
+where trade_date >= %(start)s and isin = any(%(isins)s)
+"""
+# The figures and capital actions follow the series of the ISIN that took a replaced one over,
+# which holds its bars.
 FIGURES = """
 select isin, venue, trade_date, close, return_1d, delivery_pct_1d, as_of_date
 from mart_venue_daily_figures
@@ -82,6 +90,7 @@ class Alert:
     ended_at: datetime | None
     isin: str
     venue: str
+    current_isin: str
     last_judged: date | None
 
     def judges(self, session_day: date) -> bool:
@@ -171,14 +180,16 @@ def evaluate_alerts(connection: psycopg.Connection) -> Evaluated:
         return Evaluated(0, 0, 0)
     start = min(alert.first_session() for alert in alerts)
     isins = sorted({alert.isin for alert in alerts})
+    currents = sorted({alert.current_isin for alert in alerts})
 
     sessions = connection.execute(
         SESSIONS, {"start": start, "venues": sorted({alert.venue for alert in alerts})}
     ).fetchall()
+    traded = set(connection.execute(TRADED, {"start": start, "isins": isins}).fetchall())
     bars = {
         (isin, venue, day): Bar(close, move, delivery, known)
         for isin, venue, day, close, move, delivery, known in connection.execute(
-            FIGURES, {"start": start, "isins": isins}
+            FIGURES, {"start": start, "isins": currents}
         )
     }
     spread_isins = sorted({alert.isin for alert in alerts if alert.rule == "spread_above"})
@@ -195,7 +206,7 @@ def evaluate_alerts(connection: psycopg.Connection) -> Evaluated:
         CAPITAL_ACTIONS,
         {
             "start": min((alert.set_on for alert in price_alerts), default=start),
-            "isins": sorted({alert.isin for alert in price_alerts}),
+            "isins": sorted({alert.current_isin for alert in price_alerts}),
         },
     ):
         capital_actions[isin].append(ex_date)
@@ -212,8 +223,12 @@ def evaluate_alerts(connection: psycopg.Connection) -> Evaluated:
         for venue, day, session_as_of in sessions:
             if venue != alert.venue or day < first or not alert.judges(day):
                 continue
-            bar, spread = bars.get((alert.isin, venue, day)), spreads.get((alert.isin, day))
-            verdict = judge(alert, day, session_as_of, bar, spread, capital_actions[alert.isin])
+            bar = None
+            if (alert.isin, venue, day) in traded:
+                bar = bars.get((alert.current_isin, venue, day))
+            spread = spreads.get((alert.isin, day))
+            actions = capital_actions[alert.current_isin]
+            verdict = judge(alert, day, session_as_of, bar, spread, actions)
             known = judged.get((alert.id, day))
             if known is None or known < verdict.as_of_date:
                 records.append((alert.owner_id, alert.id, day, *astuple(verdict)))
