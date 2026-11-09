@@ -154,6 +154,33 @@ def test_an_alert_on_an_instrument_that_stopped_trading_pauses(
     ]
 
 
+def test_an_alert_on_a_replaced_isin_reads_its_sessions_until_the_change(
+    connection: psycopg.Connection,
+) -> None:
+    replaced = alert_on(
+        connection,
+        BAJAJ_FINANCE_BEFORE_SPLIT,
+        "move_beyond",
+        0.02,
+        ("2025-06-09 09:00+05:30", "2025-06-18 09:00+05:30"),
+    )
+
+    evaluate_alerts(connection)
+
+    assert [
+        (day.isoformat(), status, reason)
+        for day, status, _, reason in verdicts(connection, replaced)
+    ] == [
+        ("2025-06-09", "triggered", None),
+        ("2025-06-10", "watching", None),
+        ("2025-06-11", "watching", None),
+        ("2025-06-12", "watching", None),
+        ("2025-06-13", "watching", None),
+        ("2025-06-16", "paused", "not_traded"),
+        ("2025-06-17", "paused", "not_traded"),
+    ]
+
+
 def test_a_session_holding_no_figure_for_the_rule_leaves_the_alert_watching(
     connection: psycopg.Connection,
 ) -> None:
