@@ -16,7 +16,10 @@ FACT_TABLES = frozenset(
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
 DERIVED_TABLES = frozenset({"daily_features_a", "daily_features_b", "feature_release"})
 ACCOUNT_TABLES = frozenset({"app_user", "app_session", "app_setting", "user_setting"})
-MANAGED_TABLES = IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES | DERIVED_TABLES | ACCOUNT_TABLES
+RUN_TABLES = frozenset({"flow_run", "flow_run_step"})
+MANAGED_TABLES = (
+    IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES | DERIVED_TABLES | ACCOUNT_TABLES | RUN_TABLES
+)
 
 BAR_COLUMNS = "isin, venue, trade_date, as_of_date, local_symbol, open, high, low, close, volume"
 FEATURE_ROW = (

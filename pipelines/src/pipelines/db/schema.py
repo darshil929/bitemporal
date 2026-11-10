@@ -77,6 +77,13 @@ ADMIN_ACTIONS = (
     "run_cancelled",
 )
 
+FLOWS = ("bootstrap", "sync")
+FLOW_RUN_OUTCOMES = ("succeeded", "failed", "cancelled")
+FLOW_STEP_OUTCOMES = ("succeeded", "failed", "skipped")
+# The report's lists: failed days, ranges and lists; checks warned and failed with their rows;
+# failed steps; assets the run planned and did not materialize.
+FLOW_RUN_LISTS = ("failures", "warned_checks", "failed_checks", "failed_steps", "unmaterialized")
+
 PRICE = Numeric(18, 4)
 RATIO = Numeric(18, 6)
 
@@ -812,4 +819,75 @@ class WatchlistAlertEvaluation(Base):
             "(status = 'paused') = (paused_reason is not null)", name="paused_with_reason"
         ),
         CheckConstraint("as_of_date >= trade_date", name="known_after"),
+    )
+
+
+class FlowRun(Base):
+    """What a finished run of a flow did, recorded once and never changed.
+
+    The outcome is the launcher's verdict on the run's report: a run with a failed day, check or
+    step failed, though Dagster counts it a success.
+    """
+
+    __tablename__ = "flow_run"
+
+    # The Dagster run id.
+    run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    flow: Mapped[str] = mapped_column(Text)
+    first_day: Mapped[date] = mapped_column(Date)
+    last_day: Mapped[date] = mapped_column(Date)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str] = mapped_column(Text)
+    # Each source's counts as the run reported them, by source.
+    counts: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    checks_passed: Mapped[int] = mapped_column(Integer)
+    failures: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    warned_checks: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    failed_checks: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    failed_steps: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    unmaterialized: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(_in_list("flow", FLOWS), name="flow"),
+        CheckConstraint(_in_list("outcome", FLOW_RUN_OUTCOMES), name="outcome"),
+        CheckConstraint("last_day >= first_day", name="days"),
+        CheckConstraint("ended_at >= started_at", name="ended_after"),
+        CheckConstraint("checks_passed >= 0", name="checks_passed"),
+        CheckConstraint(
+            "jsonb_typeof(counts) = 'object' and "
+            + " and ".join(f"jsonb_typeof({name}) = 'array'" for name in FLOW_RUN_LISTS),
+            name="shapes",
+        ),
+        CheckConstraint(
+            "outcome <> 'succeeded' or "
+            + " and ".join(
+                f"{name} = '[]'::jsonb" for name in FLOW_RUN_LISTS if name != "warned_checks"
+            ),
+            name="success_failed_nothing",
+        ),
+    )
+
+
+class FlowRunStep(Base):
+    """A finished step of a flow run, recorded once and never changed. Keyed by the run's Dagster
+    id with no key to `flow_run`, so a step is recorded while its run still goes."""
+
+    __tablename__ = "flow_run_step"
+
+    run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    # The Dagster step key.
+    step: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Absent for a step skipped after an earlier one failed.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(_in_list("outcome", FLOW_STEP_OUTCOMES), name="outcome"),
+        CheckConstraint("(outcome = 'skipped') = (started_at is null)", name="started"),
+        CheckConstraint("ended_at >= started_at", name="ended_after"),
     )
