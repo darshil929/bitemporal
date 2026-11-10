@@ -17,5 +17,6 @@ router = APIRouter(
 
 @router.get("/status")
 async def data_status(database: DatabaseDependency) -> DataStatusResponse:
-    """The day the pages show, each venue's latest day, the last run and the state they make."""
+    """The day the pages show, each venue's latest day, the last run and the state they make; days
+    of the history no daily file was asked for, counted to the latest day a run covered."""
     return DataStatusResponse.model_validate(await data_statuses.data_status(database))

@@ -197,7 +197,8 @@ export interface paths {
         };
         /**
          * Data Status
-         * @description The day the pages show, each venue's latest day, the last run and the state they make.
+         * @description The day the pages show, each venue's latest day, the last run and the state they make; days
+         *     of the history no daily file was asked for, counted to the latest day a run covered.
          */
         get: operations["data_status"];
         put?: never;
@@ -804,18 +805,24 @@ export interface components {
         };
         /**
          * DataStatusResponse
-         * @description How current the market data is: `failed` when the last run failed, `unknown` with no run
-         *     recorded, else `fresh`.
+         * @description How current the market data is. `failed` when the last run failed; `stale` when a weekday
+         *     after the day the pages show has ended without figures and its files were due by 07:30 India
+         *     time the next morning, a weekday both venues' price files answered not published excepted;
+         *     `unknown` with no run recorded; else `fresh`.
          */
         DataStatusResponse: {
+            /** Days Never Asked */
+            days_never_asked: number;
             last_run: components["schemas"]["LastRunResponse"] | null;
             /** Published Day */
             published_day: string | null;
+            /** Stale Since */
+            stale_since: string | null;
             /**
              * State
              * @enum {string}
              */
-            state: "fresh" | "failed" | "unknown";
+            state: "fresh" | "stale" | "failed" | "unknown";
             /** Venues */
             venues: components["schemas"]["VenueDayResponse"][];
         };
