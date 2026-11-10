@@ -188,6 +188,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Bootstrap
+         * @description For admins, ask for the history bootstrap: the two most recent years, then the rest.
+         */
+        post: operations["request_bootstrap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data/bootstrap/estimate": {
         parameters: {
             query?: never;
@@ -201,6 +221,26 @@ export interface paths {
          *     would take.
          */
         get: operations["bootstrap_estimate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Flow Request
+         * @description For admins, a request as it stands.
+         */
+        get: operations["flow_request"];
         put?: never;
         post?: never;
         delete?: never;
@@ -245,6 +285,26 @@ export interface paths {
         get: operations["data_status"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Sync
+         * @description For admins, ask for a sync over the range; the flows take it up within about 30 seconds.
+         */
+        post: operations["request_sync"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1020,6 +1080,53 @@ export interface components {
                 [key: string]: components["schemas"]["DurationResponse"];
             };
         };
+        /**
+         * FlowRequestResponse
+         * @description A request as it stands. `refused` carries the reason and its facts: `flow_running` with the
+         *     running flow's days and start, `migration_behind` with the migration found and expected,
+         *     `dbt_building` with the target. A started request lists each run it took and how it ended.
+         */
+        FlowRequestResponse: {
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Flow
+             * @enum {string}
+             */
+            flow: "bootstrap" | "sync";
+            /** Id */
+            id: number;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /** Refusal */
+            refusal: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Requested By */
+            requested_by: string | null;
+            /** Runs */
+            runs: components["schemas"]["RequestRunResponse"][];
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "started" | "refused" | "finished";
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1534,6 +1641,40 @@ export interface components {
             /** Warned Checks */
             warned_checks: components["schemas"]["CheckOutcomeResponse"][];
         };
+        /** RequestPending */
+        RequestPending: {
+            /**
+             * Reason
+             * @constant
+             */
+            reason: "request_pending";
+            /** Request Id */
+            request_id: number;
+        };
+        /** RequestPendingResponse */
+        RequestPendingResponse: {
+            detail: components["schemas"]["RequestPending"];
+        };
+        /** RequestRunResponse */
+        RequestRunResponse: {
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "succeeded" | "failed" | "cancelled";
+            /** Run Id */
+            run_id: string;
+        };
         /**
          * RequestsResponse
          * @description The requests a run over a range makes, one every two seconds per source.
@@ -1845,6 +1986,19 @@ export interface components {
         SyncEstimateResponse: {
             fixed: components["schemas"]["FixedWorkResponse"] | null;
             requests: components["schemas"]["RequestsResponse"];
+        };
+        /** SyncRequestBody */
+        SyncRequestBody: {
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
         };
         /**
          * TriggeredAlertResponse
@@ -2525,6 +2679,53 @@ export interface operations {
             };
         };
     };
+    request_bootstrap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowRequestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestPendingResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
     bootstrap_estimate: {
         parameters: {
             query?: never;
@@ -2550,6 +2751,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    flow_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowRequestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Service Unavailable */
@@ -2626,6 +2883,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    request_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowRequestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestPendingResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeRefusedResponse"];
                 };
             };
             /** @description Service Unavailable */
