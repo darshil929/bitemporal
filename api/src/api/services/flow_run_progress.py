@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.database import Database
 from api.services.flow_run_estimates import MEASURED_RUNS, Duration
+from api.services.flow_run_fetches import Fetches, resolve_fetches
+from api.services.market_reads import read_marts
 
 STAGES = ("prices", "identity", "delivery", "actions", "names", "models", "features", "checks")
 STEP_STAGES = {
@@ -66,6 +68,7 @@ class Progress:
     stages: tuple[Stage, ...]
     current_stage: str | None
     time_left: Duration | None
+    fetches: Fetches | None
 
 
 def stage_of(step: str) -> str:
@@ -140,9 +143,12 @@ async def resolve_progress(transaction: AsyncSession, request_id: int) -> Progre
         if medians:
             remaining = sum(medians.get(step, 0.0) for step in planned - set(finished))
             time_left = Duration(round(remaining))
-    return Progress(status, stages, current, time_left)
+    fetches = await resolve_fetches(transaction, request_id)
+    return Progress(status, stages, current, time_left, fetches)
 
 
-async def run_progress(database: Database, admin_id: int, request_id: int) -> Progress | None:
-    async with database.transaction(admin_id) as transaction:
+async def run_progress(database: Database, request_id: int) -> Progress | None:
+    async def resolve(transaction: AsyncSession) -> Progress | None:
         return await resolve_progress(transaction, request_id)
+
+    return await read_marts(database, resolve)

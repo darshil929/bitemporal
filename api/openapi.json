@@ -553,6 +553,29 @@
         "title": "DataStatusResponse",
         "type": "object"
       },
+      "DayAnswersResponse": {
+        "description": "Each daily file's answer for a day: succeeded, not_published or failed; a file not yet asked\nfor the day is absent.",
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Outcomes",
+            "type": "object"
+          }
+        },
+        "required": [
+          "day",
+          "outcomes"
+        ],
+        "title": "DayAnswersResponse",
+        "type": "object"
+      },
       "DayStretchResponse": {
         "properties": {
           "first_day": {
@@ -729,28 +752,63 @@
         "title": "EntryVenueRequest",
         "type": "object"
       },
-      "FailedFetchResponse": {
-        "description": "A day, a range of corporate actions or a list a source could not give, and why.",
+      "FetchesResponse": {
+        "description": "What the run has fetched in the window it runs: by day up to a month, by year beyond, and\nevery slice whose latest answer failed, with its reason.",
         "properties": {
-          "detail": {
-            "title": "Detail",
+          "days": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DayAnswersResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/api__schemas__flow_run_progress__FailedFetchResponse"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
             "type": "string"
           },
-          "key": {
-            "title": "Key",
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
             "type": "string"
           },
-          "source": {
-            "title": "Source",
-            "type": "string"
+          "years": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/YearAnswersResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Years"
           }
         },
         "required": [
-          "source",
-          "key",
-          "detail"
+          "first_day",
+          "last_day",
+          "days",
+          "years",
+          "failures"
         ],
-        "title": "FailedFetchResponse",
+        "title": "FetchesResponse",
         "type": "object"
       },
       "FirstAdminRequest": {
@@ -2270,6 +2328,16 @@
             ],
             "title": "Current Stage"
           },
+          "fetches": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FetchesResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "stages": {
             "items": {
               "$ref": "#/components/schemas/StageResponse"
@@ -2305,7 +2373,8 @@
           "status",
           "stages",
           "current_stage",
-          "time_left"
+          "time_left",
+          "fetches"
         ],
         "title": "ProgressResponse",
         "type": "object"
@@ -2415,7 +2484,7 @@
           },
           "failures": {
             "items": {
-              "$ref": "#/components/schemas/FailedFetchResponse"
+              "$ref": "#/components/schemas/api__schemas__flow_run_history__FailedFetchResponse"
             },
             "title": "Failures",
             "type": "array"
@@ -4058,6 +4127,33 @@
         "title": "WatchlistRowsResponse",
         "type": "object"
       },
+      "YearAnswersResponse": {
+        "description": "The days of a year in the window, and how many each daily file answered.",
+        "properties": {
+          "answered": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Answered",
+            "type": "object"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "days",
+          "answered"
+        ],
+        "title": "YearAnswersResponse",
+        "type": "object"
+      },
       "api__schemas__attention_feed__UnhandledActionResponse": {
         "description": "A corporate action no factor adjusts on a held instrument, within the sessions a month's\nreturn reads.",
         "properties": {
@@ -4100,6 +4196,53 @@
           "purpose"
         ],
         "title": "UnhandledActionResponse",
+        "type": "object"
+      },
+      "api__schemas__flow_run_history__FailedFetchResponse": {
+        "description": "A day, a range of corporate actions or a list a source could not give, and why.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "key",
+          "detail"
+        ],
+        "title": "FailedFetchResponse",
+        "type": "object"
+      },
+      "api__schemas__flow_run_progress__FailedFetchResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "key",
+          "detail"
+        ],
+        "title": "FailedFetchResponse",
         "type": "object"
       },
       "api__schemas__screener_queries__UnhandledActionResponse": {
