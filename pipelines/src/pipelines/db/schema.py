@@ -80,6 +80,7 @@ ADMIN_ACTIONS = (
 FLOWS = ("bootstrap", "sync")
 FLOW_RUN_OUTCOMES = ("succeeded", "failed", "cancelled")
 FLOW_STEP_OUTCOMES = ("succeeded", "failed", "skipped")
+FLOW_REQUEST_STATUSES = ("requested", "started", "refused", "finished")
 # The report's lists: failed days, ranges and lists; checks warned and failed with their rows;
 # failed steps; assets the run planned and did not materialize.
 FLOW_RUN_LISTS = ("failures", "warned_checks", "failed_checks", "failed_steps", "unmaterialized")
@@ -850,6 +851,8 @@ class FlowRun(Base):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # The request the run was started for; absent for a run started any other way.
+    request_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("flow_request.id"))
 
     __table_args__ = (
         CheckConstraint(_in_list("flow", FLOWS), name="flow"),
@@ -890,4 +893,37 @@ class FlowRunStep(Base):
         CheckConstraint(_in_list("outcome", FLOW_STEP_OUTCOMES), name="outcome"),
         CheckConstraint("(outcome = 'skipped') = (started_at is null)", name="started"),
         CheckConstraint("ended_at >= started_at", name="ended_after"),
+    )
+
+
+class FlowRequest(Base):
+    """An admin's request for a run of a flow over a range of days, which the flows refuse or start
+    and then finish. Anyone signed in reads requests; an admin adds only their own."""
+
+    __tablename__ = "flow_request"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    flow: Mapped[str] = mapped_column(Text)
+    first_day: Mapped[date] = mapped_column(Date)
+    last_day: Mapped[date] = mapped_column(Date)
+    requested_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_user.id"))
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    status: Mapped[str] = mapped_column(Text, server_default="requested", index=True)
+    # Why the flows refused the request, and the facts behind it.
+    refusal: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(_in_list("flow", FLOWS), name="flow"),
+        CheckConstraint(_in_list("status", FLOW_REQUEST_STATUSES), name="status"),
+        CheckConstraint("last_day >= first_day", name="days"),
+        CheckConstraint("(status = 'refused') = (refusal is not null)", name="refused_why"),
+        CheckConstraint(
+            "(status in ('started', 'finished')) = (started_at is not null)", name="started"
+        ),
+        CheckConstraint("(status = 'finished') = (finished_at is not null)", name="finished"),
     )
