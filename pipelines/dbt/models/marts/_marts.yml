@@ -491,6 +491,37 @@ models:
           The latest day on which the venue's bars up to the day and the factors applied on or
           before it were knowable.
 
+  - name: mart_fetch_attempts
+    description: >
+      Every attempt to fetch a slice of a source, read as it is logged: a run's progress by day and
+      source, and the reasons its failed days, ranges and lists give.
+    columns:
+      - name: ingestion_id
+        data_type: bigint
+        description: The attempt's identifier, rising with each attempt.
+      - name: source_id
+        data_type: text
+        description: The source asked, such as nse_bhavcopy_equity or bse_corporate_actions.
+      - name: partition_key
+        data_type: text
+        description: >
+          The slice asked for: a day (2026-11-09), a range of ex-dates (20260101-20261231) or a list
+          (active-20261109).
+      - name: outcome
+        data_type: text
+        description: >
+          succeeded where the slice was read, not_published where the source had none, failed where
+          it could not be read.
+      - name: fetched_at
+        data_type: timestamp with time zone
+        description: When the answer was received.
+      - name: row_count
+        data_type: integer
+        description: The rows a successful attempt read; absent otherwise.
+      - name: detail
+        data_type: text
+        description: Why an attempt failed, in the words the ingestion recorded.
+
 unit_tests:
   - name: an_action_both_venues_report_is_listed_once_as_bse_records_it
     model: mart_corporate_actions
