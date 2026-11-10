@@ -14,6 +14,7 @@ from api.routers import (
     admin,
     attention,
     auth,
+    data,
     health,
     instruments,
     market,
@@ -60,6 +61,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(setup.router)
     app.include_router(market.router)
+    app.include_router(data.router)
     app.include_router(instruments.router)
     app.include_router(screener.router)
     app.include_router(watchlists.router)
