@@ -1,6 +1,7 @@
 """The runs of the flows followed while they go and once they end.
 
-A running run's finished steps are copied as they finish; a finished run is recorded with its report;
+A running run's finished steps are copied as they finish, and the run is named on its request and
+cancelled when its request is; a finished run is recorded with its report;
 a request finishes once its last run is recorded; and a bootstrap's older years start once its recent
 years finished without a failed step or a cancel, failed days alone not stopping it. Every evaluation
 reads the runs as they stand, so one missed while the daemon was down is caught up on the next.
@@ -13,6 +14,7 @@ import psycopg
 from dagster import (
     DagsterInstance,
     DefaultSensorStatus,
+    RunRecord,
     RunRequest,
     RunsFilter,
     SensorEvaluationContext,
@@ -46,6 +48,10 @@ order by started_at desc
 limit 1
 """
 FINISH = "update flow_request set status = 'finished', finished_at = now() where id = %s"
+CARRIED = "update flow_request set run_id = %s where id = %s and run_id is distinct from %s"
+CANCEL_ASKED = (
+    "select id from flow_request where status = 'started' and cancel_requested_at is not null"
+)
 
 
 def copy_steps(
@@ -55,6 +61,24 @@ def copy_steps(
     for run_id in run_ids:
         for step in steps_of(instance.all_logs(run_id)):
             connection.execute(RECORD_STEP, (run_id, *step))
+    connection.commit()
+
+
+def follow_running(
+    instance: DagsterInstance, connection: psycopg.Connection, running: Sequence[RunRecord]
+) -> None:
+    """Name the run carrying each request, and cancel a run whose request a cancel was asked for:
+    a queued run is cancelled, a running one stopped, and the days it stored stay."""
+    carried = {}
+    for record in sorted(running, key=lambda record: record.create_timestamp):
+        request = record.dagster_run.tags.get(REQUEST_TAG)
+        if request is not None:
+            carried[int(request)] = record.dagster_run.run_id
+    for request_id, run_id in carried.items():
+        connection.execute(CARRIED, (run_id, request_id, run_id))
+    for (request_id,) in connection.execute(CANCEL_ASKED).fetchall():
+        if request_id in carried:
+            instance.run_coordinator.cancel_run(carried[request_id])
     connection.commit()
 
 
@@ -83,19 +107,16 @@ def follow_runs(connection: psycopg.Connection, instance: DagsterInstance) -> Se
     schema_row = connection.execute("select current_schema()").fetchone()
     assert schema_row is not None
     schema = schema_row[0]
-    running = instance.get_run_records(
-        RunsFilter(tags={FLOW_TAG: [BOOTSTRAP, SYNC]}, statuses=UNFINISHED)
-    )
     # A scheduled run carries no schema and writes where the instance's settings point.
-    copy_steps(
-        instance,
-        connection,
-        [
-            record.dagster_run.run_id
-            for record in running
-            if record.dagster_run.tags.get(SCHEMA_TAG, schema) == schema
-        ],
-    )
+    running = [
+        record
+        for record in instance.get_run_records(
+            RunsFilter(tags={FLOW_TAG: [BOOTSTRAP, SYNC]}, statuses=UNFINISHED)
+        )
+        if record.dagster_run.tags.get(SCHEMA_TAG, schema) == schema
+    ]
+    copy_steps(instance, connection, [record.dagster_run.run_id for record in running])
+    follow_running(instance, connection, running)
     record_finished_runs(instance, connection, schema)
     return SensorResult(
         run_requests=[

@@ -1,6 +1,7 @@
 """Runs followed while they go and once they end: steps copied, requests finished, older years started."""
 
 from collections.abc import Iterator
+from types import SimpleNamespace
 from typing import Any
 
 import psycopg
@@ -8,16 +9,18 @@ import pytest
 from alembic.config import Config
 from dagster import (
     DagsterInstance,
+    DagsterRunStatus,
     MaterializeResult,
     SensorResult,
     asset,
     build_sensor_context,
     materialize,
 )
+from dagster._core.test_utils import create_run_for_test
 from psycopg.types.json import Jsonb
 
 from fixtures.database import MIGRATION_SCHEMA, PointedDatabase
-from pipelines.flow_run_monitoring import copy_steps, flow_run_sensor, follow_runs
+from pipelines.flow_run_monitoring import copy_steps, flow_run_sensor, follow_running, follow_runs
 from pipelines.flows import REQUEST_TAG, SCHEMA_TAG
 from pipelines.jobs import FLOW_TAG, RANGE_END, RANGE_START, SYNC
 
@@ -184,3 +187,37 @@ def test_the_sensor_records_a_finished_run_of_its_schema(
     assert isinstance(flow_run_sensor(context), SensorResult)
     with psycopg.connect(postgres_dsn, options=f"-csearch_path={MIGRATION_SCHEMA},public") as check:
         assert check.execute("select run_id from flow_run").fetchall() == [(run_id,)]
+
+
+class Coordinator:
+    """The run coordinator, keeping the runs it was asked to cancel."""
+
+    def __init__(self) -> None:
+        self.cancelled: list[str] = []
+
+    def cancel_run(self, run_id: str) -> bool:
+        self.cancelled.append(run_id)
+        return True
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_a_request_names_its_run_and_a_cancel_stops_it(
+    connection: psycopg.Connection, instance: DagsterInstance, cancel: bool
+) -> None:
+    request = started(connection, SYNC, "2026-11-04", "2026-11-10")
+    if cancel:
+        connection.execute("update flow_request set cancel_requested_at = now()")
+        connection.commit()
+    run = create_run_for_test(
+        instance,
+        job_name="daily_sync",
+        status=DagsterRunStatus.STARTED,
+        tags={FLOW_TAG: SYNC, SCHEMA_TAG: MIGRATION_SCHEMA, REQUEST_TAG: str(request)},
+    )
+    record = instance.get_run_record_by_id(run.run_id)
+    coordinator = Coordinator()
+
+    follow_running(SimpleNamespace(run_coordinator=coordinator), connection, [record])
+
+    assert coordinator.cancelled == ([run.run_id] if cancel else [])
+    assert connection.execute("select run_id from flow_request").fetchone() == (run.run_id,)

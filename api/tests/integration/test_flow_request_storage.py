@@ -130,3 +130,20 @@ async def test_a_refused_request_keeps_the_reason_and_its_facts(
     )
 
     assert owner.execute("select refusal from flow_request").fetchone() == (why,)
+
+
+@pytest.mark.parametrize(("person", "allowed"), [("admin", True), ("member", False)])
+async def test_an_admin_asks_for_a_cancel(
+    database: Database,
+    owner: psycopg.Connection,
+    people: dict[str, int],
+    person: str,
+    allowed: bool,
+) -> None:
+    await request_as(database, people["admin"])
+
+    async with database.transaction(people[person]) as session:
+        await session.execute(text("update flow_request set cancel_requested_at = now()"))
+
+    asked = owner.execute("select cancel_requested_at is not null from flow_request").fetchone()
+    assert asked == (allowed,)

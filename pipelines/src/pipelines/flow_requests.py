@@ -34,6 +34,10 @@ limit 1
 for update skip locked
 """
 REFUSE = "update flow_request set status = 'refused', refusal = %s where id = %s"
+CANCEL_WAITING = (
+    "update flow_request set status = 'cancelled'"
+    " where status = 'requested' and cancel_requested_at is not null"
+)
 START = "update flow_request set status = 'started', started_at = now() where id = %s"
 
 
@@ -51,7 +55,10 @@ def request_windows(flow: str, first: date, last: date) -> list[tuple[date, date
 def take_request(
     connection: psycopg.Connection, instance: DagsterInstance
 ) -> RunRequest | SkipReason:
-    """The run for the oldest request waiting, or why there is none; the request moves on."""
+    """The run for the oldest request waiting, or why there is none; the request moves on. A request
+    cancelled before it started is never started."""
+    connection.execute(CANCEL_WAITING)
+    connection.commit()
     request = connection.execute(OLDEST_REQUEST).fetchone()
     if request is None:
         return SkipReason("no flow request waiting")
