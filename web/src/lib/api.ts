@@ -188,6 +188,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run History
+         * @description For admins, the newest runs with their reports and the stretches of the history no daily
+         *     file was asked for.
+         */
+        get: operations["run_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data/status": {
         parameters: {
             query?: never;
@@ -764,6 +785,16 @@ export interface components {
             unchanged: number;
         };
         /**
+         * CheckOutcomeResponse
+         * @description A check that did not pass, with the rows it found where it records them.
+         */
+        CheckOutcomeResponse: {
+            /** Name */
+            name: string;
+            /** Rows */
+            rows: number | null;
+        };
+        /**
          * CorporateActionResponse
          * @description An action with its terms as an announcement states them, the factor it applies to earlier
          *     prices or the dividend in rupees a share, the venue's own text where its terms are unknown, who
@@ -826,6 +857,19 @@ export interface components {
             /** Venues */
             venues: components["schemas"]["VenueDayResponse"][];
         };
+        /** DayStretchResponse */
+        DayStretchResponse: {
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+        };
         /**
          * DivergenceResponse
          * @description A held instrument whose venues' closes diverge on the published day, in basis points.
@@ -878,6 +922,18 @@ export interface components {
         EntryVenueRequest: {
             /** Venue */
             venue: string;
+        };
+        /**
+         * FailedFetchResponse
+         * @description A day, a range of corporate actions or a list a source could not give, and why.
+         */
+        FailedFetchResponse: {
+            /** Detail */
+            detail: string;
+            /** Key */
+            key: string;
+            /** Source */
+            source: string;
         };
         /** FirstAdminRequest */
         FirstAdminRequest: {
@@ -1337,6 +1393,74 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "not_ready";
+        };
+        /**
+         * RecordedRunResponse
+         * @description A finished run of a flow and its report: each source's counts, the checks, and what
+         *     failed.
+         */
+        RecordedRunResponse: {
+            /** Checks Passed */
+            checks_passed: number;
+            /** Counts */
+            counts: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /**
+             * Ended At
+             * Format: date-time
+             */
+            ended_at: string;
+            /** Failed Checks */
+            failed_checks: components["schemas"]["CheckOutcomeResponse"][];
+            /** Failed Steps */
+            failed_steps: string[];
+            /** Failures */
+            failures: components["schemas"]["FailedFetchResponse"][];
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Flow
+             * @enum {string}
+             */
+            flow: "bootstrap" | "sync";
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "succeeded" | "failed" | "cancelled";
+            /** Run Id */
+            run_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Unmaterialized */
+            unmaterialized: string[];
+            /** Warned Checks */
+            warned_checks: components["schemas"]["CheckOutcomeResponse"][];
+        };
+        /**
+         * RunHistoryResponse
+         * @description The ten newest runs, newest first, and the stretches of the history no daily file was asked
+         *     for, to the latest day a run covered.
+         */
+        RunHistoryResponse: {
+            /** Days Never Asked */
+            days_never_asked: components["schemas"]["DayStretchResponse"][];
+            /** Runs */
+            runs: components["schemas"]["RecordedRunResponse"][];
         };
         /**
          * SavedViewChangeRequest
@@ -2274,6 +2398,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    run_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunHistoryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
             };
         };
     };
