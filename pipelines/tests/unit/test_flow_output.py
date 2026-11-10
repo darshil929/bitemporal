@@ -70,6 +70,10 @@ def run_window(*_: object) -> FlowReport:
     return FlowReport(date(2026, 9, 25), date(2026, 9, 25), {}, [], 108, [], [], [], [])
 
 
+# The schema each finished run is recorded in.
+RECORDED: list[str] = []
+
+
 @pytest.fixture
 def launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """The launcher with its database, instance and run stood in for; returns the instance home."""
@@ -86,6 +90,8 @@ def launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(flows, "DagsterInstance", Instance)
     monkeypatch.setattr(flows, "refuse_unless_ready", lambda *_: None)
     monkeypatch.setattr(flows, "run_window", run_window)
+    monkeypatch.setattr(flows, "record_finished_runs", lambda *args: RECORDED.append(args[2]))
+    RECORDED.clear()
     return tmp_path
 
 
@@ -107,6 +113,7 @@ def test_the_terminal_shows_the_target_the_log_and_the_report(
     assert DBT_LINE not in shown.out
     assert DBT_LINE in log.read_text()
     assert log.read_text().count(STEP_LINE) == 2
+    assert RECORDED == ["dev"]
 
 
 def test_verbose_shows_each_runs_output(launcher: Path, capfd: pytest.CaptureFixture[str]) -> None:
