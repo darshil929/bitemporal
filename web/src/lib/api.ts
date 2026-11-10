@@ -230,6 +230,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/sync/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sync Estimate
+         * @description For admins, the days a sync over the range would ask each daily file for and how long it
+         *     would take.
+         */
+        get: operations["sync_estimate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -883,6 +904,16 @@ export interface components {
             venue_spread_bps: number | null;
         };
         /**
+         * DurationResponse
+         * @description A length of time in seconds, and in whole minutes rounded up.
+         */
+        DurationResponse: {
+            /** Minutes */
+            minutes: number;
+            /** Seconds */
+            seconds: number;
+        };
+        /**
          * EntryRequest
          * @description An instrument to follow, on the venue named or else its primary venue, in the list named or
          *     else the default, which a person keeping no list gains under the name Watchlist.
@@ -1378,6 +1409,13 @@ export interface components {
             /** Venue Spread Median Bps */
             venue_spread_median_bps: number | null;
         };
+        /** RangeRefusedResponse */
+        RangeRefusedResponse: {
+            /** Detail */
+            detail: {
+                [key: string]: string;
+            };
+        };
         /** ReadinessResponse */
         ReadinessResponse: {
             /** Database Schema */
@@ -1450,6 +1488,25 @@ export interface components {
             unmaterialized: string[];
             /** Warned Checks */
             warned_checks: components["schemas"]["CheckOutcomeResponse"][];
+        };
+        /**
+         * RequestsResponse
+         * @description The requests a run over a range makes, one every two seconds per source.
+         */
+        RequestsResponse: {
+            duration: components["schemas"]["DurationResponse"];
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /** Sources */
+            sources: components["schemas"]["SourceDaysResponse"][];
         };
         /**
          * RunHistoryResponse
@@ -1679,6 +1736,20 @@ export interface components {
             username: string;
         };
         /**
+         * SourceDaysResponse
+         * @description A daily file's days in a range: those held, and those a run would ask for.
+         */
+        SourceDaysResponse: {
+            /** Days */
+            days: number;
+            /** Held */
+            held: number;
+            /** Source Id */
+            source_id: string;
+            /** To Request */
+            to_request: number;
+        };
+        /**
          * SourceResponse
          * @description A source figures are read from, with its trust tier and the SEBI curation row naming it.
          */
@@ -1721,6 +1792,13 @@ export interface components {
             superseded_by: string;
             /** Watchlist Id */
             watchlist_id: number;
+        };
+        /**
+         * SyncEstimateResponse
+         * @description The requests a sync over the range would make.
+         */
+        SyncEstimateResponse: {
+            requests: components["schemas"]["RequestsResponse"];
         };
         /**
          * TriggeredAlertResponse
@@ -2464,6 +2542,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    sync_estimate: {
+        parameters: {
+            query: {
+                first_day: string;
+                last_day: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncEstimateResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeRefusedResponse"];
                 };
             };
             /** @description Service Unavailable */
