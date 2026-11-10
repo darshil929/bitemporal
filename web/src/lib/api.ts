@@ -188,6 +188,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Data Status
+         * @description The day the pages show, each venue's latest day, the last run and the state they make.
+         */
+        get: operations["data_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -783,6 +803,23 @@ export interface components {
             venues_differ: boolean;
         };
         /**
+         * DataStatusResponse
+         * @description How current the market data is: `failed` when the last run failed, `unknown` with no run
+         *     recorded, else `fresh`.
+         */
+        DataStatusResponse: {
+            last_run: components["schemas"]["LastRunResponse"] | null;
+            /** Published Day */
+            published_day: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "fresh" | "failed" | "unknown";
+            /** Venues */
+            venues: components["schemas"]["VenueDayResponse"][];
+        };
+        /**
          * DivergenceResponse
          * @description A held instrument whose venues' closes diverge on the published day, in basis points.
          */
@@ -988,6 +1025,51 @@ export interface components {
             venue_spread_bps: number | null;
             /** Volume */
             volume: number | null;
+        };
+        /**
+         * LastRunResponse
+         * @description The newest run of a flow not cancelled: its days, when it ran, how it ended, and the counts
+         *     of what failed or warned. A failed fetch is a day, a range of corporate actions or a list.
+         */
+        LastRunResponse: {
+            /**
+             * Ended At
+             * Format: date-time
+             */
+            ended_at: string;
+            /** Failed Checks */
+            failed_checks: number;
+            /** Failed Fetches */
+            failed_fetches: number;
+            /** Failed Steps */
+            failed_steps: string[];
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Flow
+             * @enum {string}
+             */
+            flow: "bootstrap" | "sync";
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "succeeded" | "failed";
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Warned Checks */
+            warned_checks: number;
         };
         /** ListingResponse */
         ListingResponse: {
@@ -1548,6 +1630,24 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VenueDayResponse
+         * @description A venue's latest stored day and whether it passed its checks.
+         */
+        VenueDayResponse: {
+            /** Is Complete */
+            is_complete: boolean;
+            /**
+             * Latest Day
+             * Format: date
+             */
+            latest_day: string;
+            /**
+             * Venue
+             * @enum {string}
+             */
+            venue: "BSE" | "NSE";
         };
         /** VenueSessionResponse */
         VenueSessionResponse: {
@@ -2167,6 +2267,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    data_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataStatusResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
             };
         };
     };

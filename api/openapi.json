@@ -429,6 +429,57 @@
         "title": "CorporateActionResponse",
         "type": "object"
       },
+      "DataStatusResponse": {
+        "description": "How current the market data is: `failed` when the last run failed, `unknown` with no run\nrecorded, else `fresh`.",
+        "properties": {
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "published_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Day"
+          },
+          "state": {
+            "enum": [
+              "fresh",
+              "failed",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/VenueDayResponse"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "state",
+          "published_day",
+          "venues",
+          "last_run"
+        ],
+        "title": "DataStatusResponse",
+        "type": "object"
+      },
       "DivergenceResponse": {
         "description": "A held instrument whose venues' closes diverge on the published day, in basis points.",
         "properties": {
@@ -1062,6 +1113,80 @@
           "sources"
         ],
         "title": "KeyFiguresResponse",
+        "type": "object"
+      },
+      "LastRunResponse": {
+        "description": "The newest run of a flow not cancelled: its days, when it ran, how it ended, and the counts\nof what failed or warned. A failed fetch is a day, a range of corporate actions or a list.",
+        "properties": {
+          "ended_at": {
+            "format": "date-time",
+            "title": "Ended At",
+            "type": "string"
+          },
+          "failed_checks": {
+            "title": "Failed Checks",
+            "type": "integer"
+          },
+          "failed_fetches": {
+            "title": "Failed Fetches",
+            "type": "integer"
+          },
+          "failed_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Steps",
+            "type": "array"
+          },
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "flow": {
+            "enum": [
+              "bootstrap",
+              "sync"
+            ],
+            "title": "Flow",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "succeeded",
+              "failed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "warned_checks": {
+            "title": "Warned Checks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "flow",
+          "first_day",
+          "last_day",
+          "started_at",
+          "ended_at",
+          "outcome",
+          "failed_steps",
+          "failed_fetches",
+          "failed_checks",
+          "warned_checks"
+        ],
+        "title": "LastRunResponse",
         "type": "object"
       },
       "ListingResponse": {
@@ -2728,6 +2853,35 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VenueDayResponse": {
+        "description": "A venue's latest stored day and whether it passed its checks.",
+        "properties": {
+          "is_complete": {
+            "title": "Is Complete",
+            "type": "boolean"
+          },
+          "latest_day": {
+            "format": "date",
+            "title": "Latest Day",
+            "type": "string"
+          },
+          "venue": {
+            "enum": [
+              "BSE",
+              "NSE"
+            ],
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "venue",
+          "latest_day",
+          "is_complete"
+        ],
+        "title": "VenueDayResponse",
+        "type": "object"
+      },
       "VenueSessionResponse": {
         "properties": {
           "is_complete": {
@@ -3785,6 +3939,48 @@
         "summary": "Sign Out",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/data/status": {
+      "get": {
+        "description": "The day the pages show, each venue's latest day, the last run and the state they make.",
+        "operationId": "data_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Data Status",
+        "tags": [
+          "data"
         ]
       }
     },

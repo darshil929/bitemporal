@@ -29,6 +29,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "change_session_limits",
         "change_view",
         "create_first_admin",
+        "data_status",
         "health",
         "instrument",
         "instrument_actions",
