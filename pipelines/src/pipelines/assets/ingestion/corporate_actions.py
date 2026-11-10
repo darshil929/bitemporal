@@ -189,6 +189,11 @@ def unanswered(
     )
 
 
+def read_days(held: dict[ActionKey, Terms], listed_as: dict[str, str]) -> set[tuple[str, date]]:
+    """The instrument days already holding an action read with terms, by listing."""
+    return {(listed_as.get(key[0], key[0]), key[2]) for key in held if key[1] != UNHANDLED}
+
+
 def replaced_texts(
     held: dict[ActionKey, Terms],
     records: tuple[CorporateActionRecord, ...],
@@ -311,6 +316,14 @@ def collect_ranges(
         # venue reports for the first time, or restates, becomes a further version.
         fresh = tuple(item for item in records if held.get(key_of(item)) != terms_of(item))
         if refused:
+            # A short answer can carry again a text a complete answer has since read with terms.
+            with_terms = read_days(held, listed_as)
+            fresh = tuple(
+                item
+                for item in fresh
+                if item.action_type != UNHANDLED
+                or (listed_as.get(item.isin, item.isin), item.ex_date) not in with_terms
+            )
             stored = persist_actions(connection, fresh)
             refusal = (
                 f"answer for {partition} lacks {len(refused)} actions already stored,"
@@ -332,8 +345,11 @@ def collect_ranges(
         withdrawn_now = withdrawals(
             connection, definition.source_id, first, last, current, replaced, collected_on
         )
-        written += persist_actions(connection, fresh + withdrawn_now)
-        withdrawn += len(withdrawn_now)
+        # A version already stored under the same day is not written again, so a withdrawal counts
+        # only once written.
+        withdrawn_written = persist_actions(connection, withdrawn_now)
+        written += persist_actions(connection, fresh) + withdrawn_written
+        withdrawn += withdrawn_written
         detail = (
             f"lacks {len(missing)} actions of instruments untraded at {venue} for"
             f" {UNTRADED_DAYS} days: {named(missing)}"
@@ -362,13 +378,13 @@ def collect_ranges(
                     "actions": named(missing[:5]),
                 },
             )
-        if withdrawn_now:
+        if withdrawn_written:
             context.log.info(
                 "stored corporate action texts withdrawn, replaced by the answer",
                 extra={
                     "source_id": definition.source_id,
                     "range": partition,
-                    "count": len(withdrawn_now),
+                    "count": withdrawn_written,
                     "actions": named(sorted(replaced)[:5]),
                 },
             )
