@@ -46,6 +46,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "remove_watchlist",
         "rename_watchlist",
         "reset_password",
+        "run_history",
         "save_view",
         "saved_views",
         "screen",

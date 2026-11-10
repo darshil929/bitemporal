@@ -308,6 +308,32 @@
         "title": "BreadthResponse",
         "type": "object"
       },
+      "CheckOutcomeResponse": {
+        "description": "A check that did not pass, with the rows it found where it records them.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          }
+        },
+        "required": [
+          "name",
+          "rows"
+        ],
+        "title": "CheckOutcomeResponse",
+        "type": "object"
+      },
       "CorporateActionResponse": {
         "description": "An action with its terms as an announcement states them, the factor it applies to earlier\nprices or the dividend in rupees a share, the venue's own text where its terms are unknown, who\nreported it, whether the two venues' records differ, whether its factor is applied, and the\nsource of the record shown, absent for a fund's unit split read from the prices.",
         "properties": {
@@ -499,6 +525,26 @@
         "title": "DataStatusResponse",
         "type": "object"
       },
+      "DayStretchResponse": {
+        "properties": {
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          }
+        },
+        "required": [
+          "first_day",
+          "last_day"
+        ],
+        "title": "DayStretchResponse",
+        "type": "object"
+      },
       "DivergenceResponse": {
         "description": "A held instrument whose venues' closes diverge on the published day, in basis points.",
         "properties": {
@@ -634,6 +680,30 @@
           "venue"
         ],
         "title": "EntryVenueRequest",
+        "type": "object"
+      },
+      "FailedFetchResponse": {
+        "description": "A day, a range of corporate actions or a list a source could not give, and why.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "key",
+          "detail"
+        ],
+        "title": "FailedFetchResponse",
         "type": "object"
       },
       "FirstAdminRequest": {
@@ -2038,6 +2108,144 @@
           "reason"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RecordedRunResponse": {
+        "description": "A finished run of a flow and its report: each source's counts, the checks, and what\nfailed.",
+        "properties": {
+          "checks_passed": {
+            "title": "Checks Passed",
+            "type": "integer"
+          },
+          "counts": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "ended_at": {
+            "format": "date-time",
+            "title": "Ended At",
+            "type": "string"
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOutcomeResponse"
+            },
+            "title": "Failed Checks",
+            "type": "array"
+          },
+          "failed_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Steps",
+            "type": "array"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/FailedFetchResponse"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "flow": {
+            "enum": [
+              "bootstrap",
+              "sync"
+            ],
+            "title": "Flow",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "unmaterialized": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmaterialized",
+            "type": "array"
+          },
+          "warned_checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOutcomeResponse"
+            },
+            "title": "Warned Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "flow",
+          "first_day",
+          "last_day",
+          "started_at",
+          "ended_at",
+          "outcome",
+          "counts",
+          "checks_passed",
+          "failures",
+          "warned_checks",
+          "failed_checks",
+          "failed_steps",
+          "unmaterialized"
+        ],
+        "title": "RecordedRunResponse",
+        "type": "object"
+      },
+      "RunHistoryResponse": {
+        "description": "The ten newest runs, newest first, and the stretches of the history no daily file was asked\nfor, to the latest day a run covered.",
+        "properties": {
+          "days_never_asked": {
+            "items": {
+              "$ref": "#/components/schemas/DayStretchResponse"
+            },
+            "title": "Days Never Asked",
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RecordedRunResponse"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs",
+          "days_never_asked"
+        ],
+        "title": "RunHistoryResponse",
         "type": "object"
       },
       "SavedViewChangeRequest": {
@@ -3958,6 +4166,48 @@
         "summary": "Sign Out",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/data/runs": {
+      "get": {
+        "description": "For admins, the newest runs with their reports and the stretches of the history no daily\nfile was asked for.",
+        "operationId": "run_history",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Run History",
+        "tags": [
+          "data"
         ]
       }
     },
