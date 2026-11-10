@@ -583,6 +583,25 @@
         "title": "DivergenceResponse",
         "type": "object"
       },
+      "DurationResponse": {
+        "description": "A length of time in seconds, and in whole minutes rounded up.",
+        "properties": {
+          "minutes": {
+            "title": "Minutes",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seconds",
+          "minutes"
+        ],
+        "title": "DurationResponse",
+        "type": "object"
+      },
       "EntryRequest": {
         "description": "An instrument to follow, on the venue named or else its primary venue, in the list named or\nelse the default, which a person keeping no list gains under the name Watchlist.",
         "properties": {
@@ -2059,6 +2078,22 @@
         "title": "PriceHistoryResponse",
         "type": "object"
       },
+      "RangeRefusedResponse": {
+        "properties": {
+          "detail": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Detail",
+            "type": "object"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "RangeRefusedResponse",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "properties": {
           "database_schema": {
@@ -2221,6 +2256,39 @@
           "unmaterialized"
         ],
         "title": "RecordedRunResponse",
+        "type": "object"
+      },
+      "RequestsResponse": {
+        "description": "The requests a run over a range makes, one every two seconds per source.",
+        "properties": {
+          "duration": {
+            "$ref": "#/components/schemas/DurationResponse"
+          },
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceDaysResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "first_day",
+          "last_day",
+          "sources",
+          "duration"
+        ],
+        "title": "RequestsResponse",
         "type": "object"
       },
       "RunHistoryResponse": {
@@ -2870,6 +2938,35 @@
         "title": "SignInRequest",
         "type": "object"
       },
+      "SourceDaysResponse": {
+        "description": "A daily file's days in a range: those held, and those a run would ask for.",
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "held": {
+            "title": "Held",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "to_request": {
+            "title": "To Request",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "days",
+          "held",
+          "to_request"
+        ],
+        "title": "SourceDaysResponse",
+        "type": "object"
+      },
       "SourceResponse": {
         "description": "A source figures are read from, with its trust tier and the SEBI curation row naming it.",
         "properties": {
@@ -2969,6 +3066,19 @@
           "superseded_by"
         ],
         "title": "SupersededEntryResponse",
+        "type": "object"
+      },
+      "SyncEstimateResponse": {
+        "description": "The requests a sync over the range would make.",
+        "properties": {
+          "requests": {
+            "$ref": "#/components/schemas/RequestsResponse"
+          }
+        },
+        "required": [
+          "requests"
+        ],
+        "title": "SyncEstimateResponse",
         "type": "object"
       },
       "TriggeredAlertResponse": {
@@ -4248,6 +4358,80 @@
           }
         },
         "summary": "Data Status",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/data/sync/estimate": {
+      "get": {
+        "description": "For admins, the days a sync over the range would ask each daily file for and how long it\nwould take.",
+        "operationId": "sync_estimate",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "first_day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "First Day",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last_day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Last Day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncEstimateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeRefusedResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Sync Estimate",
         "tags": [
           "data"
         ]
