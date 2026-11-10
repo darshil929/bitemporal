@@ -430,8 +430,12 @@
         "type": "object"
       },
       "DataStatusResponse": {
-        "description": "How current the market data is: `failed` when the last run failed, `unknown` with no run\nrecorded, else `fresh`.",
+        "description": "How current the market data is. `failed` when the last run failed; `stale` when a weekday\nafter the day the pages show has ended without figures and its files were due by 07:30 India\ntime the next morning, a weekday both venues' price files answered not published excepted;\n`unknown` with no run recorded; else `fresh`.",
         "properties": {
+          "days_never_asked": {
+            "title": "Days Never Asked",
+            "type": "integer"
+          },
           "last_run": {
             "anyOf": [
               {
@@ -454,9 +458,22 @@
             ],
             "title": "Published Day"
           },
+          "stale_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Since"
+          },
           "state": {
             "enum": [
               "fresh",
+              "stale",
               "failed",
               "unknown"
             ],
@@ -475,7 +492,9 @@
           "state",
           "published_day",
           "venues",
-          "last_run"
+          "last_run",
+          "stale_since",
+          "days_never_asked"
         ],
         "title": "DataStatusResponse",
         "type": "object"
@@ -3944,7 +3963,7 @@
     },
     "/data/status": {
       "get": {
-        "description": "The day the pages show, each venue's latest day, the last run and the state they make.",
+        "description": "The day the pages show, each venue's latest day, the last run and the state they make; days\nof the history no daily file was asked for, counted to the latest day a run covered.",
         "operationId": "data_status",
         "responses": {
           "200": {

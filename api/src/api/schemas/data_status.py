@@ -37,12 +37,16 @@ class LastRunResponse(BaseModel):
 
 
 class DataStatusResponse(BaseModel):
-    """How current the market data is: `failed` when the last run failed, `unknown` with no run
-    recorded, else `fresh`."""
+    """How current the market data is. `failed` when the last run failed; `stale` when a weekday
+    after the day the pages show has ended without figures and its files were due by 07:30 India
+    time the next morning, a weekday both venues' price files answered not published excepted;
+    `unknown` with no run recorded; else `fresh`."""
 
     model_config = ConfigDict(from_attributes=True)
 
-    state: Literal["fresh", "failed", "unknown"]
+    state: Literal["fresh", "stale", "failed", "unknown"]
     published_day: date | None
     venues: list[VenueDayResponse]
     last_run: LastRunResponse | None
+    stale_since: date | None
+    days_never_asked: int
