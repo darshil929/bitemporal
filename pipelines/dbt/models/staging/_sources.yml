@@ -31,6 +31,14 @@ sources:
         description: >
           Each source the pipelines read, with its trust tier and the SEBI curation row that
           names it, rewritten from configuration by every flow.
+      - name: source_schema_version
+        description: >
+          The days each version of a source's format covers, rewritten from configuration by
+          every flow.
+      - name: ingestion_log
+        description: >
+          One row per attempt to fetch a slice of a source: a day of a daily file, a range of
+          corporate actions or a list of securities, with what the source answered.
       - name: instrument_name
         description: >
           A name an exchange's list of securities gives an instrument, written the day a list
