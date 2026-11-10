@@ -1,4 +1,4 @@
-"""Bodies of the sync estimate."""
+"""Bodies of the sync and bootstrap estimates."""
 
 from datetime import date
 
@@ -36,12 +36,34 @@ class RequestsResponse(BaseModel):
     duration: DurationResponse
 
 
+class FixedWorkResponse(BaseModel):
+    """The other steps as the last runs of the flow took them: the median by stage (models,
+    features, other) and in all, and each of those runs' whole duration, newest first."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    stages: dict[str, DurationResponse]
+    duration: DurationResponse
+    last_runs: list[DurationResponse]
+
+
 class SyncEstimateResponse(BaseModel):
-    """The requests a sync over the range would make."""
+    """A sync's requests over the range and its fixed work; no fixed work before a sync ran."""
 
     model_config = ConfigDict(from_attributes=True)
 
     requests: RequestsResponse
+    fixed: FixedWorkResponse | None
+
+
+class BootstrapEstimateResponse(BaseModel):
+    """The bootstrap's runs, the two most recent years then the days before, and its fixed work;
+    no fixed work before a bootstrap ran."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    windows: list[RequestsResponse]
+    fixed: FixedWorkResponse | None
 
 
 class RangeRefusedResponse(BaseModel):

@@ -1,9 +1,12 @@
-"""How long a sync would take to ask for its days: the days each daily file would be asked for, one
-request every two seconds per source with the sources side by side."""
+"""How long a sync or the history bootstrap would take: the days each daily file would be asked for,
+one request every two seconds per source with the sources side by side, and the fixed work of the
+other steps as the last three runs of the flow took it."""
 
 import math
+import statistics
+from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +25,24 @@ DAILY_SOURCES = {
 REQUEST_SECONDS = 2
 # A sync asks again for the two most recent days each source holds, in case a file was corrected.
 RECHECKED_DAYS = 2
+# The bootstrap's first run covers the two most recent years.
+RECENT = timedelta(days=730)
+MEASURED_RUNS = 3
+
+# The steps that fetch from the venues; every other step is fixed work.
+FETCH_STEPS = frozenset(
+    {
+        "source_registry",
+        "bse_bhavcopy",
+        "nse_bhavcopy",
+        "bse_delivery",
+        "nse_delivery",
+        "corporate_actions",
+        "nse_corporate_actions",
+        "bse_instrument_names",
+        "nse_instrument_names",
+    }
+)
 
 FIRST_DAY = text("select min(first_day) from mart_sources where source_id = any(:prices)")
 SOURCE_DAYS = text(
@@ -35,6 +56,17 @@ SOURCE_DAYS = text(
     " on held.source_id = pair.source_id and held.trade_date = day::date"
     " where day::date >= greatest(own.first_day, venue.first_day)"
     " group by pair.source_id order by pair.source_id"
+)
+RECENT_RUN_STEPS = text(
+    "with recent as ("
+    " select run_id, started_at, ended_at from flow_run"
+    " where flow = :flow and outcome <> 'cancelled'"
+    " and exists (select from flow_run_step where flow_run_step.run_id = flow_run.run_id)"
+    " order by started_at desc limit :runs)"
+    " select recent.run_id, extract(epoch from recent.ended_at - recent.started_at) as total,"
+    " step.step, extract(epoch from step.ended_at - step.started_at) as seconds"
+    " from recent join flow_run_step as step on step.run_id = recent.run_id"
+    " where step.started_at is not null"
 )
 
 
@@ -73,8 +105,30 @@ class Requests:
 
 
 @dataclass(frozen=True)
+class FixedWork:
+    """The median of the last runs' other steps, by stage, and those runs' whole durations."""
+
+    stages: dict[str, Duration]
+    duration: Duration
+    last_runs: tuple[Duration, ...]
+
+
+@dataclass(frozen=True)
 class SyncEstimate:
     requests: Requests
+    fixed: FixedWork | None
+
+
+@dataclass(frozen=True)
+class BootstrapEstimate:
+    windows: tuple[Requests, ...]
+    fixed: FixedWork | None
+
+
+def stage_of(step: str) -> str:
+    if step == "dbt_models":
+        return "models"
+    return "features" if step.startswith("daily_feature") else "other"
 
 
 async def first_day(transaction: AsyncSession) -> date | None:
@@ -109,6 +163,26 @@ async def requests_over(
     return Requests(first, last, sources, Duration(longest * REQUEST_SECONDS))
 
 
+async def fixed_work(transaction: AsyncSession, flow: str) -> FixedWork | None:
+    totals: dict[str, float] = {}
+    stages: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for row in await transaction.execute(RECENT_RUN_STEPS, {"flow": flow, "runs": MEASURED_RUNS}):
+        totals[row.run_id] = float(row.total)
+        if row.step not in FETCH_STEPS:
+            stages[row.run_id][stage_of(row.step)] += float(row.seconds)
+    if not totals:
+        return None
+    names = sorted({stage for run in stages.values() for stage in run})
+    return FixedWork(
+        stages={
+            name: Duration(round(statistics.median(stages[run][name] for run in totals)))
+            for name in names
+        },
+        duration=Duration(round(statistics.median(sum(stages[run].values()) for run in totals))),
+        last_runs=tuple(Duration(round(total)) for total in totals.values()),
+    )
+
+
 async def check_range(transaction: AsyncSession, first: date, last: date) -> None:
     """Refuse a range reversed, starting before the history, or ending after today in India."""
     start = await first_day(transaction)
@@ -123,6 +197,25 @@ async def check_range(transaction: AsyncSession, first: date, last: date) -> Non
 async def sync_estimate(database: Database, first: date, last: date) -> SyncEstimate:
     async def estimate(transaction: AsyncSession) -> SyncEstimate:
         await check_range(transaction, first, last)
-        return SyncEstimate(await requests_over(transaction, first, last, RECHECKED_DAYS))
+        requests = await requests_over(transaction, first, last, RECHECKED_DAYS)
+        return SyncEstimate(requests, await fixed_work(transaction, "sync"))
+
+    return await read_marts(database, estimate)
+
+
+async def bootstrap_estimate(database: Database) -> BootstrapEstimate:
+    """The two most recent years ending today in India, then every earlier day of the history."""
+
+    async def estimate(transaction: AsyncSession) -> BootstrapEstimate:
+        today = data_status.india_now().date()
+        start = await first_day(transaction) or today
+        split = today - RECENT
+        bounds = (
+            [(split + timedelta(days=1), today), (start, split)]
+            if start <= split
+            else [(start, today)]
+        )
+        windows = tuple([await requests_over(transaction, a, b, 0) for a, b in bounds])
+        return BootstrapEstimate(windows, await fixed_work(transaction, "bootstrap"))
 
     return await read_marts(database, estimate)
