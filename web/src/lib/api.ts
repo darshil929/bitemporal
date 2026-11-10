@@ -188,6 +188,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/bootstrap/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bootstrap Estimate
+         * @description For admins, the history bootstrap's two runs, the days each would ask for and how long it
+         *     would take.
+         */
+        get: operations["bootstrap_estimate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data/runs": {
         parameters: {
             query?: never;
@@ -784,6 +805,16 @@ export interface components {
             return_1d: number;
         };
         /**
+         * BootstrapEstimateResponse
+         * @description The bootstrap's runs, the two most recent years then the days before, and its fixed work;
+         *     no fixed work before a bootstrap ran.
+         */
+        BootstrapEstimateResponse: {
+            fixed: components["schemas"]["FixedWorkResponse"] | null;
+            /** Windows */
+            windows: components["schemas"]["RequestsResponse"][];
+        };
+        /**
          * BreadthResponse
          * @description The companies that traded on the day, each on its primary venue: how many, how many rose, fell
          *     and stood unchanged, a company on its first bar counting in none of those, how many made a new
@@ -974,6 +1005,20 @@ export interface components {
             password: string;
             /** Username */
             username: string;
+        };
+        /**
+         * FixedWorkResponse
+         * @description The other steps as the last runs of the flow took them: the median by stage (models,
+         *     features, other) and in all, and each of those runs' whole duration, newest first.
+         */
+        FixedWorkResponse: {
+            duration: components["schemas"]["DurationResponse"];
+            /** Last Runs */
+            last_runs: components["schemas"]["DurationResponse"][];
+            /** Stages */
+            stages: {
+                [key: string]: components["schemas"]["DurationResponse"];
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1795,9 +1840,10 @@ export interface components {
         };
         /**
          * SyncEstimateResponse
-         * @description The requests a sync over the range would make.
+         * @description A sync's requests over the range and its fixed work; no fixed work before a sync ran.
          */
         SyncEstimateResponse: {
+            fixed: components["schemas"]["FixedWorkResponse"] | null;
             requests: components["schemas"]["RequestsResponse"];
         };
         /**
@@ -2476,6 +2522,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    bootstrap_estimate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BootstrapEstimateResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
             };
         };
     };

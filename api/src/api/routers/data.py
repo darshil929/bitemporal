@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from api.dependencies import AdminDependency, DatabaseDependency, signed_in
 from api.routers.market import MARKET_READ_RESPONSES
 from api.schemas.data_status import DataStatusResponse
-from api.schemas.flow_run_estimates import RangeRefusedResponse, SyncEstimateResponse
+from api.schemas.flow_run_estimates import (
+    BootstrapEstimateResponse,
+    RangeRefusedResponse,
+    SyncEstimateResponse,
+)
 from api.schemas.flow_run_history import RunHistoryResponse
 from api.services import data_status as data_statuses
 from api.services import flow_run_estimates, flow_run_history
@@ -53,3 +57,14 @@ async def sync_estimate(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail={"reason": refused.reason}
         ) from refused
     return SyncEstimateResponse.model_validate(estimate)
+
+
+@router.get("/bootstrap/estimate")
+async def bootstrap_estimate(
+    _admin: AdminDependency, database: DatabaseDependency
+) -> BootstrapEstimateResponse:
+    """For admins, the history bootstrap's two runs, the days each would ask for and how long it
+    would take."""
+    return BootstrapEstimateResponse.model_validate(
+        await flow_run_estimates.bootstrap_estimate(database)
+    )

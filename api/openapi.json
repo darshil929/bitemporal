@@ -257,6 +257,34 @@
         "title": "BelowGateMoveResponse",
         "type": "object"
       },
+      "BootstrapEstimateResponse": {
+        "description": "The bootstrap's runs, the two most recent years then the days before, and its fixed work;\nno fixed work before a bootstrap ran.",
+        "properties": {
+          "fixed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FixedWorkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/RequestsResponse"
+            },
+            "title": "Windows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "windows",
+          "fixed"
+        ],
+        "title": "BootstrapEstimateResponse",
+        "type": "object"
+      },
       "BreadthResponse": {
         "description": "The companies that traded on the day, each on its primary venue: how many, how many rose, fell\nand stood unchanged, a company on its first bar counting in none of those, how many made a new\n52-week high or low, and the median day's return.",
         "properties": {
@@ -752,6 +780,35 @@
           "password"
         ],
         "title": "FirstAdminRequest",
+        "type": "object"
+      },
+      "FixedWorkResponse": {
+        "description": "The other steps as the last runs of the flow took them: the median by stage (models,\nfeatures, other) and in all, and each of those runs' whole duration, newest first.",
+        "properties": {
+          "duration": {
+            "$ref": "#/components/schemas/DurationResponse"
+          },
+          "last_runs": {
+            "items": {
+              "$ref": "#/components/schemas/DurationResponse"
+            },
+            "title": "Last Runs",
+            "type": "array"
+          },
+          "stages": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DurationResponse"
+            },
+            "title": "Stages",
+            "type": "object"
+          }
+        },
+        "required": [
+          "stages",
+          "duration",
+          "last_runs"
+        ],
+        "title": "FixedWorkResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3069,14 +3126,25 @@
         "type": "object"
       },
       "SyncEstimateResponse": {
-        "description": "The requests a sync over the range would make.",
+        "description": "A sync's requests over the range and its fixed work; no fixed work before a sync ran.",
         "properties": {
+          "fixed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FixedWorkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "requests": {
             "$ref": "#/components/schemas/RequestsResponse"
           }
         },
         "required": [
-          "requests"
+          "requests",
+          "fixed"
         ],
         "title": "SyncEstimateResponse",
         "type": "object"
@@ -4276,6 +4344,48 @@
         "summary": "Sign Out",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/data/bootstrap/estimate": {
+      "get": {
+        "description": "For admins, the history bootstrap's two runs, the days each would ask for and how long it\nwould take.",
+        "operationId": "bootstrap_estimate",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapEstimateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Bootstrap Estimate",
+        "tags": [
+          "data"
         ]
       }
     },
