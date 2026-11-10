@@ -164,3 +164,40 @@ async def test_requests_are_for_admins(
     response = await requests.send(method, path, member_headers, SYNC_WEEK)
 
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize("status", ["requested", "started"])
+async def test_an_admin_cancels_a_waiting_or_running_request_once(
+    requests: Requests, admin_headers: dict[str, str], status: str
+) -> None:
+    added = (await requests.send("POST", "/data/sync", admin_headers, SYNC_WEEK)).json()
+    if status == "started":
+        requests.execute(
+            "update flow_request set status = 'started', started_at = now() where id = %s",
+            (added["id"],),
+        )
+
+    first = await requests.send("POST", f"/data/requests/{added['id']}/cancel", admin_headers)
+    again = await requests.send("POST", f"/data/requests/{added['id']}/cancel", admin_headers)
+
+    assert (first.status_code, again.status_code) == (202, 202)
+    assert first.json()["is_cancelling"] is True
+    assert [action for action, _ in requests.execute(AUDIT)] == ["sync_started", "run_cancelled"]
+
+
+async def test_a_request_that_ended_is_not_cancelled(
+    requests: Requests, admin_headers: dict[str, str]
+) -> None:
+    added = (await requests.send("POST", "/data/sync", admin_headers, SYNC_WEEK)).json()
+    requests.execute(
+        "update flow_request set status = 'refused', refusal = '{}' where id = %s", (added["id"],)
+    )
+
+    refused = await requests.send("POST", f"/data/requests/{added['id']}/cancel", admin_headers)
+    unknown = await requests.send("POST", f"/data/requests/{added['id'] + 1}/cancel", admin_headers)
+
+    assert (refused.status_code, refused.json()["detail"]) == (
+        409,
+        {"reason": "request_ended", "status": "refused"},
+    )
+    assert unknown.status_code == 404

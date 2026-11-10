@@ -901,6 +901,10 @@
             "title": "Id",
             "type": "integer"
           },
+          "is_cancelling": {
+            "title": "Is Cancelling",
+            "type": "boolean"
+          },
           "last_day": {
             "format": "date",
             "title": "Last Day",
@@ -958,7 +962,8 @@
               "requested",
               "started",
               "refused",
-              "finished"
+              "finished",
+              "cancelled"
             ],
             "title": "Status",
             "type": "string"
@@ -970,6 +975,7 @@
           "first_day",
           "last_day",
           "status",
+          "is_cancelling",
           "requested_by",
           "requested_at",
           "started_at",
@@ -2557,6 +2563,42 @@
           "unmaterialized"
         ],
         "title": "RecordedRunResponse",
+        "type": "object"
+      },
+      "RequestEnded": {
+        "properties": {
+          "reason": {
+            "const": "request_ended",
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "refused",
+              "finished",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "status"
+        ],
+        "title": "RequestEnded",
+        "type": "object"
+      },
+      "RequestEndedResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/RequestEnded"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "RequestEndedResponse",
         "type": "object"
       },
       "RequestPending": {
@@ -4940,6 +4982,82 @@
           }
         },
         "summary": "Flow Request",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/data/requests/{request_id}/cancel": {
+      "post": {
+        "description": "For admins, ask for a waiting or running request to be cancelled; the days a run stored\nstay.",
+        "operationId": "cancel_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestEndedResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Cancel Request",
         "tags": [
           "data"
         ]

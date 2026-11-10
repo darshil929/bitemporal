@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from api.dependencies import AdminDependency, DatabaseDependency, signed_in
 from api.routers.market import MARKET_READ_RESPONSES
 from api.schemas.data_status import DataStatusResponse
-from api.schemas.flow_requests import FlowRequestResponse, RequestPendingResponse, SyncRequestBody
+from api.schemas.flow_requests import (
+    FlowRequestResponse,
+    RequestEndedResponse,
+    RequestPendingResponse,
+    SyncRequestBody,
+)
 from api.schemas.flow_run_estimates import (
     BootstrapEstimateResponse,
     RangeRefusedResponse,
@@ -133,3 +138,27 @@ async def run_progress(
     if found is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     return ProgressResponse.model_validate(found)
+
+
+@router.post(
+    "/requests/{request_id}/cancel",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=NOT_FOUND | {status.HTTP_409_CONFLICT: {"model": RequestEndedResponse}},
+)
+async def cancel_request(
+    request_id: int, admin: AdminDependency, database: DatabaseDependency
+) -> FlowRequestResponse:
+    """For admins, ask for a waiting or running request to be cancelled; the days a run stored
+    stay."""
+    try:
+        cancelled = await flow_requests.cancel_request(database, admin.id, request_id)
+    except flow_requests.RequestNotFound as missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found"
+        ) from missing
+    except flow_requests.RequestEnded as ended:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"reason": "request_ended", "status": ended.status},
+        ) from ended
+    return FlowRequestResponse.model_validate(cancelled)

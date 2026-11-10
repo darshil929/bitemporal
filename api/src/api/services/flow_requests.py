@@ -25,8 +25,14 @@ ADD = text(
     "insert into flow_request (flow, first_day, last_day, requested_by)"
     " values (:flow, :first, :last, :person) returning id"
 )
+STATE = text(
+    "select status, cancel_requested_at is not null as is_cancelling from flow_request"
+    " where id = :id"
+)
+CANCEL = text("update flow_request set cancel_requested_at = now() where id = :id")
 REQUEST = text(
     "select request.id, request.flow, request.first_day, request.last_day, request.status,"
+    " request.cancel_requested_at is not null as is_cancelling,"
     " person.display_name as requested_by, request.requested_at, request.started_at,"
     " request.finished_at, request.refusal"
     " from flow_request as request left join app_user as person on person.id = request.requested_by"
@@ -64,6 +70,7 @@ class FlowRequest:
     first_day: date
     last_day: date
     status: str
+    is_cancelling: bool
     requested_by: str | None
     requested_at: datetime
     started_at: datetime | None
@@ -120,3 +127,34 @@ async def request_bootstrap(database: Database, admin_id: int) -> FlowRequest:
 async def flow_request(database: Database, admin_id: int, request_id: int) -> FlowRequest | None:
     async with database.transaction(admin_id) as transaction:
         return await read_request(transaction, request_id)
+
+
+class RequestNotFound(Exception):
+    """No request has the id."""
+
+
+class RequestEnded(Exception):
+    """The request was refused, cancelled or finished."""
+
+    def __init__(self, status: str) -> None:
+        super().__init__(status)
+        self.status = status
+
+
+async def cancel_request(database: Database, admin_id: int, request_id: int) -> FlowRequest:
+    """Ask for a waiting or running request to be cancelled; the flows act on it within about 30
+    seconds. Asking again changes nothing."""
+    async with database.transaction(admin_id) as transaction:
+        state = (await transaction.execute(STATE, {"id": request_id})).one_or_none()
+        if state is None:
+            raise RequestNotFound
+        if state.status not in ("requested", "started"):
+            raise RequestEnded(state.status)
+        if not state.is_cancelling:
+            await transaction.execute(CANCEL, {"id": request_id})
+            await record_admin_action(
+                transaction, admin_id, "run_cancelled", detail={"request_id": request_id}
+            )
+        cancelled = await read_request(transaction, request_id)
+        assert cancelled is not None
+        return cancelled
