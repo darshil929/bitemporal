@@ -11,7 +11,8 @@ A check of warning severity that does not pass is reported with the rows it foun
 
 The terminal shows where the flow writes and each run's report. Everything a run prints, Dagster's
 step log and dbt's output among it, goes to a file in the Dagster instance's `flow-logs` folder, or
-to the terminal with `--verbose`.
+to the terminal with `--verbose`. Once a run finishes, the database records it with its report and
+steps, together with any finished run of either flow it has not yet recorded.
 """
 
 import argparse
@@ -30,14 +31,18 @@ from alembic.script import ScriptDirectory
 from dagster import (
     AssetCheckEvaluation,
     AssetCheckSeverity,
+    DagsterEventType,
     DagsterInstance,
     DagsterRunStatus,
     Definitions,
+    EventLogEntry,
     JobDefinition,
+    RunRecord,
     RunsFilter,
     execute_job,
     reconstructable,
 )
+from psycopg.types.json import Jsonb
 
 from pipelines.assets.ingestion.calendar import INGESTION_DAYS
 from pipelines.assets.ingestion.corporate_actions import VENUE_TIME
@@ -50,6 +55,16 @@ RECENT = timedelta(days=730)
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 UNFINISHED = [DagsterRunStatus.QUEUED, DagsterRunStatus.STARTING, DagsterRunStatus.STARTED]
+FINISHED = [DagsterRunStatus.SUCCESS, DagsterRunStatus.FAILURE, DagsterRunStatus.CANCELED]
+
+# The schema a run writes to, by which a database recognises its own runs in a shared instance.
+SCHEMA_TAG = "bitemporal/schema"
+
+STEP_ENDS = {
+    DagsterEventType.STEP_SUCCESS: "succeeded",
+    DagsterEventType.STEP_FAILURE: "failed",
+    DagsterEventType.STEP_SKIPPED: "skipped",
+}
 
 # Dagster keeps its own telemetry in the instance's `logs` folder.
 LOG_FOLDER = "flow-logs"
@@ -58,7 +73,7 @@ LOG_FOLDER = "flow-logs"
 # again and answered, the rows a corrected file changed and the days that could not be asked for
 # again; years of ex-dates for corporate actions, with the stored actions an answer left out for
 # instruments the venue no longer trades and the stored texts it replaced with others; statuses for
-# a list of securities.
+# a list of securities. A run from before a count existed shows it as a dash.
 DAY_COUNTS = (
     "published",
     "unpublished",
@@ -96,6 +111,26 @@ from ingestion_log
 where outcome = 'failed' and fetched_at between %s and %s
 order by source_id, partition_key
 """
+
+FETCHED_DURING = "select exists (select from ingestion_log where fetched_at between %s and %s)"
+
+RECORDED = "select run_id from flow_run where run_id = any(%s)"
+
+RECORD_RUN = """
+insert into flow_run (
+    run_id, flow, first_day, last_day, started_at, ended_at, outcome, counts, checks_passed,
+    failures, warned_checks, failed_checks, failed_steps, unmaterialized
+) values (
+    %(run_id)s, %(flow)s, %(first_day)s, %(last_day)s, %(started_at)s, %(ended_at)s, %(outcome)s,
+    %(counts)s, %(checks_passed)s, %(failures)s, %(warned_checks)s, %(failed_checks)s,
+    %(failed_steps)s, %(unmaterialized)s
+)
+"""
+
+RECORD_STEP = (
+    "insert into flow_run_step (run_id, step, started_at, ended_at, outcome)"
+    " values (%s, %s, %s, %s, %s)"
+)
 
 
 class FlowRefused(Exception):
@@ -204,7 +239,11 @@ class FlowReport:
         shown = [f"{self.first} to {self.last}"]
         for source, fields in SOURCE_COUNTS.items():
             counts = self.counts.get(source)
-            read = "not run" if counts is None else "  ".join(f"{f} {counts[f]}" for f in fields)
+            read = (
+                "not run"
+                if counts is None
+                else "  ".join(f"{f} {counts.get(f, '-')}" for f in fields)
+            )
             shown.append(f"  {source:<22} {read}")
         shown += [f"  failed {source} {key}: {detail}" for source, key, detail in self.failures]
         shown.append(
@@ -254,46 +293,148 @@ def checks_by_outcome(
     return passed, warned, failed
 
 
-def run_window(
-    instance: DagsterInstance, job: Callable[[], JobDefinition], first: date, last: date
+def run_times(record: RunRecord) -> tuple[datetime, datetime]:
+    """A run's start and end, or for a run that never started its creation and last change."""
+    started = record.start_time or record.create_timestamp.timestamp()
+    ended = record.end_time or max(started, record.update_timestamp.timestamp())
+    return datetime.fromtimestamp(started, UTC), datetime.fromtimestamp(ended, UTC)
+
+
+def report_from(
+    record: RunRecord, events: Sequence[EventLogEntry], connection: psycopg.Connection
 ) -> FlowReport:
-    tags = {RANGE_START: first.isoformat(), RANGE_END: last.isoformat()}
-    with execute_job(reconstructable(job), instance=instance, tags=tags) as result:
-        counts = {
-            event.asset_key.to_user_string(): {
+    """A finished run's report from its stored events, against the assets that run planned."""
+    counts: dict[str, dict[str, int]] = {}
+    planned: set[str] = set()
+    checks: list[AssetCheckEvaluation] = []
+    failed_steps: set[str] = set()
+    for event in (entry.dagster_event for entry in events if entry.dagster_event is not None):
+        if event.is_step_materialization and event.asset_key is not None:
+            metadata = event.step_materialization_data.materialization.metadata
+            counts[event.asset_key.to_user_string()] = {
                 name: int(value.value)
-                for name, value in event.materialization.metadata.items()
+                for name, value in metadata.items()
                 if isinstance(value.value, int)
             }
-            for event in result.get_asset_materialization_events()
-            if event.asset_key is not None and event.materialization is not None
-        }
-        planned = {key.to_user_string() for key in job().asset_layer.selected_asset_keys}
-        checks = result.get_asset_check_evaluations()
-        failed_steps = sorted(result.get_failed_step_keys())
-        run_id = result.run_id
+        elif event.is_asset_materialization_planned and event.asset_key is not None:
+            planned.add(event.asset_key.to_user_string())
+        elif event.event_type == DagsterEventType.ASSET_CHECK_EVALUATION:
+            checks.append(event.asset_check_evaluation_data)
+        elif event.is_step_failure and event.step_key is not None:
+            failed_steps.add(event.step_key)
 
-    record = instance.get_run_record_by_id(run_id)
-    started = datetime.fromtimestamp(record.start_time or 0, UTC) if record else datetime.now(UTC)
-    ended = datetime.fromtimestamp(record.end_time or 0, UTC) if record else datetime.now(UTC)
-    with Database().connect() as connection:
-        failures = [
-            (source, key, detail or "")
-            for source, key, detail in connection.execute(FAILED_ATTEMPTS, (started, ended))
-        ]
-
+    failures = [
+        (source, key, detail or "")
+        for source, key, detail in connection.execute(FAILED_ATTEMPTS, run_times(record))
+    ]
     checks_passed, warned_checks, failed_checks = checks_by_outcome(checks)
+    tags = record.dagster_run.tags
     return FlowReport(
-        first=first,
-        last=last,
+        first=date.fromisoformat(tags[RANGE_START]),
+        last=date.fromisoformat(tags[RANGE_END]),
         counts=counts,
         failures=failures,
         checks_passed=checks_passed,
         warned_checks=warned_checks,
         failed_checks=failed_checks,
-        failed_steps=failed_steps,
+        failed_steps=sorted(failed_steps),
         unmaterialized=sorted(planned - set(counts)),
     )
+
+
+def steps_of(events: Sequence[EventLogEntry]) -> list[tuple[str, datetime | None, datetime, str]]:
+    """Each finished step of a run with its start, end and outcome; a step still going is left out."""
+    starts: dict[str, datetime] = {}
+    steps = []
+    for entry in events:
+        event = entry.dagster_event
+        if event is None or event.step_key is None:
+            continue
+        at = datetime.fromtimestamp(entry.timestamp, UTC)
+        if event.event_type == DagsterEventType.STEP_START:
+            starts[event.step_key] = at
+        elif event.event_type in STEP_ENDS:
+            ended = STEP_ENDS[event.event_type]
+            steps.append((event.step_key, starts.get(event.step_key), at, ended))
+    return steps
+
+
+def outcome_of(status: DagsterRunStatus, report: FlowReport) -> str:
+    """The launcher's verdict: Dagster counts a run with a failed day or check a success."""
+    if status == DagsterRunStatus.CANCELED:
+        return "cancelled"
+    return "succeeded" if report.is_clean else "failed"
+
+
+def writes_here(record: RunRecord, connection: psycopg.Connection, schema: str) -> bool:
+    """Whether a run wrote here, by its schema tag or else by a fetch logged here while it ran."""
+    written = record.dagster_run.tags.get(SCHEMA_TAG)
+    if written is not None:
+        return written == schema
+    row = connection.execute(FETCHED_DURING, run_times(record)).fetchone()
+    return row is not None and bool(row[0])
+
+
+def record_finished_runs(
+    instance: DagsterInstance, connection: psycopg.Connection, schema: str
+) -> list[str]:
+    """Record each finished flow run this database has not recorded, oldest first."""
+    records = instance.get_run_records(
+        RunsFilter(tags={FLOW_TAG: [BOOTSTRAP, SYNC]}, statuses=FINISHED)
+    )
+    run_ids = [record.dagster_run.run_id for record in records]
+    known = {run_id for (run_id,) in connection.execute(RECORDED, (run_ids,))}
+    recorded = []
+    for record in sorted(records, key=lambda record: record.create_timestamp):
+        run = record.dagster_run
+        if run.run_id in known or not writes_here(record, connection, schema):
+            continue
+        events = instance.all_logs(run.run_id)
+        report = report_from(record, events, connection)
+        started, ended = run_times(record)
+        connection.execute(
+            RECORD_RUN,
+            {
+                "run_id": run.run_id,
+                "flow": run.tags[FLOW_TAG],
+                "first_day": report.first,
+                "last_day": report.last,
+                "started_at": started,
+                "ended_at": ended,
+                "outcome": outcome_of(run.status, report),
+                "counts": Jsonb(report.counts),
+                "checks_passed": report.checks_passed,
+                "failures": Jsonb(
+                    [{"source": s, "key": k, "detail": d} for s, k, d in report.failures]
+                ),
+                "warned_checks": Jsonb([{"name": n, "rows": r} for n, r in report.warned_checks]),
+                "failed_checks": Jsonb([{"name": n, "rows": r} for n, r in report.failed_checks]),
+                "failed_steps": Jsonb(report.failed_steps),
+                "unmaterialized": Jsonb(report.unmaterialized),
+            },
+        )
+        for step in steps_of(events):
+            connection.execute(RECORD_STEP, (run.run_id, *step))
+        recorded.append(run.run_id)
+    connection.commit()
+    return recorded
+
+
+def run_window(
+    instance: DagsterInstance,
+    job: Callable[[], JobDefinition],
+    first: date,
+    last: date,
+    schema: str,
+) -> FlowReport:
+    tags = {RANGE_START: first.isoformat(), RANGE_END: last.isoformat(), SCHEMA_TAG: schema}
+    with execute_job(reconstructable(job), instance=instance, tags=tags) as result:
+        run_id = result.run_id
+
+    record = instance.get_run_record_by_id(run_id)
+    assert record is not None
+    with Database().connect() as connection:
+        return report_from(record, instance.all_logs(run_id), connection)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -343,9 +484,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     reports = []
     for first, last in windows:
         with output():
-            report = run_window(instance, job, first, last)
+            report = run_window(instance, job, first, last, settings.schema_name)
         print("\n".join(report.lines()), flush=True)
         reports.append(report)
+        with Database().connect() as connection:
+            record_finished_runs(instance, connection, settings.schema_name)
     return 0 if all(report.is_clean for report in reports) else 1
 
 

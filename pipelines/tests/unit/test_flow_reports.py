@@ -106,6 +106,13 @@ def test_actions_excused_or_withdrawn_from_an_answer_are_counted_and_fail_nothin
     assert "  corporate_actions      ranges 28  failed 0  excused 9  withdrawn 3" in excused.lines()
 
 
+def test_a_count_a_run_did_not_report_shows_as_a_dash() -> None:
+    """A run recorded from before a count existed reports what it counted then."""
+    earlier = report(counts={"corporate_actions": {"ranges": 28, "failed": 0}})
+
+    assert "  corporate_actions      ranges 28  failed 0  excused -  withdrawn -" in earlier.lines()
+
+
 def test_checks_are_counted_by_their_outcome_and_severity() -> None:
     """dbt's warnings arrive as checks of warning severity that did not pass."""
     checks = [
