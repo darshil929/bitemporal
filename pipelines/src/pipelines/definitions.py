@@ -10,6 +10,7 @@ from dagster_dbt import DbtCliResource
 from pipelines import assets, checks
 from pipelines.assets.transform.dbt import dbt_project, table_assets
 from pipelines.flow_requests import flow_request_sensor
+from pipelines.flow_run_monitoring import flow_run_sensor
 from pipelines.jobs import daily_sync, history_bootstrap
 from pipelines.resources import (
     Bhavcopies,
@@ -27,7 +28,7 @@ defs = Definitions(
     asset_checks=load_asset_checks_from_package_module(checks),
     jobs=[history_bootstrap, daily_sync],
     schedules=[daily_sync_schedule],
-    sensors=[flow_request_sensor],
+    sensors=[flow_request_sensor, flow_run_sensor],
     resources={
         "database": Database(),
         "bhavcopies": Bhavcopies(),
