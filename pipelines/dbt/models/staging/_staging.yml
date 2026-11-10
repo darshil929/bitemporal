@@ -333,6 +333,45 @@ models:
       - name: owner_notes
         description: How the source answers and what reading it requires.
 
+  - name: stg_source_schema_versions
+    description: One row per version of a source's format, with the days it covers.
+    columns:
+      - name: source_id
+        description: The source the version belongs to.
+        data_tests: [not_null]
+      - name: effective_from
+        description: The first day the version covers.
+        data_tests: [not_null]
+      - name: effective_to
+        description: The last day the version covers; absent for the version in use.
+      - name: version
+        description: The version's name.
+        data_tests: [not_null]
+
+  - name: stg_source_days
+    description: >
+      One row per daily source and day it was asked for, holding the latest answer known on the
+      as-of date. Only slices keyed by a day are kept: daily files, not ranges or lists.
+    columns:
+      - name: source_id
+        description: The source asked.
+        data_tests: [not_null]
+      - name: trade_date
+        description: The day the file asked for describes.
+        data_tests: [not_null]
+      - name: outcome
+        description: >
+          `succeeded` where the file was read, `not_published` where the source had none for the
+          day, `failed` where it could not be read.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [succeeded, not_published, failed]
+      - name: fetched_at
+        description: When the latest answer was received.
+        data_tests: [not_null]
+
 unit_tests:
   - name: a_revalidated_day_supersedes_its_earlier_verdict
     description: A day checked again after a correction appends a verdict rather than replacing one.
@@ -477,3 +516,34 @@ unit_tests:
            name: Reliance Industries Limited}
         - {isin: INE002A01018, source_id: nse_equity_list, as_of_date: "2026-10-02",
            name: Reliance Industries Limited}
+
+  - name: a_day_holds_its_latest_answer
+    description: >
+      A file asked for before its venue published it and asked again later holds the later answer.
+    model: stg_source_days
+    given:
+      - input: source('market', 'ingestion_log')
+        rows:
+          - {source_id: nse_bhavcopy_equity, partition_key: "2026-11-09", outcome: not_published,
+             fetched_at: "2026-11-09 07:24:00+00"}
+          - {source_id: nse_bhavcopy_equity, partition_key: "2026-11-09", outcome: succeeded,
+             fetched_at: "2026-11-09 15:01:00+00"}
+    expect:
+      rows:
+        - {source_id: nse_bhavcopy_equity, trade_date: "2026-11-09", outcome: succeeded}
+
+  - name: a_range_or_a_list_is_no_source_day
+    description: Corporate action ranges and lists of securities are not keyed by a day.
+    model: stg_source_days
+    given:
+      - input: source('market', 'ingestion_log')
+        rows:
+          - {source_id: bse_corporate_actions, partition_key: 20260101-20261231, outcome: failed,
+             fetched_at: "2026-11-09 07:30:00+00"}
+          - {source_id: bse_scrip_list, partition_key: active-20261109, outcome: succeeded,
+             fetched_at: "2026-11-09 07:31:00+00"}
+          - {source_id: bse_delivery, partition_key: "2026-10-20", outcome: not_published,
+             fetched_at: "2026-10-20 15:00:00+00"}
+    expect:
+      rows:
+        - {source_id: bse_delivery, trade_date: "2026-10-20", outcome: not_published}

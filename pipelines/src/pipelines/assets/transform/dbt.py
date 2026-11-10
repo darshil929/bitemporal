@@ -30,6 +30,7 @@ COMPLETENESS = AssetKey("trading_day_completeness")
 ACTIONS = [AssetKey("corporate_actions"), AssetKey("nse_corporate_actions")]
 DELIVERY = [AssetKey("bse_delivery"), AssetKey("nse_delivery")]
 NAMES = [AssetKey("bse_instrument_names"), AssetKey("nse_instrument_names")]
+REGISTRY = AssetKey("source_registry")
 
 # Which asset fills each table the models read.
 SOURCE_WRITERS: dict[str, list[AssetKey]] = {
@@ -42,7 +43,9 @@ SOURCE_WRITERS: dict[str, list[AssetKey]] = {
     "corporate_action": ACTIONS,
     "instrument_name": NAMES,
     "instrument_face_value": NAMES,
-    "source_registry": [AssetKey("source_registry")],
+    "source_registry": [REGISTRY],
+    "source_schema_version": [REGISTRY],
+    "ingestion_log": [BSE, NSE, *DELIVERY, *ACTIONS, *NAMES],
 }
 
 # Folders dbt writes inside the project and never reads when parsing it.

@@ -103,6 +103,32 @@ models:
       - name: base_url
         data_type: text
         description: Where the source is read from.
+      - name: first_day
+        data_type: date
+        description: >
+          The first day the source's formats cover; absent for a source with no recorded format.
+          The calendar of days asked for starts at the price files' first day.
+
+  - name: mart_source_days
+    description: >
+      One row per daily file and day it was asked for, with the latest answer: the bhavcopies and
+      delivery files of both venues. A weekday both venues' price files answered not published was
+      no session; a day with no row was never asked for.
+    columns:
+      - name: source_id
+        data_type: text
+        description: The source asked, such as nse_bhavcopy_equity or bse_delivery.
+      - name: trade_date
+        data_type: date
+        description: The day the file asked for describes.
+      - name: outcome
+        data_type: text
+        description: >
+          succeeded where the file was read, not_published where the source had none for the day,
+          failed where it could not be read.
+      - name: fetched_at
+        data_type: timestamp with time zone
+        description: When the latest answer was received.
 
   - name: mart_price_daily
     description: >
@@ -1056,3 +1082,20 @@ unit_tests:
         - {trade_date: "2026-09-30", as_of_date: "2026-09-30"}
         - {trade_date: "2026-10-01", as_of_date: "2026-10-07"}
         - {trade_date: "2026-10-08", as_of_date: "2026-10-09"}
+
+  - name: a_source_starts_on_its_first_format
+    description: A source's first day is the earliest day any of its formats covers.
+    model: mart_sources
+    given:
+      - input: ref('stg_source_registry')
+        rows:
+          - {source_id: bse_bhavcopy_equity, tier: 1, base_url: "https://www.bseindia.com"}
+          - {source_id: bse_scrip_list, tier: 2, base_url: "https://api.bseindia.com"}
+      - input: ref('stg_source_schema_versions')
+        rows:
+          - {source_id: bse_bhavcopy_equity, effective_from: "2024-07-08", version: udiff}
+          - {source_id: bse_bhavcopy_equity, effective_from: "2016-12-12", version: legacy}
+    expect:
+      rows:
+        - {source_id: bse_bhavcopy_equity, first_day: "2016-12-12"}
+        - {source_id: bse_scrip_list, first_day: null}

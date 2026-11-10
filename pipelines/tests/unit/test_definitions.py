@@ -129,6 +129,17 @@ def test_a_run_builds_the_models_after_every_table_they_read() -> None:
     assert waits_for == {f"market__{table}" for table in SOURCE_WRITERS}
 
 
+def test_every_table_the_models_read_waits_for_its_writers() -> None:
+    manifest = json.loads(dbt_project.manifest_path.read_text())
+    read = {
+        source["name"]
+        for source in manifest["sources"].values()
+        if source["source_name"] == "market"
+    }
+
+    assert read == set(SOURCE_WRITERS)
+
+
 def test_the_registry_is_written_before_either_venues_prices() -> None:
     graph = defs.resolve_asset_graph()
 
