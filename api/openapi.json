@@ -811,6 +811,117 @@
         "title": "FixedWorkResponse",
         "type": "object"
       },
+      "FlowRequestResponse": {
+        "description": "A request as it stands. `refused` carries the reason and its facts: `flow_running` with the\nrunning flow's days and start, `migration_behind` with the migration found and expected,\n`dbt_building` with the target. A started request lists each run it took and how it ended.",
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "flow": {
+            "enum": [
+              "bootstrap",
+              "sync"
+            ],
+            "title": "Flow",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RequestRunResponse"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "started",
+              "refused",
+              "finished"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "flow",
+          "first_day",
+          "last_day",
+          "status",
+          "requested_by",
+          "requested_at",
+          "started_at",
+          "finished_at",
+          "refusal",
+          "runs"
+        ],
+        "title": "FlowRequestResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2315,6 +2426,72 @@
         "title": "RecordedRunResponse",
         "type": "object"
       },
+      "RequestPending": {
+        "properties": {
+          "reason": {
+            "const": "request_pending",
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reason",
+          "request_id"
+        ],
+        "title": "RequestPending",
+        "type": "object"
+      },
+      "RequestPendingResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/RequestPending"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "RequestPendingResponse",
+        "type": "object"
+      },
+      "RequestRunResponse": {
+        "properties": {
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "first_day",
+          "last_day",
+          "outcome"
+        ],
+        "title": "RequestRunResponse",
+        "type": "object"
+      },
       "RequestsResponse": {
         "description": "The requests a run over a range makes, one every two seconds per source.",
         "properties": {
@@ -3147,6 +3324,26 @@
           "fixed"
         ],
         "title": "SyncEstimateResponse",
+        "type": "object"
+      },
+      "SyncRequestBody": {
+        "properties": {
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          }
+        },
+        "required": [
+          "first_day",
+          "last_day"
+        ],
+        "title": "SyncRequestBody",
         "type": "object"
       },
       "TriggeredAlertResponse": {
@@ -4347,6 +4544,58 @@
         ]
       }
     },
+    "/data/bootstrap": {
+      "post": {
+        "description": "For admins, ask for the history bootstrap: the two most recent years, then the rest.",
+        "operationId": "request_bootstrap",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPendingResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Request Bootstrap",
+        "tags": [
+          "data"
+        ]
+      }
+    },
     "/data/bootstrap/estimate": {
       "get": {
         "description": "For admins, the history bootstrap's two runs, the days each would ask for and how long it\nwould take.",
@@ -4384,6 +4633,72 @@
           }
         },
         "summary": "Bootstrap Estimate",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/data/requests/{request_id}": {
+      "get": {
+        "description": "For admins, a request as it stands.",
+        "operationId": "flow_request",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Flow Request",
         "tags": [
           "data"
         ]
@@ -4468,6 +4783,78 @@
           }
         },
         "summary": "Data Status",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/data/sync": {
+      "post": {
+        "description": "For admins, ask for a sync over the range; the flows take it up within about 30 seconds.",
+        "operationId": "request_sync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPendingResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeRefusedResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Request Sync",
         "tags": [
           "data"
         ]

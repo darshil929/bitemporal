@@ -1,5 +1,5 @@
-"""How current the shared market data is, for people signed in, and estimates of the flows for
-admins."""
+"""How current the shared market data is, for people signed in; estimates of the flows, and
+requests for them, for admins."""
 
 from datetime import date
 from typing import Any
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from api.dependencies import AdminDependency, DatabaseDependency, signed_in
 from api.routers.market import MARKET_READ_RESPONSES
 from api.schemas.data_status import DataStatusResponse
+from api.schemas.flow_requests import FlowRequestResponse, RequestPendingResponse, SyncRequestBody
 from api.schemas.flow_run_estimates import (
     BootstrapEstimateResponse,
     RangeRefusedResponse,
@@ -16,7 +17,7 @@ from api.schemas.flow_run_estimates import (
 )
 from api.schemas.flow_run_history import RunHistoryResponse
 from api.services import data_status as data_statuses
-from api.services import flow_run_estimates, flow_run_history
+from api.services import flow_requests, flow_run_estimates, flow_run_history
 
 router = APIRouter(
     prefix="/data",
@@ -28,6 +29,17 @@ router = APIRouter(
 RANGE_REFUSED: dict[int | str, dict[str, Any]] = {
     status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": RangeRefusedResponse}
 }
+REQUEST_PENDING: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {"model": RequestPendingResponse}
+}
+NOT_FOUND: dict[int | str, dict[str, Any]] = {status.HTTP_404_NOT_FOUND: {}}
+
+
+def pending_refusal(pending: flow_requests.RequestPending) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"reason": "request_pending", "request_id": pending.request_id},
+    )
 
 
 @router.get("/status")
@@ -68,3 +80,44 @@ async def bootstrap_estimate(
     return BootstrapEstimateResponse.model_validate(
         await flow_run_estimates.bootstrap_estimate(database)
     )
+
+
+@router.post(
+    "/sync", status_code=status.HTTP_202_ACCEPTED, responses=RANGE_REFUSED | REQUEST_PENDING
+)
+async def request_sync(
+    body: SyncRequestBody, admin: AdminDependency, database: DatabaseDependency
+) -> FlowRequestResponse:
+    """For admins, ask for a sync over the range; the flows take it up within about 30 seconds."""
+    try:
+        added = await flow_requests.request_sync(database, admin.id, body.first_day, body.last_day)
+    except flow_run_estimates.RangeRefused as refused:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail={"reason": refused.reason}
+        ) from refused
+    except flow_requests.RequestPending as pending:
+        raise pending_refusal(pending) from pending
+    return FlowRequestResponse.model_validate(added)
+
+
+@router.post("/bootstrap", status_code=status.HTTP_202_ACCEPTED, responses=REQUEST_PENDING)
+async def request_bootstrap(
+    admin: AdminDependency, database: DatabaseDependency
+) -> FlowRequestResponse:
+    """For admins, ask for the history bootstrap: the two most recent years, then the rest."""
+    try:
+        added = await flow_requests.request_bootstrap(database, admin.id)
+    except flow_requests.RequestPending as pending:
+        raise pending_refusal(pending) from pending
+    return FlowRequestResponse.model_validate(added)
+
+
+@router.get("/requests/{request_id}", responses=NOT_FOUND)
+async def flow_request(
+    request_id: int, admin: AdminDependency, database: DatabaseDependency
+) -> FlowRequestResponse:
+    """For admins, a request as it stands."""
+    found = await flow_requests.flow_request(database, admin.id, request_id)
+    if found is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    return FlowRequestResponse.model_validate(found)
