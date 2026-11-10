@@ -23,6 +23,7 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 import psycopg
@@ -59,6 +60,9 @@ FINISHED = [DagsterRunStatus.SUCCESS, DagsterRunStatus.FAILURE, DagsterRunStatus
 
 # The schema a run writes to, by which a database recognises its own runs in a shared instance.
 SCHEMA_TAG = "bitemporal/schema"
+
+# The request a run was started for, where the application asked for it.
+REQUEST_TAG = "bitemporal/request"
 
 STEP_ENDS = {
     DagsterEventType.STEP_SUCCESS: "succeeded",
@@ -119,22 +123,30 @@ RECORDED = "select run_id from flow_run where run_id = any(%s)"
 RECORD_RUN = """
 insert into flow_run (
     run_id, flow, first_day, last_day, started_at, ended_at, outcome, counts, checks_passed,
-    failures, warned_checks, failed_checks, failed_steps, unmaterialized
+    failures, warned_checks, failed_checks, failed_steps, unmaterialized, request_id
 ) values (
     %(run_id)s, %(flow)s, %(first_day)s, %(last_day)s, %(started_at)s, %(ended_at)s, %(outcome)s,
     %(counts)s, %(checks_passed)s, %(failures)s, %(warned_checks)s, %(failed_checks)s,
-    %(failed_steps)s, %(unmaterialized)s
+    %(failed_steps)s, %(unmaterialized)s, %(request_id)s
 )
+on conflict (run_id) do nothing
+returning run_id
 """
 
 RECORD_STEP = (
     "insert into flow_run_step (run_id, step, started_at, ended_at, outcome)"
-    " values (%s, %s, %s, %s, %s)"
+    " values (%s, %s, %s, %s, %s) on conflict (run_id, step) do nothing"
 )
 
 
 class FlowRefused(Exception):
-    """A flow cannot start against the database or the Dagster instance as they stand."""
+    """A flow cannot start against the database or the Dagster instance as they stand: the reason
+    in a word, the facts behind it, and a sentence saying both."""
+
+    def __init__(self, reason: str, facts: dict[str, Any], message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.facts = facts
 
 
 def definitions() -> Definitions:
@@ -198,17 +210,40 @@ def refuse_unless_ready(
         version = connection.execute("select version_num from alembic_version").fetchone()
         current = version[0] if version else None
     if current != head:
-        raise FlowRefused(f"the database is at migration {current}, not {head}: run make migrate")
+        raise FlowRefused(
+            "migration_behind",
+            {"found": current, "expected": head},
+            f"the database is at migration {current}, not {head}: run make migrate",
+        )
 
-    running = instance.get_runs(RunsFilter(tags={FLOW_TAG: [BOOTSTRAP, SYNC]}, statuses=UNFINISHED))
+    running = instance.get_run_records(
+        RunsFilter(tags={FLOW_TAG: [BOOTSTRAP, SYNC]}, statuses=UNFINISHED), limit=1
+    )
     if running:
-        raise FlowRefused(f"flow run {running[0].run_id} is {running[0].status.value}")
+        run = running[0].dagster_run
+        started = running[0].start_time
+        raise FlowRefused(
+            "flow_running",
+            {
+                "run_id": run.run_id,
+                "status": run.status.value,
+                "flow": run.tags.get(FLOW_TAG),
+                "first_day": run.tags.get(RANGE_START),
+                "last_day": run.tags.get(RANGE_END),
+                "started_at": datetime.fromtimestamp(started, UTC).isoformat() if started else None,
+            },
+            f"flow run {run.run_id} is {run.status.value}",
+        )
 
     sessions = [
         pid for (pid,) in connection.execute(DBT_SESSIONS, (f'%"target_name": "{target}"%',))
     ]
     if sessions:
-        raise FlowRefused(f"dbt is still building {target}, database sessions {sessions}")
+        raise FlowRefused(
+            "dbt_building",
+            {"target": target, "sessions": sessions},
+            f"dbt is still building {target}, database sessions {sessions}",
+        )
 
 
 @dataclass
@@ -392,7 +427,8 @@ def record_finished_runs(
         events = instance.all_logs(run.run_id)
         report = report_from(record, events, connection)
         started, ended = run_times(record)
-        connection.execute(
+        request = run.tags.get(REQUEST_TAG)
+        inserted = connection.execute(
             RECORD_RUN,
             {
                 "run_id": run.run_id,
@@ -411,8 +447,12 @@ def record_finished_runs(
                 "failed_checks": Jsonb([{"name": n, "rows": r} for n, r in report.failed_checks]),
                 "failed_steps": Jsonb(report.failed_steps),
                 "unmaterialized": Jsonb(report.unmaterialized),
+                "request_id": int(request) if request else None,
             },
-        )
+        ).fetchone()
+        # Another process recorded the run since it was looked for.
+        if inserted is None:
+            continue
         for step in steps_of(events):
             connection.execute(RECORD_STEP, (run.run_id, *step))
         recorded.append(run.run_id)

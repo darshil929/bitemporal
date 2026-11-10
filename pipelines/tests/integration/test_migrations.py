@@ -16,7 +16,7 @@ FACT_TABLES = frozenset(
 REGISTRY_TABLES = frozenset({"source_registry", "source_schema_version"})
 DERIVED_TABLES = frozenset({"daily_features_a", "daily_features_b", "feature_release"})
 ACCOUNT_TABLES = frozenset({"app_user", "app_session", "app_setting", "user_setting"})
-RUN_TABLES = frozenset({"flow_run", "flow_run_step"})
+RUN_TABLES = frozenset({"flow_run", "flow_run_step", "flow_request"})
 MANAGED_TABLES = (
     IDENTITY_TABLES | FACT_TABLES | REGISTRY_TABLES | DERIVED_TABLES | ACCOUNT_TABLES | RUN_TABLES
 )

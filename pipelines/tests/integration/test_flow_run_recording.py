@@ -19,7 +19,8 @@ from dagster import (
 from dagster._core.test_utils import create_run_for_test
 
 from fixtures.database import MIGRATION_SCHEMA
-from pipelines.flows import ROWS_FOUND, SCHEMA_TAG, record_finished_runs
+from pipelines import flows
+from pipelines.flows import REQUEST_TAG, ROWS_FOUND, SCHEMA_TAG, record_finished_runs
 from pipelines.jobs import FLOW_TAG, RANGE_END, RANGE_START, SYNC
 
 OPTIONS = f"-csearch_path={MIGRATION_SCHEMA},public"
@@ -175,3 +176,45 @@ def test_a_cancelled_run_is_recorded_and_a_run_still_going_is_not(
     record_finished_runs(instance, connection, MIGRATION_SCHEMA)
 
     assert connection.execute("select outcome from flow_run").fetchall() == outcomes
+
+
+def test_a_run_names_the_request_it_was_started_for(
+    instance: DagsterInstance, connection: psycopg.Connection
+) -> None:
+    connection.execute(
+        "insert into app_user (username, display_name, role, password_hash)"
+        " values ('admin', 'Admin', 'admin', 'unused')"
+    )
+    request = connection.execute(
+        "insert into flow_request (flow, first_day, last_day, requested_by)"
+        " select 'sync', '2026-11-03', '2026-11-09', id from app_user returning id"
+    ).fetchone()
+    assert request is not None
+    create_run_for_test(
+        instance,
+        job_name="daily_sync",
+        status=DagsterRunStatus.CANCELED,
+        tags=RUN_TAGS | {SCHEMA_TAG: MIGRATION_SCHEMA, REQUEST_TAG: str(request[0])},
+    )
+
+    record_finished_runs(instance, connection, MIGRATION_SCHEMA)
+
+    assert connection.execute("select request_id from flow_run").fetchall() == [(request[0],)]
+
+
+def test_a_run_another_process_recorded_meanwhile_is_passed_over(
+    instance: DagsterInstance,
+    connection: psycopg.Connection,
+    postgres_dsn: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The launcher and the daemon both record finished runs."""
+    a_sync(instance, postgres_dsn)
+    record_finished_runs(instance, connection, MIGRATION_SCHEMA)
+    steps = connection.execute("select count(*) from flow_run_step").fetchone()
+    monkeypatch.setattr(
+        flows, "RECORDED", "select run_id from flow_run where false and run_id = any(%s)"
+    )
+
+    assert record_finished_runs(instance, connection, MIGRATION_SCHEMA) == []
+    assert connection.execute("select count(*) from flow_run_step").fetchone() == steps
