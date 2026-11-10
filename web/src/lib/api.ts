@@ -249,6 +249,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/requests/{request_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Progress
+         * @description For admins, a request's run as it goes: its status, its stages and the time left.
+         */
+        get: operations["run_progress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data/runs": {
         parameters: {
             query?: never;
@@ -1561,6 +1581,24 @@ export interface components {
             /** Venue Spread Median Bps */
             venue_spread_median_bps: number | null;
         };
+        /**
+         * ProgressResponse
+         * @description A request's run as it stands: its status, each stage in order, the stage running now, and
+         *     the time left by the steps' medians over the last three runs; no time left once the run ended
+         *     or before any run of the flow was measured.
+         */
+        ProgressResponse: {
+            /** Current Stage */
+            current_stage: ("prices" | "identity" | "delivery" | "actions" | "names" | "models" | "features" | "checks") | null;
+            /** Stages */
+            stages: components["schemas"]["StageResponse"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "running" | "cancelling" | "cancelled" | "refused" | "succeeded" | "failed";
+            time_left: components["schemas"]["DurationResponse"] | null;
+        };
         /** RangeRefusedResponse */
         RangeRefusedResponse: {
             /** Detail */
@@ -1946,6 +1984,19 @@ export interface components {
             source_id: string;
             /** Tier */
             tier: number;
+        };
+        /** StageResponse */
+        StageResponse: {
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "prices" | "identity" | "delivery" | "actions" | "names" | "models" | "features" | "checks";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "done" | "running" | "pending" | "failed";
         };
         /**
          * StrictestCriterionResponse
@@ -2782,6 +2833,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlowRequestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    run_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressResponse"];
                 };
             };
             /** @description Unauthorized */

@@ -51,6 +51,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "request_sync",
         "reset_password",
         "run_history",
+        "run_progress",
         "save_view",
         "saved_views",
         "screen",
