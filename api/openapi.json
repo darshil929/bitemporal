@@ -2246,6 +2246,70 @@
         "title": "PriceHistoryResponse",
         "type": "object"
       },
+      "ProgressResponse": {
+        "description": "A request's run as it stands: its status, each stage in order, the stage running now, and\nthe time left by the steps' medians over the last three runs; no time left once the run ended\nor before any run of the flow was measured.",
+        "properties": {
+          "current_stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices",
+                  "identity",
+                  "delivery",
+                  "actions",
+                  "names",
+                  "models",
+                  "features",
+                  "checks"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageResponse"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "cancelling",
+              "cancelled",
+              "refused",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "time_left": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "stages",
+          "current_stage",
+          "time_left"
+        ],
+        "title": "ProgressResponse",
+        "type": "object"
+      },
       "RangeRefusedResponse": {
         "properties": {
           "detail": {
@@ -3230,6 +3294,40 @@
           "sebi_curation_ref"
         ],
         "title": "SourceResponse",
+        "type": "object"
+      },
+      "StageResponse": {
+        "properties": {
+          "stage": {
+            "enum": [
+              "prices",
+              "identity",
+              "delivery",
+              "actions",
+              "names",
+              "models",
+              "features",
+              "checks"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "done",
+              "running",
+              "pending",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "state"
+        ],
+        "title": "StageResponse",
         "type": "object"
       },
       "StrictestCriterionResponse": {
@@ -4699,6 +4797,72 @@
           }
         },
         "summary": "Flow Request",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/data/requests/{request_id}/progress": {
+      "get": {
+        "description": "For admins, a request's run as it goes: its status, its stages and the time left.",
+        "operationId": "run_progress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotSignedInResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataUpdatingResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Run Progress",
         "tags": [
           "data"
         ]

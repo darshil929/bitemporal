@@ -16,8 +16,9 @@ from api.schemas.flow_run_estimates import (
     SyncEstimateResponse,
 )
 from api.schemas.flow_run_history import RunHistoryResponse
+from api.schemas.flow_run_progress import ProgressResponse
 from api.services import data_status as data_statuses
-from api.services import flow_requests, flow_run_estimates, flow_run_history
+from api.services import flow_requests, flow_run_estimates, flow_run_history, flow_run_progress
 
 router = APIRouter(
     prefix="/data",
@@ -121,3 +122,14 @@ async def flow_request(
     if found is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     return FlowRequestResponse.model_validate(found)
+
+
+@router.get("/requests/{request_id}/progress", responses=NOT_FOUND)
+async def run_progress(
+    request_id: int, admin: AdminDependency, database: DatabaseDependency
+) -> ProgressResponse:
+    """For admins, a request's run as it goes: its status, its stages and the time left."""
+    found = await flow_run_progress.run_progress(database, admin.id, request_id)
+    if found is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    return ProgressResponse.model_validate(found)
