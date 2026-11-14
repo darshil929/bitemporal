@@ -1,17 +1,11 @@
 "use client";
 
-import {
-  Check,
-  ChevronDown,
-  Clock,
-  Info,
-  type LucideIcon,
-  TriangleAlert,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 
 import { cn } from "cn";
 
+import { STATE_GLYPHS } from "@/components/status/data-state-glyphs";
 import { StatusPill } from "@/components/status/StatusPill";
 import {
   Popover,
@@ -20,7 +14,6 @@ import {
 } from "@/components/ui/popover";
 import { apiQueries } from "@/lib/api-client";
 import {
-  type DataState,
   type DataStatus,
   factRows,
   headline,
@@ -28,14 +21,6 @@ import {
   pillText,
   STATE_WORDS,
 } from "@/lib/data-status";
-
-const GLYPHS: Record<DataState, LucideIcon> = {
-  fresh: Check,
-  updating: Clock,
-  stale: TriangleAlert,
-  failed: TriangleAlert,
-  unknown: Info,
-};
 
 // Read again every minute, and every ten seconds while a sync waits or runs.
 const READ_EVERY_MS = 60_000;
@@ -53,7 +38,7 @@ export function DataStatusPill({ isAdmin }: Readonly<{ isAdmin: boolean }>) {
   if (!data) {
     return null;
   }
-  const Glyph = GLYPHS[data.state];
+  const Glyph = STATE_GLYPHS[data.state];
   const flagged = isFlagged(data.state);
   return (
     <Popover>
@@ -102,7 +87,7 @@ export function DataStatusFacts({
   isAdmin: boolean;
   stretches: Parameters<typeof factRows>[2];
 }>) {
-  const Glyph = GLYPHS[status.state];
+  const Glyph = STATE_GLYPHS[status.state];
   const link = status.state === "failed" ? "Open the run" : "Open data status";
   return (
     <>
