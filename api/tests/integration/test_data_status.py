@@ -47,6 +47,14 @@ RUN = (
     " values (%(run)s, 'sync', %(first)s, %(last)s, %(started)s, %(started)s, %(outcome)s, 162,"
     " %(failures)s, %(warned)s, %(failed)s, %(steps)s, %(steps)s)"
 )
+REQUEST = (
+    "insert into flow_request (flow, first_day, last_day, requested_by, status, started_at, run_id)"
+    " select 'sync', '2026-10-04', '2026-10-10', id, %s, %s, 'live' from app_user"
+)
+STEP = (
+    "insert into flow_run_step (run_id, step, started_at, ended_at, outcome)"
+    " values (%s, %s, now(), now() + %s * interval '1 second', 'succeeded')"
+)
 SOURCE_DAY = "insert into mart_source_days (source_id, trade_date, outcome) values (%s, %s, %s)"
 WARNED = {"name": "assert_capital_actions_reported_by_both_venues", "rows": 16}
 SHORT_ANSWER = {"source": "bse_corporate_actions", "key": "20260101-20261231", "detail": "short"}
@@ -136,6 +144,7 @@ async def test_with_no_run_recorded_the_state_is_unknown(status: Status) -> None
         "last_run": None,
         "stale_since": None,
         "days_never_asked": 0,
+        "running": None,
     }
 
 
@@ -150,8 +159,8 @@ async def test_a_last_run_with_a_warned_check_alone_is_fresh(
     assert shown["state"] == "fresh"
     assert shown["published_day"] == "2026-10-09"
     assert shown["venues"] == [
-        {"venue": "BSE", "latest_day": "2026-10-09", "is_complete": True},
-        {"venue": "NSE", "latest_day": "2026-10-09", "is_complete": True},
+        {"venue": "BSE", "latest_day": "2026-10-09", "is_complete": True, "bars": 2500},
+        {"venue": "NSE", "latest_day": "2026-10-09", "is_complete": True, "bars": 2500},
     ]
     assert shown["last_run"] | {"started_at": None, "ended_at": None} == {
         "flow": "sync",
@@ -160,7 +169,9 @@ async def test_a_last_run_with_a_warned_check_alone_is_fresh(
         "started_at": None,
         "ended_at": None,
         "outcome": "succeeded",
+        "checks_passed": 162,
         "failed_steps": [],
+        "failed_stages": [],
         "failed_fetches": 0,
         "failed_checks": 0,
         "warned_checks": 1,
@@ -187,7 +198,10 @@ async def test_a_failed_run_stands_until_a_later_run_judges_again(
     status.run("2026-10-10 02:01:00+00", later)
 
     assert failed["state"] == "failed"
-    assert failed["last_run"]["failed_steps"] == ["dbt_models"]
+    assert (failed["last_run"]["failed_steps"], failed["last_run"]["failed_stages"]) == (
+        ["dbt_models"],
+        ["models"],
+    )
     assert (failed["last_run"]["failed_fetches"], failed["last_run"]["failed_checks"]) == (1, 1)
     assert (await status.read()).json()["state"] == state
 
@@ -250,3 +264,57 @@ async def test_days_no_daily_file_was_asked_for_are_counted_to_the_latest_day_a_
 
 async def test_the_data_status_is_for_people_signed_in(status: Status) -> None:
     assert (await status.read(signed_in=False)).status_code == 401
+
+
+async def test_a_waiting_request_makes_the_data_updating(status: Status) -> None:
+    status.published("2026-10-09")
+    status.run("2026-10-09 16:01:00+00")
+    status.execute(REQUEST, ("requested", None))
+
+    shown = (await status.read()).json()
+
+    assert shown["state"] == "updating"
+    assert shown["running"] | {"requested_at": None} == {
+        "flow": "sync",
+        "first_day": "2026-10-04",
+        "last_day": "2026-10-10",
+        "status": "requested",
+        "requested_at": None,
+        "started_at": None,
+        "current_stage": None,
+        "time_left": None,
+    }
+
+
+async def test_a_running_sync_names_its_stage_and_the_time_left(status: Status) -> None:
+    """The time left is the steps not yet finished, as the last runs took them."""
+    status.published("2026-10-09")
+    status.run("2026-10-09 16:01:00+00")
+    for step, seconds in (("bse_bhavcopy", 20), ("dbt_models", 700)):
+        status.execute(STEP, ("2026-10-09 16:01:00+00", step, seconds))
+    status.execute(REQUEST, ("started", "2026-10-10 15:00+00"))
+    status.execute(STEP, ("live", "bse_bhavcopy", 18))
+    status.execute(
+        "create table mart_fetch_attempts (ingestion_id bigint, source_id text, partition_key text,"
+        " outcome text, fetched_at timestamptz, detail text)"
+    )
+    status.execute("grant select on mart_fetch_attempts to bitemporal_api")
+
+    running = (await status.read()).json()["running"]
+
+    status.execute("drop table mart_fetch_attempts")
+    assert (running["status"], running["current_stage"]) == ("running", "models")
+    assert running["time_left"] == {"seconds": 700, "minutes": 12}
+
+
+async def test_a_failure_or_staleness_outranks_a_sync_running(
+    status: Status, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status.published("2026-10-09")
+    status.run("2026-10-09 16:01:00+00")
+    status.execute(REQUEST, ("requested", None))
+    at(monkeypatch, "2026-10-13 09:00")
+    stale = (await status.read()).json()["state"]
+    status.run("2026-10-12 16:01:00+00", "failed", steps=Jsonb(["dbt_models"]))
+
+    assert (stale, (await status.read()).json()["state"]) == ("stale", "failed")

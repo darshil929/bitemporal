@@ -484,7 +484,7 @@
         "type": "object"
       },
       "DataStatusResponse": {
-        "description": "How current the market data is. `failed` when the last run failed; `stale` when a weekday\nafter the day the pages show has ended without figures and its files were due by 07:30 India\ntime the next morning, a weekday both venues' price files answered not published excepted;\n`unknown` with no run recorded; else `fresh`.",
+        "description": "How current the market data is: `unknown` with no run recorded and none running; else the\nfirst that applies: `failed` when the last run failed; `stale` when a weekday after the day the\npages show has ended without figures and its files were due by 07:30 India time the next\nmorning, a weekday both venues' price files answered not published excepted; `updating` while a\nrequest waits or runs; else `fresh`.",
         "properties": {
           "days_never_asked": {
             "title": "Days Never Asked",
@@ -512,6 +512,16 @@
             ],
             "title": "Published Day"
           },
+          "running": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunningSyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "stale_since": {
             "anyOf": [
               {
@@ -528,6 +538,7 @@
             "enum": [
               "fresh",
               "stale",
+              "updating",
               "failed",
               "unknown"
             ],
@@ -548,7 +559,8 @@
           "venues",
           "last_run",
           "stale_since",
-          "days_never_asked"
+          "days_never_asked",
+          "running"
         ],
         "title": "DataStatusResponse",
         "type": "object"
@@ -1458,6 +1470,10 @@
       "LastRunResponse": {
         "description": "The newest run of a flow not cancelled: its days, when it ran, how it ended, and the counts\nof what failed or warned. A failed fetch is a day, a range of corporate actions or a list.",
         "properties": {
+          "checks_passed": {
+            "title": "Checks Passed",
+            "type": "integer"
+          },
           "ended_at": {
             "format": "date-time",
             "title": "Ended At",
@@ -1470,6 +1486,23 @@
           "failed_fetches": {
             "title": "Failed Fetches",
             "type": "integer"
+          },
+          "failed_stages": {
+            "items": {
+              "enum": [
+                "prices",
+                "identity",
+                "delivery",
+                "actions",
+                "names",
+                "models",
+                "features",
+                "checks"
+              ],
+              "type": "string"
+            },
+            "title": "Failed Stages",
+            "type": "array"
           },
           "failed_steps": {
             "items": {
@@ -1521,7 +1554,9 @@
           "started_at",
           "ended_at",
           "outcome",
+          "checks_passed",
           "failed_steps",
+          "failed_stages",
           "failed_fetches",
           "failed_checks",
           "warned_checks"
@@ -2725,6 +2760,98 @@
         "title": "RunHistoryResponse",
         "type": "object"
       },
+      "RunningSyncResponse": {
+        "description": "The request waiting or running, its days, and while it runs the stage and the time left.",
+        "properties": {
+          "current_stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prices",
+                  "identity",
+                  "delivery",
+                  "actions",
+                  "names",
+                  "models",
+                  "features",
+                  "checks"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage"
+          },
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "flow": {
+            "enum": [
+              "bootstrap",
+              "sync"
+            ],
+            "title": "Flow",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "running",
+              "cancelling"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "time_left": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "flow",
+          "first_day",
+          "last_day",
+          "status",
+          "requested_at",
+          "started_at",
+          "current_stage",
+          "time_left"
+        ],
+        "title": "RunningSyncResponse",
+        "type": "object"
+      },
       "SavedViewChangeRequest": {
         "description": "A new name for a view, a screen to save over it, or both.",
         "properties": {
@@ -3665,8 +3792,12 @@
         "type": "object"
       },
       "VenueDayResponse": {
-        "description": "A venue's latest stored day and whether it passed its checks.",
+        "description": "A venue's latest stored day, whether it passed its checks, and the bars it holds.",
         "properties": {
+          "bars": {
+            "title": "Bars",
+            "type": "integer"
+          },
           "is_complete": {
             "title": "Is Complete",
             "type": "boolean"
@@ -3688,7 +3819,8 @@
         "required": [
           "venue",
           "latest_day",
-          "is_complete"
+          "is_complete",
+          "bars"
         ],
         "title": "VenueDayResponse",
         "type": "object"
