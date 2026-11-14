@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import DataStatusPage from "@/app/(app)/data/page";
+import { formatSpan } from "@/lib/format";
 
 const person = vi.hoisted(() => ({ role: "admin" }));
 
@@ -84,7 +85,13 @@ vi.mock("@/lib/server-api-client", () => ({
 
 afterEach(cleanup);
 
-test("an admin reads the day the pages show and what stands behind it", async () => {
+test("a run's length reads in minutes and seconds", () => {
+  expect(formatSpan(0.4)).toBe("under 1 s");
+  expect(formatSpan(45)).toBe("45 s");
+  expect(formatSpan(1278)).toBe("21 min 18 s");
+});
+
+test("an admin reads the day the pages show and the newest runs", async () => {
   person.role = "admin";
   render(await DataStatusPage());
 
@@ -93,6 +100,15 @@ test("an admin reads the day the pages show and what stands behind it", async ()
   ).toBeTruthy();
   expect(screen.getByText("5,389")).toBeTruthy();
   expect(screen.getByText("13 Nov 2026, complete, 4,690 bars")).toBeTruthy();
+  const [, synced, failed] = screen.getAllByRole("row");
+  expect(within(synced).getByText("21 min 18 s")).toBeTruthy();
+  expect(within(synced).getByText("1 check warned")).toBeTruthy();
+  expect(within(synced).getByText("Command line")).toBeTruthy();
+  expect(within(failed).getByText("The models step failed")).toBeTruthy();
+  expect(within(failed).getByText("Meera")).toBeTruthy();
+  expect(
+    screen.getByText("The last ten runs: 2 recorded. Times in India time"),
+  ).toBeTruthy();
 });
 
 test("anyone but an admin finds no page", async () => {
