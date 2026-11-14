@@ -989,6 +989,22 @@ export interface components {
             /** Venues */
             venues: components["schemas"]["VenueDayResponse"][];
         };
+        /**
+         * DayAnswersResponse
+         * @description Each daily file's answer for a day: succeeded, not_published or failed; a file not yet asked
+         *     for the day is absent.
+         */
+        DayAnswersResponse: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Outcomes */
+            outcomes: {
+                [key: string]: string;
+            };
+        };
         /** DayStretchResponse */
         DayStretchResponse: {
             /**
@@ -1066,16 +1082,27 @@ export interface components {
             venue: string;
         };
         /**
-         * FailedFetchResponse
-         * @description A day, a range of corporate actions or a list a source could not give, and why.
+         * FetchesResponse
+         * @description What the run has fetched in the window it runs: by day up to a month, by year beyond, and
+         *     every slice whose latest answer failed, with its reason.
          */
-        FailedFetchResponse: {
-            /** Detail */
-            detail: string;
-            /** Key */
-            key: string;
-            /** Source */
-            source: string;
+        FetchesResponse: {
+            /** Days */
+            days: components["schemas"]["DayAnswersResponse"][] | null;
+            /** Failures */
+            failures: components["schemas"]["api__schemas__flow_run_progress__FailedFetchResponse"][];
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /** Years */
+            years: components["schemas"]["YearAnswersResponse"][] | null;
         };
         /** FirstAdminRequest */
         FirstAdminRequest: {
@@ -1590,6 +1617,7 @@ export interface components {
         ProgressResponse: {
             /** Current Stage */
             current_stage: ("prices" | "identity" | "delivery" | "actions" | "names" | "models" | "features" | "checks") | null;
+            fetches: components["schemas"]["FetchesResponse"] | null;
             /** Stages */
             stages: components["schemas"]["StageResponse"][];
             /**
@@ -1646,7 +1674,7 @@ export interface components {
             /** Failed Steps */
             failed_steps: string[];
             /** Failures */
-            failures: components["schemas"]["FailedFetchResponse"][];
+            failures: components["schemas"]["api__schemas__flow_run_history__FailedFetchResponse"][];
             /**
              * First Day
              * Format: date
@@ -2262,6 +2290,20 @@ export interface components {
             watchlist_id: number;
         };
         /**
+         * YearAnswersResponse
+         * @description The days of a year in the window, and how many each daily file answered.
+         */
+        YearAnswersResponse: {
+            /** Answered */
+            answered: {
+                [key: string]: number;
+            };
+            /** Days */
+            days: number;
+            /** Year */
+            year: number;
+        };
+        /**
          * UnhandledActionResponse
          * @description A corporate action no factor adjusts on a held instrument, within the sessions a month's
          *     return reads.
@@ -2278,6 +2320,27 @@ export interface components {
             isin: string;
             /** Purpose */
             purpose: string | null;
+        };
+        /**
+         * FailedFetchResponse
+         * @description A day, a range of corporate actions or a list a source could not give, and why.
+         */
+        api__schemas__flow_run_history__FailedFetchResponse: {
+            /** Detail */
+            detail: string;
+            /** Key */
+            key: string;
+            /** Source */
+            source: string;
+        };
+        /** FailedFetchResponse */
+        api__schemas__flow_run_progress__FailedFetchResponse: {
+            /** Detail */
+            detail: string;
+            /** Key */
+            key: string;
+            /** Source */
+            source: string;
         };
         /**
          * UnhandledActionResponse
