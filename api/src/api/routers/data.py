@@ -56,10 +56,10 @@ async def data_status(database: DatabaseDependency) -> DataStatusResponse:
 
 
 @router.get("/runs")
-async def run_history(_admin: AdminDependency, database: DatabaseDependency) -> RunHistoryResponse:
+async def run_history(admin: AdminDependency, database: DatabaseDependency) -> RunHistoryResponse:
     """For admins, the newest runs with their reports and the stretches of the history no daily
     file was asked for."""
-    return RunHistoryResponse.model_validate(await flow_run_history.run_history(database))
+    return RunHistoryResponse.model_validate(await flow_run_history.run_history(database, admin.id))
 
 
 @router.get("/sync/estimate", responses=RANGE_REFUSED)
