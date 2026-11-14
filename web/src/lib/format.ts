@@ -153,6 +153,37 @@ export function formatShortDate(isoDate: string): string {
   return `${day} ${MONTHS[month - 1]}`;
 }
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** A calendar day with its weekday: `Mon 12 Oct 2026`. */
+export function formatWeekday(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const weekday =
+    WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
+  return `${weekday} ${formatDate(isoDate)}`;
+}
+
+/** A run of days, naming the month and year once where they are shared: `4 to 10 Oct 2026`,
+ * `28 Sep to 4 Oct 2026`, `29 Dec 2025 to 4 Jan 2026`. */
+export function formatDayRange(
+  firstIsoDate: string,
+  lastIsoDate: string,
+): string {
+  if (firstIsoDate === lastIsoDate) {
+    return formatDate(lastIsoDate);
+  }
+  const [firstYear, firstMonth] = firstIsoDate.split("-").map(Number);
+  const [lastYear, lastMonth] = lastIsoDate.split("-").map(Number);
+  if (firstYear !== lastYear) {
+    return `${formatDate(firstIsoDate)} to ${formatDate(lastIsoDate)}`;
+  }
+  const first =
+    firstMonth === lastMonth
+      ? String(Number(firstIsoDate.slice(8)))
+      : formatShortDate(firstIsoDate);
+  return `${first} to ${formatDate(lastIsoDate)}`;
+}
+
 /** A month on a chart's time axis, numbered from 1: `Sep`. */
 export function formatMonth(month: number): string {
   return MONTHS[month - 1];
