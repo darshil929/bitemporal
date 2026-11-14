@@ -24,6 +24,7 @@ def test_each_operation_carries_its_endpoint_name() -> None:
         "add_watchlist",
         "admin_actions",
         "bootstrap_estimate",
+        "cancel_request",
         "change_account",
         "change_entry_venue",
         "change_password",

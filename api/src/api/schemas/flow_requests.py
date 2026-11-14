@@ -31,13 +31,23 @@ class FlowRequestResponse(BaseModel):
     flow: Literal["bootstrap", "sync"]
     first_day: date
     last_day: date
-    status: Literal["requested", "started", "refused", "finished"]
+    status: Literal["requested", "started", "refused", "finished", "cancelled"]
+    is_cancelling: bool
     requested_by: str | None
     requested_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
     refusal: dict[str, Any] | None
     runs: list[RequestRunResponse]
+
+
+class RequestEnded(BaseModel):
+    reason: Literal["request_ended"]
+    status: Literal["refused", "finished", "cancelled"]
+
+
+class RequestEndedResponse(BaseModel):
+    detail: RequestEnded
 
 
 class RequestPending(BaseModel):

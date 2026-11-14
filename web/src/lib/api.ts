@@ -249,6 +249,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/requests/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Request
+         * @description For admins, ask for a waiting or running request to be cancelled; the days a run stored
+         *     stay.
+         */
+        post: operations["cancel_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data/requests/{request_id}/progress": {
         parameters: {
             query?: never;
@@ -1148,6 +1169,8 @@ export interface components {
             flow: "bootstrap" | "sync";
             /** Id */
             id: number;
+            /** Is Cancelling */
+            is_cancelling: boolean;
             /**
              * Last Day
              * Format: date
@@ -1172,7 +1195,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "requested" | "started" | "refused" | "finished";
+            status: "requested" | "started" | "refused" | "finished" | "cancelled";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1706,6 +1729,23 @@ export interface components {
             unmaterialized: string[];
             /** Warned Checks */
             warned_checks: components["schemas"]["CheckOutcomeResponse"][];
+        };
+        /** RequestEnded */
+        RequestEnded: {
+            /**
+             * Reason
+             * @constant
+             */
+            reason: "request_ended";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "refused" | "finished" | "cancelled";
+        };
+        /** RequestEndedResponse */
+        RequestEndedResponse: {
+            detail: components["schemas"]["RequestEnded"];
         };
         /** RequestPending */
         RequestPending: {
@@ -2913,6 +2953,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketDataUpdatingResponse"];
+                };
+            };
+        };
+    };
+    cancel_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlowRequestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotSignedInResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestEndedResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
