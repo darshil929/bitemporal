@@ -141,3 +141,18 @@ def test_the_sensor_waits_while_no_request_does(
     )
 
     assert isinstance(flow_request_sensor(context), SkipReason)
+
+
+def test_a_request_cancelled_while_it_waits_is_never_started(
+    connection: psycopg.Connection, instance: DagsterInstance
+) -> None:
+    request = requested(connection)
+    connection.execute(
+        "update flow_request set cancel_requested_at = now() where id = %s", (request,)
+    )
+    connection.commit()
+
+    skipped = take_request(connection, instance)
+
+    assert isinstance(skipped, SkipReason)
+    assert connection.execute(REQUESTS).fetchall() == [("cancelled", False, None)]

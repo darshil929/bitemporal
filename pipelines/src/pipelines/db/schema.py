@@ -80,7 +80,7 @@ ADMIN_ACTIONS = (
 FLOWS = ("bootstrap", "sync")
 FLOW_RUN_OUTCOMES = ("succeeded", "failed", "cancelled")
 FLOW_STEP_OUTCOMES = ("succeeded", "failed", "skipped")
-FLOW_REQUEST_STATUSES = ("requested", "started", "refused", "finished")
+FLOW_REQUEST_STATUSES = ("requested", "started", "refused", "finished", "cancelled")
 # The report's lists: failed days, ranges and lists; checks warned and failed with their rows;
 # failed steps; assets the run planned and did not materialize.
 FLOW_RUN_LISTS = ("failures", "warned_checks", "failed_checks", "failed_steps", "unmaterialized")
@@ -454,7 +454,9 @@ class IngestionLog(Base):
     partition_key: Mapped[str] = mapped_column(Text)
     schema_version: Mapped[str] = mapped_column(Text)
     outcome: Mapped[str] = mapped_column(Text)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
     row_count: Mapped[int | None] = mapped_column(Integer)
     detail: Mapped[str | None] = mapped_column(Text)
 
@@ -916,6 +918,8 @@ class FlowRequest(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The Dagster run carrying the request now, or the last that did.
+    run_id: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(_in_list("flow", FLOWS), name="flow"),
