@@ -989,10 +989,11 @@ export interface components {
         };
         /**
          * DataStatusResponse
-         * @description How current the market data is. `failed` when the last run failed; `stale` when a weekday
-         *     after the day the pages show has ended without figures and its files were due by 07:30 India
-         *     time the next morning, a weekday both venues' price files answered not published excepted;
-         *     `unknown` with no run recorded; else `fresh`.
+         * @description How current the market data is: `unknown` with no run recorded and none running; else the
+         *     first that applies: `failed` when the last run failed; `stale` when a weekday after the day the
+         *     pages show has ended without figures and its files were due by 07:30 India time the next
+         *     morning, a weekday both venues' price files answered not published excepted; `updating` while a
+         *     request waits or runs; else `fresh`.
          */
         DataStatusResponse: {
             /** Days Never Asked */
@@ -1000,13 +1001,14 @@ export interface components {
             last_run: components["schemas"]["LastRunResponse"] | null;
             /** Published Day */
             published_day: string | null;
+            running: components["schemas"]["RunningSyncResponse"] | null;
             /** Stale Since */
             stale_since: string | null;
             /**
              * State
              * @enum {string}
              */
-            state: "fresh" | "stale" | "failed" | "unknown";
+            state: "fresh" | "stale" | "updating" | "failed" | "unknown";
             /** Venues */
             venues: components["schemas"]["VenueDayResponse"][];
         };
@@ -1348,6 +1350,8 @@ export interface components {
          *     of what failed or warned. A failed fetch is a day, a range of corporate actions or a list.
          */
         LastRunResponse: {
+            /** Checks Passed */
+            checks_passed: number;
             /**
              * Ended At
              * Format: date-time
@@ -1357,6 +1361,8 @@ export interface components {
             failed_checks: number;
             /** Failed Fetches */
             failed_fetches: number;
+            /** Failed Stages */
+            failed_stages: ("prices" | "identity" | "delivery" | "actions" | "names" | "models" | "features" | "checks")[];
             /** Failed Steps */
             failed_steps: string[];
             /**
@@ -1812,6 +1818,42 @@ export interface components {
             runs: components["schemas"]["RecordedRunResponse"][];
         };
         /**
+         * RunningSyncResponse
+         * @description The request waiting or running, its days, and while it runs the stage and the time left.
+         */
+        RunningSyncResponse: {
+            /** Current Stage */
+            current_stage: ("prices" | "identity" | "delivery" | "actions" | "names" | "models" | "features" | "checks") | null;
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Flow
+             * @enum {string}
+             */
+            flow: "bootstrap" | "sync";
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "running" | "cancelling";
+            time_left: components["schemas"]["DurationResponse"] | null;
+        };
+        /**
          * SavedViewChangeRequest
          * @description A new name for a view, a screen to save over it, or both.
          */
@@ -2161,9 +2203,11 @@ export interface components {
         };
         /**
          * VenueDayResponse
-         * @description A venue's latest stored day and whether it passed its checks.
+         * @description A venue's latest stored day, whether it passed its checks, and the bars it holds.
          */
         VenueDayResponse: {
+            /** Bars */
+            bars: number;
             /** Is Complete */
             is_complete: boolean;
             /**
