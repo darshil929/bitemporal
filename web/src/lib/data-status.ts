@@ -13,6 +13,7 @@ export type DataState = DataStatus["state"];
 type Stage = NonNullable<
   components["schemas"]["RunningSyncResponse"]["current_stage"]
 >;
+type DayStretch = components["schemas"]["DayStretchResponse"];
 
 export type FactRow = Readonly<{
   label: string;
@@ -151,15 +152,29 @@ function runningRow({ running }: DataStatus): FactRow {
   };
 }
 
-function neverAskedRow({ days_never_asked: count }: DataStatus): FactRow {
+function stretchText({ first_day, last_day }: DayStretch): string {
+  return first_day === last_day
+    ? formatDate(first_day)
+    : formatDayRange(first_day, last_day);
+}
+
+function neverAskedRow(
+  status: DataStatus,
+  stretches: readonly DayStretch[],
+): FactRow {
+  const count = status.days_never_asked;
+  if (count === 0) {
+    return { label: "Days never asked for", value: "0", flagged: false };
+  }
+  const days = stretches.map(stretchText).join(", ");
   return {
     label: "Days never asked for",
-    value: formatCount(count),
+    value: days ? `${formatCount(count)}: ${days}` : formatCount(count),
     detail:
-      count === 0
-        ? undefined
-        : `No daily file was asked for ${count === 1 ? "this day" : "these days"}`,
-    flagged: count > 0,
+      count === 1
+        ? "No daily file was asked for this day"
+        : "No daily file was asked for these days",
+    flagged: true,
   };
 }
 
@@ -170,12 +185,16 @@ const NEXT_SYNC: FactRow = {
 };
 
 /** The popover's rows, in the order each state draws them. An admin also reads why a run failed
- * and how many days were never asked for. */
-export function factRows(status: DataStatus, isAdmin: boolean): FactRow[] {
+ * and which days were never asked for. */
+export function factRows(
+  status: DataStatus,
+  isAdmin: boolean,
+  stretches: readonly DayStretch[] = [],
+): FactRow[] {
   const venues = [venueRow(status, "BSE"), venueRow(status, "NSE")];
   const lastSync = lastSyncRow(status, isAdmin);
   const running = runningRow(status);
-  const neverAsked = isAdmin ? [neverAskedRow(status)] : [];
+  const neverAsked = isAdmin ? [neverAskedRow(status, stretches)] : [];
   switch (status.state) {
     case "stale":
       return [

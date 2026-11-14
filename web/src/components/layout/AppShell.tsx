@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { InstrumentSearch } from "@/components/controls/InstrumentSearch";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { ShellNavigation } from "@/components/layout/ShellNavigation";
+import { DataStatusPill } from "@/components/status/DataStatusPill";
 import type { SignedInPerson } from "@/lib/page-access";
 
 export function AppShell({
@@ -18,6 +19,7 @@ export function AppShell({
         <ShellNavigation />
         <div className="ml-auto flex items-center gap-2.5">
           <InstrumentSearch shortcutKey="/" className="w-70" />
+          <DataStatusPill isAdmin={person.role === "admin"} />
           <AccountMenu person={person} />
         </div>
       </header>
