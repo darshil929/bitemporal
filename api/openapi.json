@@ -2504,6 +2504,10 @@
             "title": "Counts",
             "type": "object"
           },
+          "duration_seconds": {
+            "title": "Duration Seconds",
+            "type": "integer"
+          },
           "ended_at": {
             "format": "date-time",
             "title": "Ended At",
@@ -2514,6 +2518,23 @@
               "$ref": "#/components/schemas/CheckOutcomeResponse"
             },
             "title": "Failed Checks",
+            "type": "array"
+          },
+          "failed_stages": {
+            "items": {
+              "enum": [
+                "prices",
+                "identity",
+                "delivery",
+                "actions",
+                "names",
+                "models",
+                "features",
+                "checks"
+              ],
+              "type": "string"
+            },
+            "title": "Failed Stages",
             "type": "array"
           },
           "failed_steps": {
@@ -2557,6 +2578,17 @@
             "title": "Outcome",
             "type": "string"
           },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          },
           "run_id": {
             "title": "Run Id",
             "type": "string"
@@ -2588,6 +2620,7 @@
           "last_day",
           "started_at",
           "ended_at",
+          "duration_seconds",
           "outcome",
           "counts",
           "checks_passed",
@@ -2595,7 +2628,9 @@
           "warned_checks",
           "failed_checks",
           "failed_steps",
-          "unmaterialized"
+          "failed_stages",
+          "unmaterialized",
+          "requested_by"
         ],
         "title": "RecordedRunResponse",
         "type": "object"
@@ -2736,7 +2771,7 @@
         "type": "object"
       },
       "RunHistoryResponse": {
-        "description": "The ten newest runs, newest first, and the stretches of the history no daily file was asked\nfor, to the latest day a run covered.",
+        "description": "The ten newest runs, newest first, each naming the admin who asked for it or none for a run\nstarted otherwise; the stretches of the history no daily file was asked for, to the latest day\na run covered; and the instruments the day the pages show holds.",
         "properties": {
           "days_never_asked": {
             "items": {
@@ -2744,6 +2779,10 @@
             },
             "title": "Days Never Asked",
             "type": "array"
+          },
+          "published_instruments": {
+            "title": "Published Instruments",
+            "type": "integer"
           },
           "runs": {
             "items": {
@@ -2755,7 +2794,8 @@
         },
         "required": [
           "runs",
-          "days_never_asked"
+          "days_never_asked",
+          "published_instruments"
         ],
         "title": "RunHistoryResponse",
         "type": "object"
