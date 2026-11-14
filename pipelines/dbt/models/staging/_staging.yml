@@ -372,6 +372,37 @@ models:
         description: When the latest answer was received.
         data_tests: [not_null]
 
+  - name: stg_fetch_attempts
+    description: One row per attempt to fetch a slice of a source, every attempt kept.
+    columns:
+      - name: ingestion_id
+        description: The attempt's identifier, rising with each attempt.
+        data_tests: [not_null, unique]
+      - name: source_id
+        description: The source asked.
+        data_tests: [not_null]
+      - name: partition_key
+        description: >
+          The slice asked for: a day (2026-11-09), a range of ex-dates (20260101-20261231) or a list
+          (active-20261109).
+        data_tests: [not_null]
+      - name: outcome
+        description: >
+          `succeeded` where the slice was read, `not_published` where the source had none,
+          `failed` where it could not be read.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [succeeded, not_published, failed]
+      - name: fetched_at
+        description: When the answer was received.
+        data_tests: [not_null]
+      - name: row_count
+        description: The rows a successful attempt read; absent otherwise.
+      - name: detail
+        description: Why an attempt failed, in the words the ingestion recorded.
+
 unit_tests:
   - name: a_revalidated_day_supersedes_its_earlier_verdict
     description: A day checked again after a correction appends a verdict rather than replacing one.
