@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { NoteChip } from "@/components/status/NoteChip";
 import { StatusPill } from "@/components/status/StatusPill";
 import { type DataTableColumn, DataTable } from "@/components/tables/DataTable";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { type ManagedPerson, ROLE_LABELS } from "@/lib/user-management";
 
 function dim(content: ReactNode, disabled: boolean): ReactNode {
@@ -72,7 +72,11 @@ export function PeopleTable({
       key: "added",
       header: "Added",
       width: "120px",
-      cell: (p) => dim(formatDate(p.created_at), p.disabled_at !== null),
+      cell: (p) =>
+        dim(
+          formatDateTime(p.created_at).split(", ")[0],
+          p.disabled_at !== null,
+        ),
     },
     ...(renderActions
       ? [

@@ -5,9 +5,11 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { requireSession } from "@/lib/page-access";
 import { serverApiClient } from "@/lib/server-api-client";
 
+import { AuditLogCard } from "./AuditLogCard";
 import { PeopleTable } from "./PeopleTable";
+import { SessionLimitsCard } from "./SessionLimitsCard";
 
-// Account listing for admins; a member sees a refusal panel with a link back.
+// Account listing, session limits, and audit trail for admins; a member sees a refusal panel.
 export default async function UsersPage() {
   const person = await requireSession();
   if (person.role !== "admin") {
@@ -26,14 +28,22 @@ export default async function UsersPage() {
     );
   }
   const api = await serverApiClient();
-  const people = await api.GET("/admin/users");
-  if (!people.data) {
+  const [people, settings, audit] = await Promise.all([
+    api.GET("/admin/users"),
+    api.GET("/admin/settings"),
+    api.GET("/admin/audit"),
+  ]);
+  if (!people.data || !settings.data || !audit.data) {
     throw new Error("The people list could not be read");
   }
   return (
     <>
       <PageHeader title="Users" />
       <PeopleTable people={people.data} currentUserId={person.id} />
+      <div className="grid grid-cols-1 items-start gap-section lg:grid-cols-[440px_minmax(0,1fr)]">
+        <SessionLimitsCard limits={settings.data} />
+        <AuditLogCard entries={audit.data} />
+      </div>
     </>
   );
 }
