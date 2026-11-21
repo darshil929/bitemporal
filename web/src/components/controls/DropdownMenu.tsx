@@ -68,16 +68,37 @@ type DropdownMenuItemProps = Omit<
 > & {
   /** A short note at the row's end. */
   caption?: string;
+  /** Why an unavailable choice is disabled, shown directly under its label. */
+  reason?: string;
 };
 
 export function DropdownMenuItem({
   caption,
+  reason,
+  disabled,
   className,
   children,
   ...props
 }: DropdownMenuItemProps) {
+  if (reason) {
+    return (
+      <BaseItem
+        disabled
+        className={cn(
+          "flex h-auto flex-col items-start gap-0.5 rounded-[3px] px-2 py-1.5 text-cell text-text-subtle data-[disabled]:opacity-100",
+          className,
+        )}
+        {...props}
+      >
+        <span>{children}</span>
+        <span className="text-caption leading-[1.4] whitespace-normal text-text-subtle">
+          {reason}
+        </span>
+      </BaseItem>
+    );
+  }
   return (
-    <BaseItem className={cn(ROW, className)} {...props}>
+    <BaseItem disabled={disabled} className={cn(ROW, className)} {...props}>
       <span className="grow whitespace-nowrap">{children}</span>
       {caption ? (
         <>

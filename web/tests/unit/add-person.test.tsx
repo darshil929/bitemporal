@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { UsersPeopleSection } from "@/app/(app)/admin/users/UsersPeopleSection";
+import type { ManagedPerson } from "@/lib/user-management";
 
 const fetchMock = vi.hoisted(() => {
   vi.stubGlobal(
@@ -21,6 +22,14 @@ const fetchMock = vi.hoisted(() => {
           init,
         );
       }
+    },
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
     },
   );
   const mock = vi.fn<(request: Request) => Promise<Response>>();
@@ -107,4 +116,100 @@ test("a taken username shows an inline error on the username field", async () =>
   expect(
     await screen.findByText("This username is already taken"),
   ).toBeTruthy();
+});
+
+const MEMBER: ManagedPerson = {
+  ...ADMIN,
+  id: 2,
+  username: "ananya",
+  display_name: "Ananya",
+  role: "member",
+};
+const DISABLED: ManagedPerson = {
+  ...MEMBER,
+  id: 3,
+  username: "rohan",
+  display_name: "Rohan",
+  disabled_at: "2026-10-09T12:15:00Z",
+};
+const openMenu = (name: string) =>
+  fireEvent.keyDown(
+    screen.getByRole("button", { name: `Actions for ${name}` }),
+    { key: "Enter" },
+  );
+
+test("the sole admin's menu disables demotion and disabling with reasons", () => {
+  render(<UsersPeopleSection people={[ADMIN, MEMBER]} currentUserId={1} />);
+  openMenu("Darshil");
+  const demote = screen.getByRole("menuitem", {
+    name: /Change role to member/,
+  });
+  const disable = screen.getByRole("menuitem", { name: /Disable/ });
+  expect([
+    demote.getAttribute("aria-disabled"),
+    disable.getAttribute("aria-disabled"),
+  ]).toEqual(["true", "true"]);
+  expect(demote.textContent).toContain(
+    "The last admin cannot be demoted or disabled",
+  );
+  expect(disable.textContent).toContain(
+    "An admin never disables their own account",
+  );
+  expect(
+    screen
+      .getByRole("menuitem", { name: "Reset password" })
+      .getAttribute("aria-disabled"),
+  ).toBeNull();
+});
+
+test("confirming role change, enable, reset, and 409 refusal on row actions", async () => {
+  fetchMock.mockResolvedValueOnce(Response.json({ ...MEMBER, role: "admin" }));
+  render(
+    <UsersPeopleSection people={[ADMIN, MEMBER, DISABLED]} currentUserId={1} />,
+  );
+  openMenu("Ananya");
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "Change role to admin" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Make admin" }));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  expect(await fetchMock.mock.lastCall?.[0]?.json()).toEqual({ role: "admin" });
+
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ ...DISABLED, disabled_at: null }),
+  );
+  openMenu("Rohan");
+  expect(screen.queryByRole("menuitem", { name: /Change role/ })).toBeNull();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Enable" }));
+  fireEvent.click(screen.getByRole("button", { name: "Enable account" }));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+  expect(await fetchMock.mock.lastCall?.[0]?.json()).toEqual({
+    disabled: false,
+  });
+
+  fetchMock.mockResolvedValueOnce(
+    Response.json({
+      person: MEMBER,
+      temporary_password: "cedar-stone-river-nine",
+    }),
+  );
+  openMenu("Ananya");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Reset password" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reset password" }));
+  expect(await screen.findByText("Password reset")).toBeTruthy();
+  expect(screen.getByLabelText("Temporary password")).toHaveProperty(
+    "value",
+    "cedar-stone-river-nine",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ detail: "last_admin" }, { status: 409 }),
+  );
+  openMenu("Ananya");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Disable" }));
+  fireEvent.click(screen.getByRole("button", { name: "Disable account" }));
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "The last admin cannot be demoted or disabled.",
+  );
 });

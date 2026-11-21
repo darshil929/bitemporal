@@ -104,3 +104,103 @@ export function validateNewPerson(nameText: string, userText: string) {
       !displayNameError && !usernameError ? { display_name, username } : null,
   };
 }
+
+export type AccountActionKind =
+  "make_admin" | "make_member" | "disable" | "enable" | "reset";
+
+const LAST_ADMIN = "The last admin cannot be demoted or disabled";
+const OWN_ACCOUNT = "An admin never disables their own account";
+
+/** Disabled reasons for a row's role-change and disable items. */
+export function accountProtection(
+  person: ManagedPerson,
+  people: readonly ManagedPerson[],
+  currentUserId: number,
+) {
+  const other = people.some(
+    (o) => o.id !== person.id && o.role === "admin" && o.disabled_at === null,
+  );
+  const last = person.role === "admin" && person.disabled_at === null && !other;
+  const self = person.id === currentUserId;
+  const both = [last ? LAST_ADMIN : null, self ? OWN_ACCOUNT : null]
+    .filter(Boolean)
+    .join(". ");
+  return {
+    demoteReason: last ? LAST_ADMIN : undefined,
+    disableReason: both || undefined,
+  };
+}
+
+/** Confirmation dialog copy for an account action. */
+export function accountActionCopy(kind: AccountActionKind, name: string) {
+  const rows: Record<
+    AccountActionKind,
+    readonly [string, string, readonly string[], string, string]
+  > = {
+    make_admin: [
+      `Make ${name} an admin`,
+      "An admin starts syncs and manages people.",
+      [
+        `${name} can start a sync and the history load`,
+        `${name} can add, disable and reset people`,
+        "Recorded in the admin actions",
+      ],
+      "Make admin",
+      "Saving",
+    ],
+    make_member: [
+      `Make ${name} a member`,
+      "A member reads data and keeps their own watchlists, views and alerts.",
+      [
+        `${name} can no longer start syncs or manage people`,
+        "Recorded in the admin actions",
+      ],
+      "Make member",
+      "Saving",
+    ],
+    disable: [
+      `Disable ${name}`,
+      `${name} is signed out at once.`,
+      [
+        `Every session of ${name} ends now`,
+        "Signing in is refused until an admin enables the account",
+        "Watchlists, views and alerts are kept",
+      ],
+      "Disable account",
+      "Disabling",
+    ],
+    enable: [
+      `Enable ${name}`,
+      `${name} can sign in again.`,
+      [
+        `${name} can sign in with their current password`,
+        "Recorded in the admin actions",
+      ],
+      "Enable account",
+      "Enabling",
+    ],
+    reset: [
+      `Reset the password of ${name}`,
+      "A temporary password replaces the current one.",
+      [
+        `Every session of ${name} ends now`,
+        "The temporary password is shown once, and expires after 24 hours",
+        `${name} chooses a new password at the next sign-in`,
+      ],
+      "Reset password",
+      "Resetting",
+    ],
+  };
+  const [title, description, changes, confirmLabel, busyLabel] = rows[kind];
+  return { title, description, changes, confirmLabel, busyLabel };
+}
+
+const REFUSALS: Record<string, string> = {
+  last_admin: `${LAST_ADMIN}.`,
+  own_account: `${OWN_ACCOUNT}.`,
+  person_not_found: "This account no longer exists. Reload the page.",
+};
+
+export const accountRefusalMessage = (detail: unknown): string =>
+  (typeof detail === "string" && REFUSALS[detail]) ||
+  "The change could not be saved. Try again.";
