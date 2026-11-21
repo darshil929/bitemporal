@@ -32,7 +32,7 @@ node_modules/
 out/
 *.tsbuildinfo
 
-data/
+/data/
 .data/
 *.db
 *.duckdb

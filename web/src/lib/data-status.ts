@@ -64,12 +64,16 @@ export function headline({ published_day }: DataStatus): string {
     : "No figures yet";
 }
 
-function venueRow(status: DataStatus, venue: "BSE" | "NSE"): FactRow {
+function venueRow(
+  status: DataStatus,
+  venue: "BSE" | "NSE",
+  label = `${venue} latest day`,
+): FactRow {
   const held = status.venues.find((day) => day.venue === venue);
   const value = held
     ? `${formatDate(held.latest_day)}, ${held.is_complete ? "complete" : "partial"}, ${formatCount(held.bars)} bars`
     : "—";
-  return { label: `${venue} latest day`, value, flagged: false };
+  return { label, value, flagged: false };
 }
 
 function counted(count: number, noun: string): string {
@@ -77,7 +81,12 @@ function counted(count: number, noun: string): string {
 }
 
 /** Why the last run failed: the stages that failed, else the checks and the fetches. */
-export function failureText(run: NonNullable<DataStatus["last_run"]>): string {
+export function failureText(
+  run: Pick<
+    NonNullable<DataStatus["last_run"]>,
+    "failed_stages" | "failed_checks" | "failed_fetches"
+  >,
+): string {
   const stages = run.failed_stages.map((stage) => STAGE_WORDS[stage]);
   if (stages.length > 0) {
     return `The ${stages.join(" and ")} ${stages.length === 1 ? "step" : "steps"} failed`;
@@ -218,4 +227,18 @@ export function factRows(
     default:
       return [...venues, lastSync, running, ...neverAsked, NEXT_SYNC];
   }
+}
+
+/** The data status page's facts behind the day the pages show. */
+export function figureRows(
+  status: DataStatus,
+  stretches: readonly DayStretch[],
+): FactRow[] {
+  return [
+    venueRow(status, "BSE", "BSE latest stored day"),
+    venueRow(status, "NSE", "NSE latest stored day"),
+    runningRow(status),
+    neverAskedRow(status, stretches),
+    NEXT_SYNC,
+  ];
 }
