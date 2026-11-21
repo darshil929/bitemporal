@@ -211,6 +211,19 @@ export function formatDateTime(isoTimestamp: string): string {
 }
 
 const MINUTES_IN_HOUR = 60;
+const SECONDS_IN_MINUTE = 60;
+
+/** How long a run or a step took: `under 1 s`, `45 s`, `22 min 18 s`. */
+export function formatSpan(seconds: number): string {
+  if (seconds < 1) {
+    return "under 1 s";
+  }
+  const whole = Math.round(seconds);
+  if (whole < SECONDS_IN_MINUTE) {
+    return `${whole} s`;
+  }
+  return `${Math.floor(whole / SECONDS_IN_MINUTE)} min ${whole % SECONDS_IN_MINUTE} s`;
+}
 
 /** A length of time given in minutes, in whole hours where it divides evenly: `2 hours`, `90 minutes`. */
 export function formatDuration(minutes: number): string {
