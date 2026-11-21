@@ -1,21 +1,32 @@
 "use client";
 
-import { Plus, TriangleAlert } from "lucide-react";
+import { MoreHorizontal, Plus, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useId, useState } from "react";
 
 import { Button } from "@/components/controls/Button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/controls/DropdownMenu";
 import { FormField } from "@/components/controls/FormField";
+import { IconButton } from "@/components/controls/IconButton";
 import { Select } from "@/components/controls/Select";
 import { TextField } from "@/components/controls/TextField";
+import { ConfirmDialog } from "@/components/layout/ConfirmDialog";
 import { Dialog, DialogActions } from "@/components/layout/Dialog";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { apiClient } from "@/lib/api-client";
 import {
+  type AccountActionKind,
+  accountActionCopy,
+  accountProtection,
+  accountRefusalMessage,
   type IssuedPassword,
   type ManagedPerson,
   type PersonRole,
@@ -26,16 +37,17 @@ import {
 import { PeopleTable } from "./PeopleTable";
 
 type Errors = { displayName?: string; username?: string; general?: string };
+type ShownPassword = { title: string; name: string; password: string };
 const EMPTY = { displayName: "", username: "", role: "member" as PersonRole };
 const ROLES: readonly PersonRole[] = ["member", "admin"];
 
 function TemporaryPasswordDialog({
-  issued,
+  shown,
   onClose,
-}: Readonly<{ issued: IssuedPassword | null; onClose: () => void }>) {
+}: Readonly<{ shown: ShownPassword | null; onClose: () => void }>) {
   const [copied, setCopied] = useState(false);
   const close = () => (setCopied(false), onClose());
-  const password = issued?.temporary_password ?? "";
+  const password = shown?.password ?? "";
   const copy = () =>
     navigator.clipboard
       .writeText(password)
@@ -44,9 +56,9 @@ function TemporaryPasswordDialog({
 
   return (
     <Dialog
-      open={issued !== null}
+      open={shown !== null}
       onOpenChange={(next) => (!next ? close() : undefined)}
-      title={issued ? `${issued.person.display_name} added` : ""}
+      title={shown?.title ?? ""}
       footer={
         <DialogActions
           right={
@@ -58,8 +70,8 @@ function TemporaryPasswordDialog({
       }
     >
       <p className="text-cell leading-normal text-text-muted">
-        The temporary password of {issued?.person.display_name}, shown here
-        once. Handed over in person, it is replaced at the first sign-in.
+        The temporary password of {shown?.name}, shown here once. Handed over in
+        person, it is replaced at the first sign-in.
       </p>
       <FormField label="Temporary password" help="Expires in 24 hours.">
         {(c) => (
@@ -217,14 +229,111 @@ function AddPersonDialog({
   );
 }
 
-// Users page header, people table, and dialogs for adding an account.
+function PersonMenu({
+  person,
+  reasons,
+  onChoose,
+}: Readonly<{
+  person: ManagedPerson;
+  reasons: ReturnType<typeof accountProtection>;
+  onChoose: (kind: AccountActionKind) => void;
+}>) {
+  const isAdmin = person.role === "admin";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          icon={MoreHorizontal}
+          label={`Actions for ${person.display_name}`}
+          kind="plain"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className={
+          reasons.demoteReason || reasons.disableReason
+            ? "w-[300px]"
+            : "w-[240px]"
+        }
+      >
+        {person.disabled_at === null ? (
+          <>
+            <DropdownMenuItem
+              reason={isAdmin ? reasons.demoteReason : undefined}
+              onSelect={() => onChoose(isAdmin ? "make_member" : "make_admin")}
+            >
+              {isAdmin ? "Change role to member" : "Change role to admin"}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              reason={reasons.disableReason}
+              onSelect={() => onChoose("disable")}
+            >
+              Disable
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <DropdownMenuItem onSelect={() => onChoose("enable")}>
+            Enable
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => onChoose("reset")}>
+          Reset password
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// Users page header, people table, row action menus, and account management dialogs.
 export function UsersPeopleSection({
   people,
   currentUserId,
 }: Readonly<{ people: readonly ManagedPerson[]; currentUserId: number }>) {
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
-  const [issued, setIssued] = useState<IssuedPassword | null>(null);
+  const [shown, setShown] = useState<ShownPassword | null>(null);
+  const [pending, setPending] = useState<{
+    person: ManagedPerson;
+    kind: AccountActionKind;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function confirmAction() {
+    if (!pending) return;
+    setBusy(true);
+    setActionError(null);
+    const { person, kind } = pending;
+    const params = { path: { person_id: person.id } };
+    const body =
+      kind === "make_admin"
+        ? { role: "admin" as const }
+        : kind === "make_member"
+          ? { role: "member" as const }
+          : { disabled: kind === "disable" };
+    const res = await (
+      kind === "reset"
+        ? apiClient.POST("/admin/users/{person_id}/password", { params })
+        : apiClient.PATCH("/admin/users/{person_id}", { params, body })
+    ).catch(() => null);
+    setBusy(false);
+    if (!res?.response.ok)
+      return setActionError(accountRefusalMessage(res?.error?.detail));
+    setPending(null);
+    if (kind === "reset" && res.data && "temporary_password" in res.data) {
+      setShown({
+        title: "Password reset",
+        name: res.data.person.display_name,
+        password: res.data.temporary_password,
+      });
+    }
+    router.refresh();
+  }
+
+  const copy = pending
+    ? accountActionCopy(pending.kind, pending.person.display_name)
+    : null;
 
   return (
     <>
@@ -237,16 +346,44 @@ export function UsersPeopleSection({
           </Button>
         }
       />
-      <PeopleTable people={people} currentUserId={currentUserId} />
+      <PeopleTable
+        people={people}
+        currentUserId={currentUserId}
+        renderActions={(person) => (
+          <PersonMenu
+            person={person}
+            reasons={accountProtection(person, people, currentUserId)}
+            onChoose={(kind) => (
+              setActionError(null),
+              setPending({ person, kind })
+            )}
+          />
+        )}
+      />
       <AddPersonDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        onAdded={(res) => (setAddOpen(false), setIssued(res), router.refresh())}
+        onAdded={({ person, temporary_password }) => (
+          setAddOpen(false),
+          setShown({
+            title: `${person.display_name} added`,
+            name: person.display_name,
+            password: temporary_password,
+          }),
+          router.refresh()
+        )}
       />
-      <TemporaryPasswordDialog
-        issued={issued}
-        onClose={() => setIssued(null)}
-      />
+      <TemporaryPasswordDialog shown={shown} onClose={() => setShown(null)} />
+      {copy ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => (!open ? setPending(null) : undefined)}
+          {...copy}
+          isBusy={busy}
+          error={actionError}
+          onConfirm={confirmAction}
+        />
+      ) : null}
     </>
   );
 }
