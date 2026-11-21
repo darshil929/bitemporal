@@ -10,6 +10,7 @@ import {
 } from "@/components/controls/DropdownMenu";
 
 type SelectProps = Readonly<{
+  id?: string;
   /** A word before the value naming what is chosen, such as "View". */
   prefix?: string;
   /** What is chosen, as the field shows it. */
@@ -23,6 +24,7 @@ type SelectProps = Readonly<{
 // A field showing a choice that opens a menu of the others; its border takes the focus colour while
 // the menu is open.
 export function Select({
+  id,
   prefix,
   value,
   children,
@@ -32,6 +34,7 @@ export function Select({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
+        id={id}
         className={cn(
           "inline-flex h-control items-center gap-1.5 rounded-sm border border-border bg-surface-raised px-2.5 text-cell whitespace-nowrap text-text outline-none focus-visible:border-accent data-[state=open]:border-accent",
           className,

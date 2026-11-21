@@ -1,13 +1,12 @@
 import Link from "next/link";
 
 import { EmptyState } from "@/components/layout/EmptyState";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { requireSession } from "@/lib/page-access";
 import { serverApiClient } from "@/lib/server-api-client";
 
 import { AuditLogCard } from "./AuditLogCard";
-import { PeopleTable } from "./PeopleTable";
 import { SessionLimitsCard } from "./SessionLimitsCard";
+import { UsersPeopleSection } from "./UsersPeopleSection";
 
 // Account listing, session limits, and audit trail for admins; a member sees a refusal panel.
 export default async function UsersPage() {
@@ -38,8 +37,7 @@ export default async function UsersPage() {
   }
   return (
     <>
-      <PageHeader title="Users" />
-      <PeopleTable people={people.data} currentUserId={person.id} />
+      <UsersPeopleSection people={people.data} currentUserId={person.id} />
       <div className="grid grid-cols-1 items-start gap-section lg:grid-cols-[440px_minmax(0,1fr)]">
         <SessionLimitsCard limits={settings.data} />
         <AuditLogCard entries={audit.data} />
