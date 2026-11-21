@@ -10,14 +10,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.database import Database
 from api.services.data_status import LAST_DAY_RUN, PRICE_SOURCES
+from api.services.flow_run_progress import stage_of
 from api.services.market_reads import read_marts
 
 RECENT_RUNS = 10
 
+# A run started by a request names the admin who asked; one started otherwise names no one.
 RUNS = text(
-    "select run_id, flow, first_day, last_day, started_at, ended_at, outcome, counts,"
-    " checks_passed, failures, warned_checks, failed_checks, failed_steps, unmaterialized"
-    " from flow_run order by started_at desc limit :limit"
+    "select run.run_id, run.flow, run.first_day, run.last_day, run.started_at, run.ended_at,"
+    " run.outcome, run.counts, run.checks_passed, run.failures, run.warned_checks,"
+    " run.failed_checks, run.failed_steps, run.unmaterialized,"
+    " round(extract(epoch from run.ended_at - run.started_at))::integer as duration_seconds,"
+    " person.display_name as requested_by"
+    " from flow_run as run"
+    " left join flow_request as request on request.id = run.request_id"
+    " left join app_user as person on person.id = request.requested_by"
+    " order by run.started_at desc limit :limit"
+)
+PUBLISHED_INSTRUMENTS = text(
+    "select count(*) from mart_daily_features where trade_date = ("
+    " select trade_date from feature_release order by release_id desc limit 1)"
 )
 # Consecutive days never asked for share their distance from their rank, which groups a stretch.
 NEVER_ASKED_STRETCHES = text(
@@ -42,6 +54,7 @@ class RecordedRun:
     last_day: date
     started_at: datetime
     ended_at: datetime
+    duration_seconds: int
     outcome: str
     counts: dict[str, dict[str, int]]
     checks_passed: int
@@ -50,6 +63,8 @@ class RecordedRun:
     failed_checks: list[dict[str, Any]]
     failed_steps: list[str]
     unmaterialized: list[str]
+    requested_by: str | None
+    failed_stages: list[str]
 
 
 @dataclass(frozen=True)
@@ -62,15 +77,19 @@ class DayStretch:
 class RunHistory:
     runs: tuple[RecordedRun, ...]
     days_never_asked: tuple[DayStretch, ...]
+    published_instruments: int
 
 
-async def run_history(database: Database) -> RunHistory:
-    return await read_marts(database, resolve_run_history)
+async def run_history(database: Database, admin_id: int) -> RunHistory:
+    return await read_marts(database, resolve_run_history, admin_id)
 
 
 async def resolve_run_history(transaction: AsyncSession) -> RunHistory:
     runs = tuple(
-        RecordedRun(**row._asdict())
+        RecordedRun(
+            **row._asdict(),
+            failed_stages=sorted({stage_of(step) for step in row.failed_steps}),
+        )
         for row in await transaction.execute(RUNS, {"limit": RECENT_RUNS})
     )
     last_day = (await transaction.execute(LAST_DAY_RUN)).scalar_one_or_none()
@@ -80,4 +99,5 @@ async def resolve_run_history(transaction: AsyncSession) -> RunHistory:
             NEVER_ASKED_STRETCHES, {"last_day": last_day, "prices": PRICE_SOURCES}
         )
         stretches = tuple(DayStretch(row.first_day, row.last_day) for row in found)
-    return RunHistory(runs, stretches)
+    published = (await transaction.execute(PUBLISHED_INSTRUMENTS)).scalar_one()
+    return RunHistory(runs, stretches, published)

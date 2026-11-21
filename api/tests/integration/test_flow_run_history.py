@@ -23,9 +23,9 @@ STAND_INS = {
 }
 RUN = (
     "insert into flow_run (run_id, flow, first_day, last_day, started_at, ended_at, outcome,"
-    " counts, checks_passed, failures, warned_checks, failed_checks, failed_steps)"
+    " counts, checks_passed, failures, warned_checks, failed_checks, failed_steps, request_id)"
     " values (%(run)s, 'sync', '2026-10-01', %(last)s, %(started)s, %(started)s, %(outcome)s,"
-    " %(counts)s, 162, %(failures)s, %(warned)s, '[]', %(steps)s)"
+    " %(counts)s, 162, %(failures)s, %(warned)s, '[]', %(steps)s, %(request)s)"
 )
 PRICES = {"published": 5, "unpublished": 2, "failed": 0}
 SHORT_ANSWER = {"source": "bse_corporate_actions", "key": "20260101-20261231", "detail": "short"}
@@ -54,6 +54,7 @@ class History:
             "failures": Jsonb([]),
             "warned": Jsonb([]),
             "steps": Jsonb([]),
+            "request": None,
         }
         self.execute(RUN, values | changed)
 
@@ -98,7 +99,7 @@ async def test_an_admin_reads_the_ten_newest_runs_with_their_reports(
         "failures": [SHORT_ANSWER],
         "warned_checks": [WARNED],
     }
-    assert runs[1]["failed_steps"] == ["dbt_models"]
+    assert (runs[1]["failed_steps"], runs[1]["failed_stages"]) == (["dbt_models"], ["models"])
 
 
 async def test_days_never_asked_for_are_given_as_stretches(
@@ -120,10 +121,51 @@ async def test_days_never_asked_for_are_given_as_stretches(
 async def test_with_no_run_recorded_the_history_is_empty(
     history: History, admin_headers: dict[str, str]
 ) -> None:
-    assert (await history.read(admin_headers)).json() == {"runs": [], "days_never_asked": []}
+    assert (await history.read(admin_headers)).json() == {
+        "runs": [],
+        "days_never_asked": [],
+        "published_instruments": 0,
+    }
 
 
 async def test_the_run_history_is_for_admins(
     history: History, member_headers: dict[str, str]
 ) -> None:
     assert (await history.read(member_headers)).status_code == 403
+
+
+async def test_a_run_names_the_admin_who_asked_for_it(
+    history: History, admin_headers: dict[str, str]
+) -> None:
+    """A run started from the command line or the schedule names no one."""
+    history.execute(
+        "insert into flow_request (flow, first_day, last_day, requested_by, status, started_at,"
+        " finished_at) select 'sync', '2026-10-01', '2026-10-02', id, 'finished', now(), now()"
+        " from app_user where role = 'admin'"
+    )
+    history.run(2)
+    history.run(3, request=1)
+
+    runs = (await history.read(admin_headers)).json()["runs"]
+
+    assert [(run["run_id"], run["requested_by"], run["duration_seconds"]) for run in runs] == [
+        ("run-03", "Meera", 0),
+        ("run-02", None, 0),
+    ]
+
+
+async def test_the_history_counts_the_instruments_the_pages_show(
+    start_api: StartApi,
+    dataset_settings: ApiSettings,
+    seeded_models: psycopg.Connection,
+    dataset_admin_headers: dict[str, str],
+) -> None:
+    held = seeded_models.execute(
+        "select count(*) from mart_daily_features where trade_date = '2025-12-31'"
+    ).fetchone()
+
+    async with start_api(dataset_settings) as api:
+        shown = (await api.get("/data/runs", headers=dataset_admin_headers)).json()
+
+    assert held is not None and held[0] > 0
+    assert shown["published_instruments"] == held[0]

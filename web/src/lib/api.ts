@@ -1693,6 +1693,8 @@ export interface components {
                     [key: string]: number;
                 };
             };
+            /** Duration Seconds */
+            duration_seconds: number;
             /**
              * Ended At
              * Format: date-time
@@ -1700,6 +1702,8 @@ export interface components {
             ended_at: string;
             /** Failed Checks */
             failed_checks: components["schemas"]["CheckOutcomeResponse"][];
+            /** Failed Stages */
+            failed_stages: ("prices" | "identity" | "delivery" | "actions" | "names" | "models" | "features" | "checks")[];
             /** Failed Steps */
             failed_steps: string[];
             /** Failures */
@@ -1724,6 +1728,8 @@ export interface components {
              * @enum {string}
              */
             outcome: "succeeded" | "failed" | "cancelled";
+            /** Requested By */
+            requested_by: string | null;
             /** Run Id */
             run_id: string;
             /**
@@ -1808,12 +1814,15 @@ export interface components {
         };
         /**
          * RunHistoryResponse
-         * @description The ten newest runs, newest first, and the stretches of the history no daily file was asked
-         *     for, to the latest day a run covered.
+         * @description The ten newest runs, newest first, each naming the admin who asked for it or none for a run
+         *     started otherwise; the stretches of the history no daily file was asked for, to the latest day
+         *     a run covered; and the instruments the day the pages show holds.
          */
         RunHistoryResponse: {
             /** Days Never Asked */
             days_never_asked: components["schemas"]["DayStretchResponse"][];
+            /** Published Instruments */
+            published_instruments: number;
             /** Runs */
             runs: components["schemas"]["RecordedRunResponse"][];
         };

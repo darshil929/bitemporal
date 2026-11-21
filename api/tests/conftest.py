@@ -107,6 +107,14 @@ def dataset_member_headers(
     return account_session(seeded_postgres, SEED_SCHEMA, "dataset-reader")
 
 
+@pytest.fixture(scope="session")
+def dataset_admin_headers(
+    seeded_models: psycopg.Connection, seeded_postgres: str
+) -> dict[str, str]:
+    """An admin signed in to the seed dataset, written once for the whole test session."""
+    return account_session(seeded_postgres, SEED_SCHEMA, "dataset-admin", role="admin")
+
+
 @pytest.fixture
 def new_dataset_member(
     seeded_models: psycopg.Connection, seeded_postgres: str

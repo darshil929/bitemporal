@@ -26,9 +26,11 @@ async def wait_for_rebuild() -> None:
     await anyio.sleep(MART_REBUILD_WAIT_SECONDS)
 
 
-async def read_once[T](database: Database, read: Callable[[AsyncSession], Awaitable[T]]) -> T:
+async def read_once[T](
+    database: Database, read: Callable[[AsyncSession], Awaitable[T]], user_id: int | None = None
+) -> T:
     try:
-        async with database.transaction() as transaction:
+        async with database.transaction(user_id) as transaction:
             return await read(transaction)
     except ProgrammingError as error:
         if isinstance(error.orig, UndefinedTable):
@@ -36,14 +38,16 @@ async def read_once[T](database: Database, read: Callable[[AsyncSession], Awaita
         raise
 
 
-async def read_marts[T](database: Database, read: Callable[[AsyncSession], Awaitable[T]]) -> T:
-    """The answer of `read`, run in a transaction of its own; a read finding a mart absent runs once
-    more after the wait for a rebuild."""
+async def read_marts[T](
+    database: Database, read: Callable[[AsyncSession], Awaitable[T]], user_id: int | None = None
+) -> T:
+    """The answer of `read`, run in a transaction of its own for the person named, if any; a read
+    finding a mart absent runs once more after the wait for a rebuild."""
     try:
-        return await read_once(database, read)
+        return await read_once(database, read, user_id)
     except MartMissing:
         await wait_for_rebuild()
     try:
-        return await read_once(database, read)
+        return await read_once(database, read, user_id)
     except MartMissing as missing:
         raise MarketDataUpdating from missing
