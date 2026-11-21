@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, TriangleAlert, User } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import {
@@ -74,6 +75,16 @@ export function AccountMenu({ person }: Readonly<{ person: Person }>) {
           <StatusPill>{ROLES[person.role]}</StatusPill>
         </div>
         <DropdownMenuSeparator className="mt-0" />
+        {person.role === "admin" ? (
+          <>
+            <DropdownMenuItem>
+              <Link href="/admin/users" className="block w-full">
+                Users
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <DropdownMenuItem onSelect={signOut}>
           {state === "busy" ? "Signing out" : "Sign out"}
         </DropdownMenuItem>

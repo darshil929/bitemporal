@@ -67,18 +67,25 @@ function openMenu(role: "admin" | "member", name: string) {
 }
 
 test.each([
-  ["admin", "Admin"],
-  ["member", "Member"],
+  ["admin", "Admin", ["Users", "Sign out"]],
+  ["member", "Member", ["Sign out"]],
 ] as const)(
-  "the menu names the %s signed in with their username and role, then Sign out",
-  (role, words) => {
+  "the menu names the %s signed in with their role and permitted links",
+  (role, words, items) => {
     openMenu(role, "Darshil Thakkar");
 
     const menu = screen.getByRole("menu");
-    expect(menu.textContent).toBe(`Darshil Thakkardarshil929${words}Sign out`);
+    expect(menu.textContent).toBe(
+      `Darshil Thakkardarshil929${words}${items.join("")}`,
+    );
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Sign out"]);
+    ).toEqual(items);
+    if (role === "admin") {
+      expect(
+        screen.getByRole("link", { name: "Users" }).getAttribute("href"),
+      ).toBe("/admin/users");
+    }
   },
 );
 
