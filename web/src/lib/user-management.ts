@@ -2,6 +2,8 @@ import type { components } from "@/lib/api";
 import { formatDayRange } from "@/lib/format";
 
 export type ManagedPerson = components["schemas"]["PersonResponse"];
+export type IssuedPassword = components["schemas"]["IssuedPasswordResponse"];
+export type PersonRole = ManagedPerson["role"];
 export type SessionLimits = components["schemas"]["SessionLimitsResponse"];
 export type AuditEntry = components["schemas"]["AuditEntryResponse"];
 
@@ -80,5 +82,25 @@ export function validateSessionLimits(idleText: string, maxText: string) {
       idle === null ? "Enter a whole number from 5 to 1440" : undefined,
     maxError: max === null ? "Enter a whole number from 1 to 72" : undefined,
     parsed: idle !== null && max !== null ? { idle, max } : null,
+  };
+}
+
+export function validateNewPerson(nameText: string, userText: string) {
+  const display_name = nameText.trim();
+  const username = userText.trim();
+  const displayNameError = !display_name
+    ? "Enter a display name"
+    : display_name.length > 80
+      ? "Use 80 characters or fewer"
+      : undefined;
+  const usernameError =
+    username.length < 3 || username.length > 64
+      ? "Enter 3 to 64 characters"
+      : undefined;
+  return {
+    displayNameError,
+    usernameError,
+    parsed:
+      !displayNameError && !usernameError ? { display_name, username } : null,
   };
 }
