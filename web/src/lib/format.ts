@@ -210,6 +210,16 @@ export function formatDateTime(isoTimestamp: string): string {
   return `${formatDate(day)}, ${parts.hour}:${parts.minute}`;
 }
 
+/** A start and end in India time, naming the day once when both fall on it:
+ * `11 Oct 2026, 23:14 to 23:34`, or `11 Oct 2026, 23:50 to 12 Oct 2026, 00:12`. */
+export function formatTimeRange(startIso: string, endIso: string): string {
+  const start = formatDateTime(startIso);
+  const end = formatDateTime(endIso);
+  const [startDay] = start.split(", ");
+  const [endDay, endTime] = end.split(", ");
+  return `${start} to ${startDay === endDay ? endTime : end}`;
+}
+
 const MINUTES_IN_HOUR = 60;
 const SECONDS_IN_MINUTE = 60;
 

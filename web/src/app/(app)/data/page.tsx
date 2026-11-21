@@ -6,10 +6,11 @@ import { requireSession } from "@/lib/page-access";
 import { serverApiClient } from "@/lib/server-api-client";
 
 import { FiguresCard } from "./FiguresCard";
+import { LastSyncCard } from "./LastSyncCard";
 import { RunsCard } from "./RunsCard";
 
-// The data status in full for admins: the day the pages show and what stands behind it, and the
-// newest runs of the flows. Anyone else finds no page here.
+// The data status in full for admins: the day the pages show and what stands behind it, the newest
+// run's report, and the ten newest runs of the flows. Anyone else finds no page here.
 export default async function DataStatusPage() {
   const person = await requireSession();
   if (person.role !== "admin") {
@@ -34,7 +35,10 @@ export default async function DataStatusPage() {
           </span>
         }
       />
-      <FiguresCard status={status.data} history={history.data} />
+      <div className="grid grid-cols-1 items-start gap-section lg:grid-cols-2">
+        <FiguresCard status={status.data} history={history.data} />
+        <LastSyncCard run={history.data.runs[0] ?? null} />
+      </div>
       <RunsCard runs={history.data.runs} />
     </>
   );

@@ -13,7 +13,7 @@ import {
   startedBy,
 } from "@/lib/run-history";
 
-const OUTCOME_GLYPHS = {
+export const OUTCOME_GLYPHS = {
   succeeded: Check,
   failed: TriangleAlert,
   cancelled: X,

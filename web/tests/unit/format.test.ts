@@ -16,6 +16,7 @@ import {
   formatPrice,
   formatReturn,
   formatShortDate,
+  formatTimeRange,
   formatVolume,
 } from "@/lib/format";
 
@@ -96,6 +97,15 @@ describe("days and moments", () => {
 
   test("a moment late in the evening in UTC is the next day in India", () => {
     expect(formatDateTime("2026-10-10T19:30:00Z")).toBe("11 Oct 2026, 01:00");
+  });
+
+  test("a time range names the day once when start and end share it in India", () => {
+    expect(
+      formatTimeRange("2026-10-11T17:44:00Z", "2026-10-11T18:04:00Z"),
+    ).toBe("11 Oct 2026, 23:14 to 23:34");
+    expect(
+      formatTimeRange("2026-10-11T18:20:00Z", "2026-10-11T18:42:00Z"),
+    ).toBe("11 Oct 2026, 23:50 to 12 Oct 2026, 00:12");
   });
 
   test.each([
