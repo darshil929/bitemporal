@@ -112,6 +112,7 @@ test("a sync running names its days, stage and the time left", () => {
     ...FRESH,
     state: "updating",
     running: {
+      request_id: 1,
       flow: "sync",
       first_day: "2026-11-08",
       last_day: "2026-11-14",

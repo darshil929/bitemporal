@@ -46,6 +46,7 @@ class RunningSyncResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    request_id: int
     flow: Literal["bootstrap", "sync"]
     first_day: date
     last_day: date

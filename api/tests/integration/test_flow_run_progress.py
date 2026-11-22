@@ -31,11 +31,13 @@ STEP = (
 )
 ATTEMPTS_MART = (
     "create table mart_fetch_attempts (ingestion_id bigint generated always as identity,"
-    " source_id text, partition_key text, outcome text, fetched_at timestamptz, detail text)"
+    " source_id text, partition_key text, outcome text, fetched_at timestamptz,"
+    " row_count integer, detail text)"
 )
 ATTEMPT = (
-    "insert into mart_fetch_attempts (source_id, partition_key, outcome, fetched_at, detail)"
-    " values (%s, %s, %s, %s, %s)"
+    "insert into mart_fetch_attempts"
+    " (source_id, partition_key, outcome, fetched_at, row_count, detail)"
+    " values (%s, %s, %s, %s, %s, %s)"
 )
 # A sync's steps and the seconds each took.
 SYNC_STEPS = {
@@ -175,11 +177,18 @@ async def test_a_sync_shows_each_file_s_answer_by_day_and_its_failures(
     no longer a failure."""
     request = progress.request()
     for attempt in (
-        ("nse_bhavcopy_equity", "2026-11-05", "failed", "2026-11-10 15:00+00", "earlier run"),
-        ("nse_bhavcopy_equity", "2026-11-04", "succeeded", "2026-11-10 16:01+00", None),
-        ("bse_bhavcopy_equity", "2026-11-04", "failed", "2026-11-10 16:01+00", "timed out"),
-        ("bse_bhavcopy_equity", "2026-11-04", "succeeded", "2026-11-10 16:02+00", None),
-        ("bse_corporate_actions", "20260101-20261231", "failed", "2026-11-10 16:03+00", "403"),
+        ("nse_bhavcopy_equity", "2026-11-05", "failed", "2026-11-10 15:00+00", None, "earlier run"),
+        ("nse_bhavcopy_equity", "2026-11-04", "succeeded", "2026-11-10 16:01+00", 2950, None),
+        ("bse_bhavcopy_equity", "2026-11-04", "failed", "2026-11-10 16:01+00", None, "timed out"),
+        ("bse_bhavcopy_equity", "2026-11-04", "succeeded", "2026-11-10 16:02+00", 4812, None),
+        (
+            "bse_corporate_actions",
+            "20260101-20261231",
+            "failed",
+            "2026-11-10 16:03+00",
+            None,
+            "403",
+        ),
     ):
         progress.execute(ATTEMPT, attempt)
 
@@ -193,8 +202,9 @@ async def test_a_sync_shows_each_file_s_answer_by_day_and_its_failures(
     assert fetches["days"][0] == {
         "day": "2026-11-04",
         "outcomes": {"bse_bhavcopy_equity": "succeeded", "nse_bhavcopy_equity": "succeeded"},
+        "rows": {"bse_bhavcopy_equity": 4812, "nse_bhavcopy_equity": 2950},
     }
-    assert fetches["days"][1] == {"day": "2026-11-05", "outcomes": {}}
+    assert fetches["days"][1] == {"day": "2026-11-05", "outcomes": {}, "rows": {}}
     assert fetches["failures"] == [
         {"source": "bse_corporate_actions", "key": "20260101-20261231", "detail": "403"}
     ]
@@ -206,7 +216,7 @@ async def test_a_bootstrap_s_older_years_read_by_year_once_its_recent_years_ran(
     request = progress.request(flow="bootstrap")
     progress.run("recent", {}, "succeeded", request)
     progress.execute(
-        ATTEMPT, ("nse_delivery", "2012-03-01", "succeeded", "2026-11-10 17:00+00", None)
+        ATTEMPT, ("nse_delivery", "2012-03-01", "succeeded", "2026-11-10 17:00+00", 1200, None)
     )
 
     fetches = (await progress.read(request, admin_headers)).json()["fetches"]

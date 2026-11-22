@@ -16,7 +16,7 @@ DAY_BY_DAY = 31
 REQUEST = text("select flow, first_day, last_day, started_at from flow_request where id = :id")
 RUNS = text("select started_at, ended_at from flow_run where request_id = :id order by started_at")
 ATTEMPTS = text(
-    "select source_id, partition_key, outcome, detail from mart_fetch_attempts"
+    "select source_id, partition_key, outcome, row_count, detail from mart_fetch_attempts"
     " where fetched_at >= :since order by ingestion_id"
 )
 
@@ -25,6 +25,7 @@ ATTEMPTS = text(
 class DayAnswers:
     day: date
     outcomes: dict[str, str]
+    rows: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -83,14 +84,21 @@ async def resolve_fetches(transaction: AsyncSession, request_id: int) -> Fetches
     first, last = windows[index]
     since: datetime = request.started_at if index == 0 else runs[index - 1].ended_at
     answers: dict[tuple[str, date], str] = {}
+    row_counts: dict[tuple[str, date], int] = {}
     # Each slice's latest answer, so a fetch asked again and read is no longer a failure.
     latest: dict[tuple[str, str], tuple[str, str]] = {}
-    for source, key, outcome, detail in await transaction.execute(ATTEMPTS, {"since": since}):
+    for source, key, outcome, count, detail in await transaction.execute(
+        ATTEMPTS, {"since": since}
+    ):
         latest[(source, key)] = (outcome, detail or "")
         if source in DAILY_SOURCES and len(key) == 10:
             day = date.fromisoformat(key)
             if first <= day <= last:
                 answers[(source, day)] = outcome
+                if outcome == "succeeded" and count is not None:
+                    row_counts[(source, day)] = int(count)
+                else:
+                    row_counts.pop((source, day), None)
     long_window = (last - first).days + 1 > DAY_BY_DAY
     days = None
     if not long_window:
@@ -100,6 +108,11 @@ async def resolve_fetches(transaction: AsyncSession, request_id: int) -> Fetches
                 {
                     source: outcome
                     for (source, day), outcome in answers.items()
+                    if day == first + timedelta(days=offset)
+                },
+                {
+                    source: count
+                    for (source, day), count in row_counts.items()
                     if day == first + timedelta(days=offset)
                 },
             )

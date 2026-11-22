@@ -20,13 +20,14 @@ class StageResponse(BaseModel):
 
 
 class DayAnswersResponse(BaseModel):
-    """Each daily file's answer for a day: succeeded, not_published or failed; a file not yet asked
-    for the day is absent."""
+    """Each daily file's answer for a day: succeeded, not_published or failed, with stored row
+    counts where succeeded; a file not yet asked for the day is absent."""
 
     model_config = ConfigDict(from_attributes=True)
 
     day: date
     outcomes: dict[str, str]
+    rows: dict[str, int]
 
 
 class YearAnswersResponse(BaseModel):

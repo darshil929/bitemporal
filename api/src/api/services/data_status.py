@@ -93,6 +93,7 @@ class RunningSync:
     """The request waiting or running: requested, running or cancelling, its days, and while it
     runs the stage it is in and the time left."""
 
+    request_id: int
     flow: str
     first_day: date
     last_day: date
@@ -153,6 +154,7 @@ async def resolve_data_status(transaction: AsyncSession, now: datetime) -> DataS
     if active is not None:
         progress = await flow_run_progress.resolve_progress(transaction, active.id)
         running = RunningSync(
+            request_id=active.id,
             flow=active.flow,
             first_day=active.first_day,
             last_day=active.last_day,

@@ -274,7 +274,9 @@ async def test_a_waiting_request_makes_the_data_updating(status: Status) -> None
     shown = (await status.read()).json()
 
     assert shown["state"] == "updating"
-    assert shown["running"] | {"requested_at": None} == {
+    assert isinstance(shown["running"]["request_id"], int)
+    assert shown["running"] | {"request_id": None, "requested_at": None} == {
+        "request_id": None,
         "flow": "sync",
         "first_day": "2026-10-04",
         "last_day": "2026-10-10",
@@ -296,7 +298,7 @@ async def test_a_running_sync_names_its_stage_and_the_time_left(status: Status) 
     status.execute(STEP, ("live", "bse_bhavcopy", 18))
     status.execute(
         "create table mart_fetch_attempts (ingestion_id bigint, source_id text, partition_key text,"
-        " outcome text, fetched_at timestamptz, detail text)"
+        " outcome text, fetched_at timestamptz, row_count integer, detail text)"
     )
     status.execute("grant select on mart_fetch_attempts to bitemporal_api")
 

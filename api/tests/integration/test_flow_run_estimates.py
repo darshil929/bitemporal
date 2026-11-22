@@ -89,19 +89,36 @@ async def test_a_sync_asks_for_each_day_not_held_and_again_for_the_two_latest_he
             "insert into mart_source_days values ('nse_bhavcopy_equity', %s, 'succeeded')", (day,)
         )
 
-    requests = (await estimates.get("/data/sync/estimate", admin_headers, **SYNC_WEEK)).json()[
-        "requests"
-    ]
+    body = (await estimates.get("/data/sync/estimate", admin_headers, **SYNC_WEEK)).json()
+    requests = body["requests"]
 
     held = {source["source_id"]: source for source in requests["sources"]}
     assert held["nse_bhavcopy_equity"] | {"source_id": None} == {
         "source_id": None,
         "days": 7,
         "held": 5,
+        "missing": 2,
+        "asked_again": 2,
         "to_request": 4,
     }
     assert held["bse_delivery"]["to_request"] == 7
     assert requests["duration"] == {"seconds": 14, "minutes": 1}
+    assert (body["history_first_day"], body["today"], body["typical"]) == (
+        "2011-06-22",
+        "2026-11-10",
+        None,
+    )
+
+
+async def test_sync_estimate_defaults_to_the_seven_days_ending_today_in_india(
+    estimates: Estimates, admin_headers: dict[str, str]
+) -> None:
+    body = (await estimates.get("/data/sync/estimate", admin_headers)).json()
+
+    assert (body["requests"]["first_day"], body["requests"]["last_day"]) == (
+        "2026-11-04",
+        "2026-11-10",
+    )
 
 
 async def test_the_fixed_work_is_the_median_of_the_last_three_runs_by_stage(
@@ -119,7 +136,8 @@ async def test_the_fixed_work_is_the_median_of_the_last_three_runs_by_stage(
     estimates.run("older", "2026-10-31 15:00+00", {"dbt_models": 3000})
     estimates.run("cancelled", "2026-11-10 15:00+00", {"dbt_models": 10}, outcome="cancelled")
 
-    fixed = (await estimates.get("/data/sync/estimate", admin_headers, **SYNC_WEEK)).json()["fixed"]
+    body = (await estimates.get("/data/sync/estimate", admin_headers, **SYNC_WEEK)).json()
+    fixed = body["fixed"]
 
     assert fixed["stages"] == {
         "features": {"seconds": 180, "minutes": 3},
@@ -127,6 +145,16 @@ async def test_the_fixed_work_is_the_median_of_the_last_three_runs_by_stage(
         "other": {"seconds": 90, "minutes": 2},
     }
     assert fixed["duration"] == {"seconds": 1020, "minutes": 17}
+    assert body["typical"] == {"seconds": 1034, "minutes": 18}
+    assert (fixed["min_run"], fixed["max_run"]) == (
+        {"seconds": 980, "minutes": 17},
+        {"seconds": 1260, "minutes": 21},
+    )
+    assert [stamp[:10] for stamp in fixed["basis_started_at"]] == [
+        "2026-11-06",
+        "2026-11-07",
+        "2026-11-09",
+    ]
     assert sorted(run["seconds"] for run in fixed["last_runs"]) == [980, 1040, 1260]
 
 

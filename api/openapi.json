@@ -566,7 +566,7 @@
         "type": "object"
       },
       "DayAnswersResponse": {
-        "description": "Each daily file's answer for a day: succeeded, not_published or failed; a file not yet asked\nfor the day is absent.",
+        "description": "Each daily file's answer for a day: succeeded, not_published or failed, with stored row\ncounts where succeeded; a file not yet asked for the day is absent.",
         "properties": {
           "day": {
             "format": "date",
@@ -579,11 +579,19 @@
             },
             "title": "Outcomes",
             "type": "object"
+          },
+          "rows": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Rows",
+            "type": "object"
           }
         },
         "required": [
           "day",
-          "outcomes"
+          "outcomes",
+          "rows"
         ],
         "title": "DayAnswersResponse",
         "type": "object"
@@ -853,8 +861,16 @@
         "type": "object"
       },
       "FixedWorkResponse": {
-        "description": "The other steps as the last runs of the flow took them: the median by stage (models,\nfeatures, other) and in all, and each of those runs' whole duration, newest first.",
+        "description": "The other steps as the last runs of the flow took them: the median by stage (models,\nfeatures, other) and in all, the shortest and longest of those runs, when they started, and\neach run's whole duration.",
         "properties": {
+          "basis_started_at": {
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Basis Started At",
+            "type": "array"
+          },
           "duration": {
             "$ref": "#/components/schemas/DurationResponse"
           },
@@ -864,6 +880,12 @@
             },
             "title": "Last Runs",
             "type": "array"
+          },
+          "max_run": {
+            "$ref": "#/components/schemas/DurationResponse"
+          },
+          "min_run": {
+            "$ref": "#/components/schemas/DurationResponse"
           },
           "stages": {
             "additionalProperties": {
@@ -876,7 +898,10 @@
         "required": [
           "stages",
           "duration",
-          "last_runs"
+          "last_runs",
+          "min_run",
+          "max_run",
+          "basis_started_at"
         ],
         "title": "FixedWorkResponse",
         "type": "object"
@@ -2842,6 +2867,10 @@
             "title": "Last Day",
             "type": "string"
           },
+          "request_id": {
+            "title": "Request Id",
+            "type": "integer"
+          },
           "requested_at": {
             "format": "date-time",
             "title": "Requested At",
@@ -2880,6 +2909,7 @@
           }
         },
         "required": [
+          "request_id",
           "flow",
           "first_day",
           "last_day",
@@ -3515,14 +3545,22 @@
         "type": "object"
       },
       "SourceDaysResponse": {
-        "description": "A daily file's days in a range: those held, and those a run would ask for.",
+        "description": "A daily file's days in a range: those held, those not held, those asked again, and their\nsum.",
         "properties": {
+          "asked_again": {
+            "title": "Asked Again",
+            "type": "integer"
+          },
           "days": {
             "title": "Days",
             "type": "integer"
           },
           "held": {
             "title": "Held",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
             "type": "integer"
           },
           "source_id": {
@@ -3538,6 +3576,8 @@
           "source_id",
           "days",
           "held",
+          "missing",
+          "asked_again",
           "to_request"
         ],
         "title": "SourceDaysResponse",
@@ -3679,7 +3719,7 @@
         "type": "object"
       },
       "SyncEstimateResponse": {
-        "description": "A sync's requests over the range and its fixed work; no fixed work before a sync ran.",
+        "description": "A sync's requests over the range, its fixed work, the typical total duration, and the\ncalendar bounds; no fixed work or typical total before a sync ran.",
         "properties": {
           "fixed": {
             "anyOf": [
@@ -3691,13 +3731,43 @@
               }
             ]
           },
+          "history_first_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History First Day"
+          },
           "requests": {
             "$ref": "#/components/schemas/RequestsResponse"
+          },
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
+          "typical": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "requests",
-          "fixed"
+          "fixed",
+          "typical",
+          "history_first_day",
+          "today"
         ],
         "title": "SyncEstimateResponse",
         "type": "object"
@@ -5459,27 +5529,41 @@
     },
     "/data/sync/estimate": {
       "get": {
-        "description": "For admins, the days a sync over the range would ask each daily file for and how long it\nwould take.",
+        "description": "For admins, the days a sync over the range would ask each daily file for and how long it\nwould take, defaulting to the seven days ending today in India.",
         "operationId": "sync_estimate",
         "parameters": [
           {
             "in": "query",
             "name": "first_day",
-            "required": true,
+            "required": false,
             "schema": {
-              "format": "date",
-              "title": "First Day",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "First Day"
             }
           },
           {
             "in": "query",
             "name": "last_day",
-            "required": true,
+            "required": false,
             "schema": {
-              "format": "date",
-              "title": "Last Day",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Day"
             }
           }
         ],
