@@ -362,7 +362,7 @@ export interface paths {
         /**
          * Sync Estimate
          * @description For admins, the days a sync over the range would ask each daily file for and how long it
-         *     would take.
+         *     would take, defaulting to the seven days ending today in India.
          */
         get: operations["sync_estimate"];
         put?: never;
@@ -1014,8 +1014,8 @@ export interface components {
         };
         /**
          * DayAnswersResponse
-         * @description Each daily file's answer for a day: succeeded, not_published or failed; a file not yet asked
-         *     for the day is absent.
+         * @description Each daily file's answer for a day: succeeded, not_published or failed, with stored row
+         *     counts where succeeded; a file not yet asked for the day is absent.
          */
         DayAnswersResponse: {
             /**
@@ -1026,6 +1026,10 @@ export interface components {
             /** Outcomes */
             outcomes: {
                 [key: string]: string;
+            };
+            /** Rows */
+            rows: {
+                [key: string]: number;
             };
         };
         /** DayStretchResponse */
@@ -1139,12 +1143,17 @@ export interface components {
         /**
          * FixedWorkResponse
          * @description The other steps as the last runs of the flow took them: the median by stage (models,
-         *     features, other) and in all, and each of those runs' whole duration, newest first.
+         *     features, other) and in all, the shortest and longest of those runs, when they started, and
+         *     each run's whole duration.
          */
         FixedWorkResponse: {
+            /** Basis Started At */
+            basis_started_at: string[];
             duration: components["schemas"]["DurationResponse"];
             /** Last Runs */
             last_runs: components["schemas"]["DurationResponse"][];
+            max_run: components["schemas"]["DurationResponse"];
+            min_run: components["schemas"]["DurationResponse"];
             /** Stages */
             stages: {
                 [key: string]: components["schemas"]["DurationResponse"];
@@ -1848,6 +1857,8 @@ export interface components {
              * Format: date
              */
             last_day: string;
+            /** Request Id */
+            request_id: number;
             /**
              * Requested At
              * Format: date-time
@@ -2080,13 +2091,18 @@ export interface components {
         };
         /**
          * SourceDaysResponse
-         * @description A daily file's days in a range: those held, and those a run would ask for.
+         * @description A daily file's days in a range: those held, those not held, those asked again, and their
+         *     sum.
          */
         SourceDaysResponse: {
+            /** Asked Again */
+            asked_again: number;
             /** Days */
             days: number;
             /** Held */
             held: number;
+            /** Missing */
+            missing: number;
             /** Source Id */
             source_id: string;
             /** To Request */
@@ -2151,11 +2167,20 @@ export interface components {
         };
         /**
          * SyncEstimateResponse
-         * @description A sync's requests over the range and its fixed work; no fixed work before a sync ran.
+         * @description A sync's requests over the range, its fixed work, the typical total duration, and the
+         *     calendar bounds; no fixed work or typical total before a sync ran.
          */
         SyncEstimateResponse: {
             fixed: components["schemas"]["FixedWorkResponse"] | null;
+            /** History First Day */
+            history_first_day: string | null;
             requests: components["schemas"]["RequestsResponse"];
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            typical: components["schemas"]["DurationResponse"] | null;
         };
         /** SyncRequestBody */
         SyncRequestBody: {
@@ -3286,9 +3311,9 @@ export interface operations {
     };
     sync_estimate: {
         parameters: {
-            query: {
-                first_day: string;
-                last_day: string;
+            query?: {
+                first_day?: string | null;
+                last_day?: string | null;
             };
             header?: never;
             path?: never;

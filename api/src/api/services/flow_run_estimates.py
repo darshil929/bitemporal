@@ -6,7 +6,7 @@ import math
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,7 +63,8 @@ RECENT_RUN_STEPS = text(
     " where flow = :flow and outcome <> 'cancelled'"
     " and exists (select from flow_run_step where flow_run_step.run_id = flow_run.run_id)"
     " order by started_at desc limit :runs)"
-    " select recent.run_id, extract(epoch from recent.ended_at - recent.started_at) as total,"
+    " select recent.run_id, recent.started_at,"
+    " extract(epoch from recent.ended_at - recent.started_at) as total,"
     " step.step, extract(epoch from step.ended_at - step.started_at) as seconds"
     " from recent join flow_run_step as step on step.run_id = recent.run_id"
     " where step.started_at is not null"
@@ -93,6 +94,8 @@ class SourceDays:
     source_id: str
     days: int
     held: int
+    missing: int
+    asked_again: int
     to_request: int
 
 
@@ -111,12 +114,18 @@ class FixedWork:
     stages: dict[str, Duration]
     duration: Duration
     last_runs: tuple[Duration, ...]
+    min_run: Duration
+    max_run: Duration
+    basis_started_at: tuple[datetime, ...]
 
 
 @dataclass(frozen=True)
 class SyncEstimate:
     requests: Requests
     fixed: FixedWork | None
+    typical: Duration | None
+    history_first_day: date | None
+    today: date
 
 
 @dataclass(frozen=True)
@@ -155,6 +164,8 @@ async def requests_over(
             row.source_id,
             row.days,
             row.held,
+            row.days - row.held,
+            min(rechecked, row.held),
             row.days - row.held + min(rechecked, row.held),
         )
         for row in rows
@@ -165,21 +176,27 @@ async def requests_over(
 
 async def fixed_work(transaction: AsyncSession, flow: str) -> FixedWork | None:
     totals: dict[str, float] = {}
+    started: dict[str, datetime] = {}
     stages: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     for row in await transaction.execute(RECENT_RUN_STEPS, {"flow": flow, "runs": MEASURED_RUNS}):
         totals[row.run_id] = float(row.total)
+        started[row.run_id] = row.started_at
         if row.step not in FETCH_STEPS:
             stages[row.run_id][stage_of(row.step)] += float(row.seconds)
     if not totals:
         return None
     names = sorted({stage for run in stages.values() for stage in run})
+    runs = tuple(Duration(round(total)) for total in totals.values())
     return FixedWork(
         stages={
             name: Duration(round(statistics.median(stages[run][name] for run in totals)))
             for name in names
         },
         duration=Duration(round(statistics.median(sum(stages[run].values()) for run in totals))),
-        last_runs=tuple(Duration(round(total)) for total in totals.values()),
+        last_runs=runs,
+        min_run=Duration(min(run.seconds for run in runs)),
+        max_run=Duration(max(run.seconds for run in runs)),
+        basis_started_at=tuple(sorted(started.values())),
     )
 
 
@@ -194,11 +211,26 @@ async def check_range(transaction: AsyncSession, first: date, last: date) -> Non
         raise RangeRefused("after_today")
 
 
-async def sync_estimate(database: Database, first: date, last: date) -> SyncEstimate:
+async def sync_estimate(database: Database, first: date | None, last: date | None) -> SyncEstimate:
+    """Estimate a sync over the range, defaulting to the seven days ending today in India."""
+
     async def estimate(transaction: AsyncSession) -> SyncEstimate:
-        await check_range(transaction, first, last)
-        requests = await requests_over(transaction, first, last, RECHECKED_DAYS)
-        return SyncEstimate(requests, await fixed_work(transaction, "sync"))
+        today = data_status.india_now().date()
+        start = await first_day(transaction)
+        resolved_last = last if last is not None else today
+        default_first = resolved_last - timedelta(days=6)
+        if start is not None and default_first < start:
+            default_first = start
+        resolved_first = first if first is not None else default_first
+        await check_range(transaction, resolved_first, resolved_last)
+        requests = await requests_over(transaction, resolved_first, resolved_last, RECHECKED_DAYS)
+        fixed = await fixed_work(transaction, "sync")
+        typical = (
+            Duration(requests.duration.seconds + fixed.duration.seconds)
+            if fixed is not None
+            else None
+        )
+        return SyncEstimate(requests, fixed, typical, start, today)
 
     return await read_marts(database, estimate)
 

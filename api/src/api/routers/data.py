@@ -64,10 +64,13 @@ async def run_history(admin: AdminDependency, database: DatabaseDependency) -> R
 
 @router.get("/sync/estimate", responses=RANGE_REFUSED)
 async def sync_estimate(
-    first_day: date, last_day: date, _admin: AdminDependency, database: DatabaseDependency
+    _admin: AdminDependency,
+    database: DatabaseDependency,
+    first_day: date | None = None,
+    last_day: date | None = None,
 ) -> SyncEstimateResponse:
     """For admins, the days a sync over the range would ask each daily file for and how long it
-    would take."""
+    would take, defaulting to the seven days ending today in India."""
     try:
         estimate = await flow_run_estimates.sync_estimate(database, first_day, last_day)
     except flow_run_estimates.RangeRefused as refused:
